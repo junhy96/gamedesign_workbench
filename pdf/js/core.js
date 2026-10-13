@@ -21,7 +21,17 @@ function loadScript(url, globalName) {
   return scripts.get(url);
 }
 
+const JSZIP_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
 export const loadPdfLib = () => loadScript(PDFLIB_URL, 'PDFLib');
+export const loadJsZip = () => loadScript(JSZIP_URL, 'JSZip');
+
+/** 여러 결과 파일을 ZIP 하나로 */
+export async function zipFiles(files) {
+  const JSZip = await loadJsZip();
+  const zip = new JSZip();
+  for (const f of files) zip.file(f.name, f.bytes);
+  return zip.generateAsync({ type: 'uint8array' });
+}
 export const loadFontkit = () => loadScript(FONTKIT_URL, 'fontkit');
 
 let pdfjsP;

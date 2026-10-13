@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PDF 도구</title>
-  <meta name="description" content="브라우저 안에서만 동작하는 PDF 압축 · 합치기 · 수정 도구 — 파일이 서버로 올라가지 않습니다">
+  <meta name="description" content="파일을 올리지 않고 브라우저 안에서 처리하는 PDF 도구 — 합치기, 분할, 압축, 변환, 편집, 서명">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23c03a39'/><path d='M10 8h8l5 5v11H10z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="../css/style.css">
@@ -13,28 +13,27 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">
+    <a class="brand" href="#" data-nav="home">
       <span class="brand-mark pdf-mark" aria-hidden="true"></span>
       <div><strong>PDF 도구</strong><span class="brand-sub">파일은 이 브라우저 밖으로 나가지 않습니다</span></div>
-    </div>
-    <nav class="tabs" role="tablist" aria-label="PDF 도구">
-      <button role="tab" data-tab="compress">압축</button>
-      <button role="tab" data-tab="merge">합치기</button>
-      <button role="tab" data-tab="edit">수정</button>
+    </a>
+    <nav class="tabs" aria-label="바로 가기">
+      <a class="nav-link" href="#merge">합치기</a>
+      <a class="nav-link" href="#split">분할</a>
+      <a class="nav-link" href="#compress">압축</a>
+      <a class="nav-link" href="#pdf2jpg">PDF → JPG</a>
+      <a class="nav-link" href="#edit">편집</a>
+      <a class="nav-link" href="#">모든 도구</a>
     </nav>
-    <a class="btn" href="../">기획 워크벤치</a>
+    <a class="btn header-link" href="../">기획 워크벤치</a>
     <button class="icon-btn" id="theme-toggle" type="button" aria-label="테마 전환" title="테마 전환">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
     </button>
   </header>
-  <main>
-    <section id="tab-compress" role="tabpanel" class="panel"></section>
-    <section id="tab-merge" role="tabpanel" class="panel" hidden></section>
-    <section id="tab-edit" role="tabpanel" class="panel" hidden></section>
-  </main>
+  <main id="app"></main>
   <footer class="app-footer">
     <span>모든 처리는 브라우저 안에서 실행됩니다 · 업로드 없음</span>
-    <span>pdf-lib · pdf.js</span>
+    <span>pdf-lib · pdf.js · JSZip</span>
   </footer>
   <script type="module" src="js/app.js"></script>
 </body>
