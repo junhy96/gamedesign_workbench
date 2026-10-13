@@ -1,11 +1,12 @@
 // 앱 셸: 탭 전환(#해시), 테마 전환. 각 도구는 처음 열 때 한 번만 mount.
 import { store } from './lib/util.js';
 import { mount as mountEnhance } from './enhance/view.js';
+import { mount as mountFrame } from './frame/view.js';
 
 const TOOLS = {
   enhance: mountEnhance,
   economy: null, // 준비 중 — 정적 안내만 표시
-  frame: null,
+  frame: mountFrame,
   diagram: null,
 };
 const mounted = new Set();
