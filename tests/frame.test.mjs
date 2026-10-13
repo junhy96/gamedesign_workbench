@@ -100,6 +100,24 @@ test('반격 횟수: (k−1)·공격 전체 + 회피 캔슬 ≤ 여유', () => {
   assert.equal(analyze(cfg).counters[0].last, true);
 });
 
+test('PPT 타임라인 사양: 모든 도형이 슬라이드 안, 긴 연계는 고르게 여러 장', async () => {
+  const { timelineSlides } = await import('../js/frame/export.js');
+  const { SLIDE } = await import('../js/lib/pptx.js');
+  for (const id of Object.keys(TEMPLATES)) {
+    const state = tpl(id), res = analyze(state);
+    for (const maxFrames of [480, 120]) {
+      const slides = timelineSlides(res, state, { maxFrames });
+      assert.equal(slides.length, Math.ceil(res.timeline.length / maxFrames));
+      for (const s of slides) for (const sp of s.specs) {
+        assert.ok(sp.x >= 0 && sp.y >= 0 && sp.x + sp.w <= SLIDE.w + 0.01 && sp.y + sp.h <= SLIDE.h + 0.01, `${id} ${sp.name ?? sp.text}`);
+      }
+      // 모든 판정 타격이 어느 장엔가 그려진다
+      const drawn = slides.flatMap(s => s.specs).filter(sp => /판정/.test(sp.name ?? '')).length;
+      assert.ok(drawn >= res.hits.length);
+    }
+  }
+});
+
 test('입력 오류 감지', () => {
   const cfg = tpl('blank');
   cfg.attacks[0].active = 0;

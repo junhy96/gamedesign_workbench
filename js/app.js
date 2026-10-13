@@ -2,12 +2,14 @@
 import { store } from './lib/util.js';
 import { mount as mountEnhance } from './enhance/view.js';
 import { mount as mountFrame } from './frame/view.js';
+import { mount as mountDiagram } from './diagram/view.js';
+import { mount as mountEconomy } from './economy/view.js';
 
 const TOOLS = {
   enhance: mountEnhance,
-  economy: null, // 준비 중 — 정적 안내만 표시
+  economy: mountEconomy,
   frame: mountFrame,
-  diagram: null,
+  diagram: mountDiagram,
 };
 const mounted = new Set();
 const tabs = [...document.querySelectorAll('[data-tab]')];

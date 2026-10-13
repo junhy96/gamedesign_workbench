@@ -1,5 +1,6 @@
 // 패턴 프레임 검증기 — 화면
 import { analyze, toMs } from './model.js';
+import { exportFramePptx } from './export.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, pickJSON, toast, debounce } from '../lib/util.js';
 
@@ -40,6 +41,7 @@ function build(root) {
         h('p', {}, '보스 공격의 선딜·판정·후딜과 플레이어의 회피 무적 프레임을 넣으면, 타격마다 회피 윈도우가 몇 프레임인지, 보고 반응할 수 있는지, 반격할 틈이 있는지를 판정합니다. 연계 중 직전 회피의 후딜 때문에 줄어드는 윈도우까지 계산합니다.'),
       ),
       h('div.tool-actions', {},
+        els.pptBtn = h('button.btn.primary', { type: 'button', onclick: exportPptx, title: '타임라인·판정 표·검증 결과를 편집 가능한 PowerPoint 도형으로 저장' }, 'PPT 도형으로 저장'),
         h('button.btn', { type: 'button', onclick: copyShareLink }, '공유 링크'),
         h('button.btn', { type: 'button', onclick: () => downloadJSON(`frame-${state.template}.json`, { schemaVersion: SCHEMA, tool: 'frame', state }) }, 'JSON 저장'),
         h('button.btn', { type: 'button', onclick: importJSON }, '불러오기'),
@@ -328,6 +330,19 @@ function renderFindings(r) {
       h('span.hint', {}, ['critical', 'serious', 'warn'].filter(l => counts[l]).map(l => `${LEVEL[l]} ${counts[l]}`).join(' · ') || '문제 없음')),
     h('ul.findings', {}, ...r.findings.map(f => h(`li.${f.level}`, {}, h('span.lv', {}, LEVEL[f.level]), h('span', {}, f.text)))),
   );
+}
+
+// ── PowerPoint ──────────────────────────────────────────
+async function exportPptx() {
+  if (!last) { toast('먼저 오류를 고쳐 주세요'); return; }
+  const btn = els.pptBtn, label = btn.textContent;
+  btn.disabled = true; btn.textContent = '만드는 중…';
+  try {
+    await exportFramePptx(last, state, `패턴 프레임 검증 - ${TEMPLATES[state.template].label}`);
+    toast('PowerPoint 파일을 저장했습니다 (모든 요소가 편집 가능한 도형)');
+  } catch (e) {
+    toast(e.message || 'PowerPoint 파일을 만들지 못했습니다');
+  } finally { btn.disabled = false; btn.textContent = label; }
 }
 
 // ── 공유·불러오기 ───────────────────────────────────────

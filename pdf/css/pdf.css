@@ -1,0 +1,49 @@
+/* PDF 도구 전용 스타일 (공통 토큰·컴포넌트는 ../css/style.css) */
+.pdf-mark { background-color: #c03a39; background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M10 8h8l5 5v11H10z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>"); }
+.pdf-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-like { display: grid; gap: 12px; }
+.dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center; cursor: pointer;
+  border: 2px dashed var(--line-strong); border-radius: 12px; padding: 32px 16px; background: var(--surface-2);
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone strong { font-size: 15px; }
+.file-info { margin-top: 10px; font-size: 13.5px; color: var(--text-2); }
+.choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { margin-top: 3px; accent-color: var(--accent); }
+.choice span { display: grid; gap: 2px; }
+.result-card { margin-top: 20px; display: grid; gap: 12px; }
+.result-sizes { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.result-sizes > div { display: grid; }
+.result-sizes b { font-size: 22px; }
+.result-sizes .arrow { font-size: 22px; color: var(--text-3); }
+.delta-big { font-size: 26px; font-weight: 800; }
+.delta-big.good { color: var(--good); } .delta-big.bad { color: var(--warn); }
+.merge-list { display: grid; gap: 8px; margin-top: 14px; }
+.merge-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 200px auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.merge-idx { font-weight: 700; color: var(--text-3); text-align: center; }
+.merge-name { display: grid; min-width: 0; }
+.merge-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-range input.bad { border-color: var(--bad); }
+.page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.page-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; gap: 6px; cursor: pointer; background: var(--surface); }
+.page-card.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.page-thumb { height: 180px; display: grid; place-items: center; overflow: hidden; background: var(--surface-2); border-radius: 6px; }
+.page-thumb canvas { max-width: 100%; max-height: 170px; box-shadow: 0 1px 3px rgb(0 0 0 / .2); transition: transform .15s; }
+.blank-page { width: 110px; height: 150px; background: #fff; border: 1px dashed var(--line-strong); display: grid; place-items: center; color: #999; font-size: 12px; }
+.page-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+.page-actions { display: flex; gap: 3px; justify-content: space-between; }
+.page-actions .icon-x { width: 24px; height: 24px; font-size: 13px; }
+.text-list { display: grid; gap: 10px; }
+.text-item { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+input[type="color"] { width: 100%; height: 34px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+input[type="text"] { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; font-size: 14px; }
+.app-header > a.btn { flex: none; }
+@media (max-width: 860px) {
+  .pdf-grid { grid-template-columns: minmax(0, 1fr); }
+  .merge-row { grid-template-columns: 24px minmax(0, 1fr); }
+  .merge-row .merge-range, .merge-row .row-actions { grid-column: 2; }
+}
+.page-grid > p { grid-column: 1 / -1; }
