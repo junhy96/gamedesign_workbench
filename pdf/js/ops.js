@@ -1,6 +1,11 @@
 // PDF 처리: 압축 · 합치기 · 수정 저장
 import { loadPdfLib, loadPdfJs, loadFontkit, loadKoreanFont, parseRanges, placeText, pageLabel, hasNonLatin } from './core.js';
 
+// pdf-lib 기본값은 50~100개 객체마다 setTimeout으로 양보한다. 백그라운드 탭에서는 타이머가 1초 단위로 늦춰져
+// 객체가 수만 개인 PDF(예: PowerPoint 내보내기)는 몇 분씩 걸린다 → 양보 간격을 크게 잡는다.
+const TICK = 2000;
+const SAVE_OPTS = { useObjectStreams: true, objectsPerTick: TICK };
+
 // ── 압축 ────────────────────────────────────────────────
 /**
  * level 'structure' : 무손실 — 객체 스트림으로 다시 저장(+ 선택 시 메타데이터 제거)
@@ -10,7 +15,7 @@ import { loadPdfLib, loadPdfJs, loadFontkit, loadKoreanFont, parseRanges, placeT
 export async function compressPdf(bytes, { level = 'images', maxPx = 1600, quality = 0.7, dpi = 110, stripMeta = true, onProgress } = {}) {
   if (level === 'raster') return rasterize(bytes, { dpi, quality, onProgress });
   const { PDFDocument, PDFName, PDFRawStream, PDFArray, PDFNumber } = await loadPdfLib();
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const doc = await PDFDocument.load(bytes, { parseSpeed: TICK, updateMetadata: false });
   const report = { images: 0, recompressed: 0, skipped: 0, savedImageBytes: 0 };
 
   if (level === 'images') {
@@ -53,7 +58,7 @@ export async function compressPdf(bytes, { level = 'images', maxPx = 1600, quali
     }
   }
   if (stripMeta) stripMetadata(doc, PDFName);
-  const out = await doc.save({ useObjectStreams: true });
+  const out = await doc.save(SAVE_OPTS);
   return { bytes: out, report };
 }
 
@@ -86,7 +91,7 @@ async function rasterize(bytes, { dpi, quality, onProgress }) {
     page.cleanup();
   }
   await task.destroy();
-  return { bytes: await out.save({ useObjectStreams: true }), report: { pages: src.numPages, rasterized: true } };
+  return { bytes: await out.save(SAVE_OPTS), report: { pages: src.numPages, rasterized: true } };
 }
 
 // ── 합치기 ──────────────────────────────────────────────
@@ -95,18 +100,18 @@ export async function mergePdfs(items, { title } = {}) {
   const { PDFDocument } = await loadPdfLib();
   const out = await PDFDocument.create();
   for (const it of items) {
-    const src = await PDFDocument.load(it.bytes, { ignoreEncryption: true });
+    const src = await PDFDocument.load(it.bytes, { parseSpeed: TICK, ignoreEncryption: true });
     const idx = parseRanges(it.range, src.getPageCount());
     const pages = await out.copyPages(src, idx);
     pages.forEach(p => out.addPage(p));
   }
   if (title) out.setTitle(title);
-  return out.save({ useObjectStreams: true });
+  return out.save(SAVE_OPTS);
 }
 
 export async function pageCount(bytes) {
   const { PDFDocument } = await loadPdfLib();
-  return (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount();
+  return (await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true })).getPageCount();
 }
 
 // ── 수정 저장 ───────────────────────────────────────────
@@ -118,7 +123,7 @@ export async function pageCount(bytes) {
  */
 export async function applyEdits(bytes, plan) {
   const { PDFDocument, degrees, rgb, StandardFonts } = await loadPdfLib();
-  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const src = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true });
   const out = await PDFDocument.create();
   const srcIdx = plan.pages.filter(p => p.src != null).map(p => p.src);
   const copied = await out.copyPages(src, srcIdx);
@@ -161,7 +166,7 @@ export async function applyEdits(bytes, plan) {
 
   if (plan.meta?.title) out.setTitle(plan.meta.title);
   if (plan.meta?.author) out.setAuthor(plan.meta.author);
-  return out.save({ useObjectStreams: true });
+  return out.save(SAVE_OPTS);
 }
 
 /** 썸네일 렌더 (pdf.js) → [{canvas, width, height, rotation}] */
@@ -197,7 +202,7 @@ export async function keepAllPages(bytes) {
  */
 export async function splitPdf(bytes, { mode = 'each', ranges = '', every = 1, base = '문서' } = {}) {
   const { PDFDocument } = await loadPdfLib();
-  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const src = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true });
   const n = src.getPageCount();
   let groups;
   if (mode === 'ranges') groups = ranges.split(',').map(r => r.trim()).filter(Boolean).map(r => ({ label: r.replace(/\s+/g, ''), idx: parseRanges(r, n) }));
@@ -212,7 +217,7 @@ export async function splitPdf(bytes, { mode = 'each', ranges = '', every = 1, b
     (await doc.copyPages(src, g.idx)).forEach(p => doc.addPage(p));
     // 파일 이름은 실제 쪽 번호로 ("4-"는 "4-7", 한 쪽이면 "7")
     const label = g.idx.length === 1 ? `${g.idx[0] + 1}` : `${g.idx[0] + 1}-${g.idx.at(-1) + 1}`;
-    out.push({ name: `${base}_${label}쪽.pdf`, bytes: await doc.save({ useObjectStreams: true }) });
+    out.push({ name: `${base}_${label}쪽.pdf`, bytes: await doc.save(SAVE_OPTS) });
   }
   return out;
 }
@@ -220,17 +225,17 @@ export async function splitPdf(bytes, { mode = 'each', ranges = '', every = 1, b
 /** 회전: 대상 쪽에 각도 추가 */
 export async function rotatePdf(bytes, { angle = 90, pages = 'all' } = {}) {
   const { PDFDocument, degrees } = await loadPdfLib();
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const doc = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true });
   const n = doc.getPageCount();
   const target = pages === 'all' || !pages ? null : new Set(parseRanges(pages, n));
   doc.getPages().forEach((p, i) => { if (!target || target.has(i)) p.setRotation(degrees((p.getRotation().angle + angle + 360) % 360)); });
-  return doc.save({ useObjectStreams: true });
+  return doc.save(SAVE_OPTS);
 }
 
 /** 자르기: 여백(mm)만큼 CropBox를 줄인다. 원본 내용은 남아 있고 보이는 영역만 바뀐다. */
 export async function cropPdf(bytes, { top = 0, right = 0, bottom = 0, left = 0, pages = 'all' } = {}) {
   const { PDFDocument } = await loadPdfLib();
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const doc = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true });
   const mm = 72 / 25.4;
   const n = doc.getPageCount();
   const target = pages === 'all' || !pages ? null : new Set(parseRanges(pages, n));
@@ -241,7 +246,7 @@ export async function cropPdf(bytes, { top = 0, right = 0, bottom = 0, left = 0,
     if (w < 10 || h < 10) throw new Error(`${i + 1}쪽: 여백이 너무 커서 남는 영역이 없습니다.`);
     p.setCropBox(box.x + left * mm, box.y + bottom * mm, w, h);
   });
-  return doc.save({ useObjectStreams: true });
+  return doc.save(SAVE_OPTS);
 }
 
 /** PDF → 이미지 (쪽마다 JPG/PNG) */
@@ -294,13 +299,13 @@ export async function imagesToPdf(files, { pageSize = 'a4', orientation = 'auto'
     const w = img.width * k, h = img.height * k;
     doc.addPage([pw, ph]).drawImage(img, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
   }
-  return doc.save({ useObjectStreams: true });
+  return doc.save(SAVE_OPTS);
 }
 
 /** 이미지(서명·도장·로고) 삽입: 대상 쪽의 위치에 너비 비율로 */
 export async function stampImage(bytes, { image, pages = 'all', position = 'br', widthPct = 25, opacity = 1 } = {}) {
   const { PDFDocument } = await loadPdfLib();
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const doc = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true });
   const buf = image instanceof Uint8Array ? image : new Uint8Array(await image.arrayBuffer());
   const isPng = buf[0] === 0x89 && buf[1] === 0x50;
   const img = isPng ? await doc.embedPng(buf) : await doc.embedJpg(buf);
@@ -313,13 +318,13 @@ export async function stampImage(bytes, { image, pages = 'all', position = 'br',
     const { x, y } = placeText({ pageW: width, pageH: height, textW: w, textH: h, position });
     p.drawImage(img, { x, y, width: w, height: h, opacity });
   });
-  return doc.save({ useObjectStreams: true });
+  return doc.save(SAVE_OPTS);
 }
 
 /** 문서 정보: strip이면 모두 지우고, 아니면 입력한 항목만 바꾼다 */
 export async function editMetadata(bytes, { title, author, subject, keywords, strip = false } = {}) {
   const { PDFDocument, PDFName } = await loadPdfLib();
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  const doc = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true, updateMetadata: false });
   if (strip) stripMetadata(doc, PDFName);
   else {
     if (title != null) doc.setTitle(title);
@@ -327,11 +332,11 @@ export async function editMetadata(bytes, { title, author, subject, keywords, st
     if (subject != null) doc.setSubject(subject);
     if (keywords != null) doc.setKeywords(keywords.split(',').map(k => k.trim()).filter(Boolean));
   }
-  return doc.save({ useObjectStreams: true });
+  return doc.save(SAVE_OPTS);
 }
 
 export async function readMetadata(bytes) {
   const { PDFDocument } = await loadPdfLib();
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  const doc = await PDFDocument.load(bytes, { parseSpeed: TICK, ignoreEncryption: true, updateMetadata: false });
   return { title: doc.getTitle() ?? '', author: doc.getAuthor() ?? '', subject: doc.getSubject() ?? '', keywords: doc.getKeywords() ?? '', producer: doc.getProducer() ?? '', creator: doc.getCreator() ?? '', pages: doc.getPageCount() };
 }

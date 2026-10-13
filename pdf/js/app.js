@@ -117,7 +117,6 @@ function route() {
   if (tool) mountTool(tool); else mountHome();
 }
 window.addEventListener('hashchange', route);
-route();
 
 document.getElementById('theme-toggle').addEventListener('click', () => {
   const root = document.documentElement;
@@ -379,3 +378,6 @@ const CUSTOM = {
     });
   },
 };
+
+// 첫 화면 표시는 모듈 끝에서: 위의 CUSTOM 등 모든 정의가 끝난 뒤여야 직접 링크(#sign 등)가 동작함
+route();
