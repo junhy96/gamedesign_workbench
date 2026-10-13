@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>기획 워크벤치</title>
+  <meta name="description" content="게임 시스템 기획 검증 도구 모음 — 강화 기대 비용, 재화 흐름, 패턴 프레임 검증">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // 테마를 첫 렌더 전에 적용해 깜빡임 방지
+    try { const t = localStorage.getItem('planwb:theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
+  </script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <strong>기획 워크벤치</strong>
+        <span class="brand-sub">게임 시스템 기획 검증 도구</span>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="도구">
+      <button role="tab" data-tab="enhance">강화 기대 비용</button>
+      <button role="tab" data-tab="economy">재화 흐름 <span class="soon">예정</span></button>
+      <button role="tab" data-tab="frame">패턴 프레임 <span class="soon">예정</span></button>
+      <button role="tab" data-tab="diagram">자연어 다이어그램 <span class="soon">선택</span></button>
+    </nav>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="테마 전환" title="테마 전환">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <section id="tab-enhance" role="tabpanel" class="panel"></section>
+
+    <section id="tab-economy" role="tabpanel" class="panel" hidden>
+      <div class="placeholder card">
+        <span class="badge">개발 예정 · 2순위</span>
+        <h1>재화 흐름(경제) 시뮬레이터</h1>
+        <p class="lead">재화의 획득처와 소모처를 노드로 연결하고, 유저 유형별로 일 단위 누적을 돌려봅니다. “이 이벤트를 넣으면 30일 뒤 골드가 얼마나 쌓이나”를 보는 용도입니다.</p>
+        <ul class="plan-list">
+          <li><b>입력</b> 재화 · 획득처 · 소모처 · 교환 규칙 · 유저 유형(활동량 배수, 행동 규칙)</li>
+          <li><b>계산</b> 일 단위 이산 시뮬레이션 (획득 → 교환 → 고정 소모 → 비율 소모)</li>
+          <li><b>출력</b> N일 보유량 추이, 소모율(누적 소모 ÷ 누적 획득), 적체 경고, 편차 띠</li>
+          <li><b>연결</b> 강화 계산기의 기대 비용을 소모처로 바로 가져오기</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="tab-frame" role="tabpanel" class="panel" hidden>
+      <div class="placeholder card">
+        <span class="badge">개발 예정 · 1순위</span>
+        <h1>프레임 데이터 기반 패턴 검증기</h1>
+        <p class="lead">보스 패턴의 선딜·판정·후딜과 플레이어 회피 무적 프레임을 넣으면, 패턴별로 회피 가능 구간과 반격 여유가 몇 프레임인지 계산합니다. “이 연계는 회피 윈도우가 6프레임이라 너무 빡빡하다” 같은 검증이 목적입니다.</p>
+        <ul class="plan-list">
+          <li><b>회피 윈도우</b> 무적 프레임 − 판정 지속 + 1 (0 이하면 구르기로 회피 불가)</li>
+          <li><b>반응 회피</b> 식별 시점 + 반응 시간 ≤ 최종 회피 입력 시점 (아니면 암기 패턴)</li>
+          <li><b>반격 여유</b> 다음 판정 시작 − (회피 종료 + 공격 발생 + 공격 후딜 + 회피 선딜)</li>
+          <li><b>출력</b> 패턴별 색상 타임라인 + 판정 칩</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="tab-diagram" role="tabpanel" class="panel" hidden>
+      <div class="placeholder card">
+        <span class="badge">선택 기능</span>
+        <h1>자연어 다이어그램</h1>
+        <p class="lead">문장으로 설명하면 Mermaid 코드로 만들어 실시간 미리보기와 이미지 내보내기를 제공합니다. 공개 페이지에서는 API 키가 없는 방문자를 위해 미리 만든 예시를 보여주는 데모 모드로 동작할 예정입니다.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span>모든 계산은 브라우저 안에서만 실행됩니다 · 서버 전송 없음</span>
+    <span>게임 수치는 비공식 참고값입니다</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
