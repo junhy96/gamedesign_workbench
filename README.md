@@ -2,7 +2,7 @@
 
 게임 시스템 기획자가 **엑셀로 풀기 어려운 검증**을 브라우저에서 바로 돌려보는 도구 모음입니다.
 
-**▶ 데모: https://YOUR-ID.github.io/planning-workbench/** <!-- 배포 후 주소로 교체 -->
+**▶ 데모: https://junhy96.github.io/gamedesign_workbench/**
 
 ![강화 기대 비용 계산기 화면](docs/screenshot.png)
 
@@ -76,9 +76,9 @@ docs/PLAN.md            전체 기획 정리
 
 ## 배포 (GitHub Pages)
 
-1. 이 폴더를 GitHub 저장소(예: `planning-workbench`, 공개)로 올립니다.
+1. 저장소: https://github.com/junhy96/gamedesign_workbench (공개)
 2. 저장소 **Settings → Pages → Build and deployment**에서 Source를 `Deploy from a branch`, 브랜치 `main` / 폴더 `/ (root)`로 지정합니다.
-3. 1~2분 뒤 `https://<아이디>.github.io/planning-workbench/`에서 열립니다. 위 데모 주소를 교체하세요.
+3. 1~2분 뒤 https://junhy96.github.io/gamedesign_workbench/ 에서 열립니다.
 
 ## 데이터와 개인정보
 모든 계산은 브라우저 안에서만 실행되며 서버로 아무것도 보내지 않습니다. 설정은 이 브라우저의 localStorage에만 저장되고, 공유 링크는 설정을 URL의 `#` 뒤에 담아 서버로 전송되지 않습니다.
