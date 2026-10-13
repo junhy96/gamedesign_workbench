@@ -1,76 +1,192 @@
-// 실행: node --test tests/
+// 실행: npm test  (node --test)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze, validate, bestProtection, mapleStarforceCost } from '../js/enhance/model.js';
-import { simulate } from '../js/enhance/simulate.js';
-import { PRESETS } from '../js/enhance/presets.js';
+import {
+  analyze, validate, effectiveProbs, usageAt, buildChain, optimizeItems, solveForCost, expectedCost,
+} from '../js/enhance/model.js';
+import { simulate, mulberry32, reachProbability } from '../js/enhance/simulate.js';
+import { TEMPLATES } from '../js/enhance/presets.js';
 
-const preset = (id, over = {}) => {
-  const p = PRESETS[id];
-  const cfg = { ...p.defaults, ...over };
-  return { ...cfg, rows: p.rows(cfg) };
-};
-const close = (a, b, rel, msg) => assert.ok(Math.abs(a - b) <= rel * Math.abs(b), `${msg}: ${a} vs ${b}`);
+const tpl = (id, over = {}) => ({ ...TEMPLATES[id].make(), ...over });
+const close = (a, b, rel, msg) => assert.ok(Math.abs(a - b) <= rel * Math.abs(b) + 1e-12, `${msg}: ${a} vs ${b}`);
 
-test('메이플 비용 공식: 200제 15→16성 = 1000 + 200³·16^2.7/200 → 71,316,500', () => {
-  assert.equal(mapleStarforceCost(200, 15), 71_316_500);
-  assert.equal(mapleStarforceCost(200, 0), 223_200);
+/**
+ * 체인 빌더와 독립적으로 '게임 규칙'을 그대로 따라가는 시뮬레이터.
+ * 카운터 규칙·단계 이동·비용 합산을 체인과 별도로 구현해 buildChain을 검증한다.
+ */
+function ruleSim(cfg, trials, seed) {
+  const rnd = mulberry32(seed);
+  const rows = new Map(cfg.rows.map(r => [r.stage, r]));
+  const floor = Math.min(...cfg.rows.map(r => r.stage));
+  const st = cfg.streak, kind = st.kind;
+  const cap = st.pity || 1e9;
+  const costMult = cfg.event?.on ? cfg.event.costMult : 1;
+  const val = (costs) => costs.reduce((a, v, i) => a + (v || 0) * cfg.resources[i].value, 0);
+  let sumC = 0, sumC2 = 0, sumA = 0, sumD = 0, zero = 0;
+  for (let t = 0; t < trials; t++) {
+    let stage = cfg.start, c = 0, cost = 0, att = 0, des = 0;
+    while (stage < cfg.target) {
+      att++;
+      const row = rows.get(stage);
+      const items = usageAt(cfg, stage, c);
+      const p = effectiveProbs(cfg, row, c, items);
+      cost += val(row.costs) * costMult + (p.forced ? 0 : items.reduce((a, it) => a + val(it.costs), 0));
+      const u = rnd();
+      if (u < p.s) { stage += 1; c = 0; }
+      else if (u < p.s + p.s2) { stage += 2; c = 0; }
+      else if (u < p.s + p.s2 + p.k) { if (kind === 'fail') c = Math.min(c + 1, cap); }
+      else if (u < p.s + p.s2 + p.k + p.d) { stage = Math.max(stage - 1, floor); if (kind !== 'none') c = Math.min(c + 1, cap); }
+      else { des++; cost += val(cfg.destroyCosts); stage = cfg.restore; c = 0; }
+    }
+    sumC += cost; sumC2 += cost * cost; sumA += att; sumD += des; if (!des) zero++;
+  }
+  const mean = sumC / trials;
+  return { cost: mean, std: Math.sqrt(sumC2 / trials - mean * mean), attempts: sumA / trials, destroys: sumD / trials, noDestroy: zero / trials };
+}
+
+function checkAgainstRuleSim(cfg, label, trials = 40000) {
+  const ex = analyze(cfg);
+  assert.ok(ex.ok, `${label}: ${ex.errors}`);
+  const mc = ruleSim(cfg, trials, 11);
+  close(mc.cost, ex.expCost, 0.04, `${label} 기대 비용`);
+  close(mc.attempts, ex.attempts, 0.04, `${label} 기대 시도`);
+  close(mc.std, ex.std, 0.06, `${label} 표준편차`);
+  if (ex.expDestroy > 0.05) close(mc.destroys, ex.expDestroy, 0.06, `${label} 기대 파괴`);
+  assert.ok(Math.abs(mc.noDestroy - ex.noDestroy) < 0.015, `${label} 무파괴 ${mc.noDestroy} vs ${ex.noDestroy}`);
+  return ex;
+}
+
+test('모든 템플릿이 검증을 통과한다', () => {
+  for (const id of Object.keys(TEMPLATES)) assert.deepEqual(validate(tpl(id)), [], id);
 });
 
-test('정확해 = 몬테카를로 (메이플 15→22, 파괴 복구비 포함)', () => {
-  const cfg = preset('maple', { destroyCost: 1e9 });
-  const ex = analyze(cfg), mc = simulate(cfg, 60000, 7);
-  assert.ok(ex.ok);
-  close(mc.mean.attempts, ex.attempts, 0.03, '기대 시도');
-  close(mc.mean.destroys, ex.expDestroy, 0.04, '기대 파괴');
-  close(mc.mean.cost, ex.expCost, 0.04, '기대 비용');
-  assert.ok(Math.abs(mc.noDestroy - ex.noDestroy) < 0.01);
+test('기본 성장형(하락·파괴): 정확해 = 규칙 시뮬레이터', () => checkAgainstRuleSim(tpl('standard'), '기본'));
+
+test('보조 아이템 사용 중: 정확해 = 규칙 시뮬레이터', () => {
+  checkAgainstRuleSim(tpl('standard', { usage: { 9: ['protect'], 10: ['protect', 'nodrop'], 12: ['bless'], 13: ['bless', 'protect'] } }), '아이템');
 });
 
-test('이전 검증 스크립트와 같은 값 (15→22: 무파괴 11.78%, 기대 파괴 7.489)', () => {
-  const ex = analyze(preset('maple'));
-  close(ex.noDestroy, 0.1178, 0.002, '무파괴');
-  close(ex.expDestroy, 7.489, 0.001, '기대 파괴');
+test('실패 누적 보너스 + 천장: 정확해 = 규칙 시뮬레이터', () => checkAgainstRuleSim(tpl('artisan'), '실패 누적'));
+
+test('이중 강화 + 찬스타임: 정확해 = 규칙 시뮬레이터', () => checkAgainstRuleSim(tpl('gamble'), '이중 강화'));
+
+test('이벤트 배율: 정확해 = 규칙 시뮬레이터', () => {
+  const cfg = tpl('standard');
+  cfg.event = { on: true, successMult: 1.3, destroyMult: 0.5, costMult: 0.7 };
+  checkAgainstRuleSim(cfg, '이벤트');
 });
 
-test('찬스타임: 정확해 = 몬테카를로, 켜면 기대 시도·파괴 감소', () => {
-  const on = preset('demo', { chanceN: 2 }), off = preset('demo', { chanceN: 0 });
-  const a = analyze(on), b = analyze(off), mc = simulate(on, 60000, 3);
-  close(mc.mean.attempts, a.attempts, 0.03, '찬스타임 기대 시도');
-  close(mc.mean.cost, a.expCost, 0.04, '찬스타임 기대 비용');
-  assert.ok(a.attempts < b.attempts && a.expDestroy < b.expDestroy);
+test('해석해와 일치: 1단계 성공 p → 시도 기하분포 (평균 1/p, 분산 (1−p)/p²)', () => {
+  const p = 0.2;
+  const cfg = tpl('blank', { target: 1, rows: [{ stage: 0, s: 20, s2: 0, k: 80, d: 0, b: 0, costs: [1] }] });
+  const ex = analyze(cfg);
+  close(ex.expCost, 1 / p, 1e-9, '평균');
+  close(ex.std, Math.sqrt((1 - p) / (p * p)), 1e-9, '표준편차');
 });
 
-test('파괴방지·이벤트는 파괴를 줄인다', () => {
-  const base = analyze(preset('maple'));
-  const prot = analyze(preset('maple', { protect: [15, 16, 17] }));
-  const ev = analyze(preset('maple', { eventDestroyMult: 0.7 }));
-  assert.ok(prot.expDestroy < base.expDestroy && ev.expDestroy < base.expDestroy);
-  close(prot.noDestroy, 0.1909, 0.003, '파괴방지 무파괴');
-});
-
-test('파괴 횟수 분포 합 = 1, 분위수는 분포와 일치', () => {
-  const ex = analyze(preset('maple'));
-  let s = 0; for (let j = 0; j < 2000; j++) s += ex.destroyDist(j);
-  close(s, 1, 1e-9, '분포 합');
-  const j90 = ex.destroyQuantile(0.9);
-  let cdf = 0; for (let j = 0; j <= j90; j++) cdf += ex.destroyDist(j);
-  assert.ok(cdf >= 0.9 && cdf - ex.destroyDist(j90) < 0.9);
-});
-
-test('최적 보호 조합은 무작위 조합보다 기대 비용이 낮거나 같다', () => {
-  const cfg = preset('maple', { destroyCost: 5e9 });
-  const best = bestProtection(cfg);
-  for (const protect of [[], [15], [17], [15, 16, 17]]) {
-    assert.ok(best.cost <= analyze({ ...cfg, protect }).expCost + 1);
+test('띠 행렬 + Sherman–Morrison 풀이 = 밀집 행렬 가우스 소거', () => {
+  for (const cfg of [tpl('standard'), tpl('gamble'), tpl('artisan', { streak: { kind: 'fail', bonus: 2, bonusMode: 'abs', cap: 60, pity: 8 } })]) {
+    const chain = buildChain(cfg);
+    const n = chain.n;
+    const A = Array.from({ length: n }, (_, i) => { const r = new Array(n + 1).fill(0); r[i] = 1; return r; });
+    chain.states.forEach((st, r) => {
+      for (const [to, p, kind] of st.edges) if (to !== -1) A[r][to] -= p;
+      A[r][n] = st.cost + st.p.b * chain.destroyCost;
+    });
+    for (let c = 0; c < n; c++) { // 부분 피벗 가우스-조르단
+      let piv = c; for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+      [A[c], A[piv]] = [A[piv], A[c]];
+      for (let r = 0; r < n; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let j = c; j <= n; j++) A[r][j] -= f * A[c][j]; }
+    }
+    close(analyze(cfg).expCost, A[chain.S][n] / A[chain.S][chain.S], 1e-8, '밀집 vs 띠');
   }
 });
 
-test('입력 오류 감지: 확률 합, 도달 불가', () => {
-  const cfg = preset('custom');
-  cfg.rows[1] = { ...cfg.rows[1], s: 50 };
-  assert.match(validate(cfg).join(), /확률 합/);
-  const dead = preset('custom');
-  dead.rows[2] = { ...dead.rows[2], s: 0, k: 50 };
+test('민감도(수반 방법) ≈ 유한 차분', () => {
+  const cfg = tpl('standard');
+  const ex = analyze(cfg);
+  for (const j of [3, 9, 13]) {
+    const rows = cfg.rows.map(r => {
+      if (r.stage !== j) return r;
+      const f = r.k + r.d + r.b, g = 1 - 1 / f;
+      return { ...r, s: r.s + 1, k: r.k * g, d: r.d * g, b: r.b * g };
+    });
+    const fd = expectedCost({ ...cfg, rows }).cost - ex.expCost;
+    const est = ex.stages.find(s => s.stage === j).sens;
+    close(est, fd, 0.12, `+${j} 민감도`);
+    assert.ok(est < 0, '성공률을 올리면 기대 비용은 줄어야 함');
+  }
+});
+
+test('돌파 전 파괴 확률: 하락 없으면 b/(s+b), 하락 있으면 규칙 시뮬레이션과 일치', () => {
+  const noDrop = tpl('blank', { target: 2, rows: [{ stage: 0, s: 50, s2: 0, k: 50, d: 0, b: 0, costs: [1] }, { stage: 1, s: 30, s2: 0, k: 60, d: 0, b: 10, costs: [1] }] });
+  close(analyze(noDrop).stages.find(s => s.stage === 1).destroyBeforePass, 10 / 40, 1e-9, '하락 없음');
+
+  const cfg = tpl('gamble');
+  const ex = analyze(cfg);
+  const rows = new Map(cfg.rows.map(r => [r.stage, r]));
+  const rnd = mulberry32(5);
+  for (const i of [11, 15]) {
+    let destroyed = 0; const trials = 40000;
+    for (let t = 0; t < trials; t++) {
+      let stage = i, c = 0;
+      while (stage <= i) {
+        const p = effectiveProbs(cfg, rows.get(stage), c, []);
+        const u = rnd();
+        if (u < p.s) { stage += 1; c = 0; } else if (u < p.s + p.s2) { stage += 2; c = 0; }
+        else if (u < p.s + p.s2 + p.k) { /* 찬스타임(하락 기준): 유지는 카운터 유지 */ }
+        else if (u < p.s + p.s2 + p.k + p.d) { stage = Math.max(stage - 1, 0); c = Math.min(c + 1, 2); }
+        else { destroyed++; break; }
+      }
+    }
+    const got = ex.stages.find(s => s.stage === i).destroyBeforePass;
+    assert.ok(Math.abs(destroyed / trials - got) < 0.01, `+${i}: ${destroyed / trials} vs ${got}`);
+  }
+});
+
+test('실효 확률: 파괴방지·하락방지·성공률 증가·천장', () => {
+  const cfg = tpl('standard');
+  const row = cfg.rows[12];
+  const prot = effectiveProbs(cfg, row, 0, [{ effect: 'protect' }, { effect: 'nodrop' }]);
+  assert.equal(prot.b, 0); assert.equal(prot.d, 0); close(prot.s, row.s / 100, 1e-12, '성공 유지');
+  const boost = effectiveProbs(cfg, row, 0, [{ effect: 'boost', amount: 10 }]);
+  close(boost.s, row.s / 100 + 0.1, 1e-12, '+10%p'); close(boost.s + boost.k + boost.d + boost.b, 1, 1e-12, '합 1');
+  const pity = effectiveProbs(tpl('artisan'), tpl('artisan').rows[9], 30, []);
+  assert.equal(pity.forced, true); assert.equal(pity.s, 1);
+});
+
+test('아이템 최적 정책(MDP): 수동 조합들보다 기대 비용이 낮거나 같다', () => {
+  const cfg = tpl('standard');
+  const opt = optimizeItems(cfg);
+  assert.ok(opt.ok && opt.after <= opt.before + 1e-6);
+  const tries = [{}, { 9: ['protect'], 10: ['protect'], 11: ['protect'] }, { 12: ['bless'], 13: ['bless'], 14: ['bless', 'protect'] }];
+  for (const usage of tries) assert.ok(opt.after <= expectedCost({ ...cfg, usage }).cost + 1e-6);
+  close(expectedCost({ ...cfg, usage: opt.usage }).cost, opt.after, 1e-9, '정책 적용 후 재계산');
+});
+
+test('역산: 목표 기대 비용에 맞는 성공률 배율', () => {
+  const cfg = tpl('standard');
+  const base = analyze(cfg).expCost;
+  const res = solveForCost(cfg, base * 0.6, 0, 14);
+  assert.ok(res.ok && res.alpha > 1);
+  close(res.cost, base * 0.6, 1e-4, '역산 결과');
+  assert.deepEqual(validate({ ...cfg, rows: res.rows }), []);
+});
+
+test('몬테카를로: 예산별 도달 확률', () => {
+  const mc = simulate(tpl('standard'), 5000, 1);
+  assert.equal(reachProbability(mc.sortedCost, Infinity), 1);
+  assert.equal(reachProbability(mc.sortedCost, -1), 0);
+  close(reachProbability(mc.sortedCost, mc.pct.cost.p50), 0.5, 0.02, '중앙값');
+});
+
+test('입력 오류 감지', () => {
+  const bad = tpl('blank');
+  bad.rows[1] = { ...bad.rows[1], s: 70 };
+  assert.match(validate(bad).join(), /확률 합/);
+  const dead = tpl('blank');
+  dead.rows[2] = { ...dead.rows[2], s: 0, k: 100 };
   assert.equal(analyze(dead).ok, false);
+  const noPity = tpl('artisan', { streak: { kind: 'fail', bonus: 1, bonusMode: 'rel', cap: 100, pity: 0 } });
+  assert.match(validate(noPity).join(), /너무 많습니다/);
 });

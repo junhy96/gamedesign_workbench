@@ -8,16 +8,16 @@ export function fmtMoney(n) {
   if (!Number.isFinite(n)) return '—';
   const sign = n < 0 ? '-' : '';
   n = Math.abs(n);
-  const units = [[1e12, '조'], [1e8, '억'], [1e4, '만']];
-  for (let u = 0; u < units.length; u++) {
+  const units = [[1e12, '조'], [1e8, '억'], [1e4, '만'], [1, '']];
+  for (let u = 0; u < units.length - 1; u++) {
     const [size, name] = units[u];
     if (n >= size) {
-      const major = Math.floor(n / size);
-      const next = units[u + 1];
-      if (!next) return `${sign}${comma(major)}${name}`;
-      const minor = Math.round((n - major * size) / next[0]);
+      let major = Math.floor(n / size);
+      const [nextSize, nextName] = units[u + 1];
+      let minor = Math.round((n - major * size) / nextSize);
+      if (minor >= size / nextSize) { major += 1; minor = 0; } // 반올림 올림 처리 (예: 9,999.6 → 1만)
       return minor > 0 && major < 10000
-        ? `${sign}${comma(major)}${name} ${comma(minor)}${next[1]}`
+        ? `${sign}${comma(major)}${name} ${comma(minor)}${nextName}`
         : `${sign}${comma(major)}${name}`;
     }
   }
@@ -63,6 +63,13 @@ export function decodeState(str) {
 
 export function downloadJSON(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+export function downloadText(filename, text, type = 'text/plain') {
+  const blob = new Blob([text], { type });
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);

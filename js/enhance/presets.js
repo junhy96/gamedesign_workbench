@@ -1,78 +1,79 @@
-// 프리셋. 메이플 수치는 비공식 참고값(나무위키 정리, 2026-10 확인) — 공식 확률 공지로 재확인할 것.
-import { mapleStarforceCost } from './model.js';
+// 기획 템플릿 — 특정 게임 수치가 아니라 구조별 출발점. 모든 값은 기획자가 바꾸는 것을 전제로 한다.
+// 재화 가치(value)는 '1단위당 원화 환산 가치'. 무료 재화도 시간·기회비용으로 환산해 넣는다.
 
-// [성공, 실패(유지), 실패(하락), 파괴] %. 2026-03-19 스타캐치 폐지 이후(성공 보너스 기본 적용) 일반 장비.
-const KMS_TABLE = [
-  [99.75, 0.25, 0, 0], [94.5, 5.5, 0, 0], [89.25, 10.75, 0, 0], [89.25, 10.75, 0, 0],
-  [84, 16, 0, 0], [78.75, 21.25, 0, 0], [73.5, 26.5, 0, 0], [68.25, 31.75, 0, 0],
-  [63, 37, 0, 0], [57.75, 42.25, 0, 0], [52.5, 47.5, 0, 0], [47.25, 52.75, 0, 0],
-  [42, 58, 0, 0], [36.75, 63.25, 0, 0], [31.5, 68.5, 0, 0],
-  [31.5, 66.445, 0, 2.055], [31.5, 66.445, 0, 2.055],
-  [15.75, 77.51, 0, 6.74], [15.75, 77.51, 0, 6.74], [15.75, 75.825, 0, 8.425],
-  [31.5, 58.225, 0, 10.275], [15.75, 71.6125, 0, 12.6375], [15.75, 67.4, 0, 16.85],
-  [10.5, 71.6, 0, 17.9], [10.5, 71.6, 0, 17.9], [10.5, 71.6, 0, 17.9],
-  // 26성: 출처 표기는 유지 74.16%(합 100.04%) — 합 100%가 되도록 74.12%로 보정
-  [7.35, 74.12, 0, 18.53], [5.25, 75.8, 0, 18.95], [3.15, 77.48, 0, 19.37], [1.05, 79.16, 0, 19.79],
-];
+const r2 = (x) => Math.round(x * 100) / 100;
+const r100 = (x) => Math.round(x / 100) * 100;
 
-export function mapleRows(level) {
-  return KMS_TABLE.map(([s, k, d, b], stage) => ({
-    stage, s, k, d, b,
-    cost: mapleStarforceCost(level, stage),
-    protectable: stage >= 15 && stage <= 17, // KMS 파괴방지 적용 구간
-  }));
+function row(stage, s, s2, d, b, costs) {
+  return { stage, s: r2(s), s2: r2(s2), k: r2(100 - s - s2 - d - b), d: r2(d), b: r2(b), costs };
 }
 
-// 하락 + 찬스타임 시연용 가상 테이블 (실제 게임 수치 아님)
-function demoRows() {
-  const rows = [];
-  for (let stage = 0; stage < 15; stage++) {
-    const s = stage < 5 ? 90 - stage * 5 : stage < 10 ? 60 - (stage - 5) * 4 : 40 - (stage - 10) * 3;
-    const b = stage < 8 ? 0 : stage < 12 ? 2 + (stage - 8) : 6 + (stage - 12) * 2;
-    const d = stage < 5 ? 0 : 100 - s - b;
-    rows.push({ stage, s, k: 100 - s - d - b, d, b, cost: Math.round(1000 * 1.35 ** stage), protectable: true });
-  }
-  return rows;
-}
+const baseStreak = { kind: 'none', bonus: 10, bonusMode: 'rel', cap: 100, pity: 0 };
+const baseEvent = { on: false, successMult: 1.2, destroyMult: 0.7, costMult: 0.8 };
 
-export const PRESETS = {
-  maple: {
-    label: '메이플스토리 스타포스 (KMS 일반 장비)',
-    note: '2026-03 스타캐치 폐지 이후 기준 · 비공식 참고값 · 15성 이상 실패 시 하락 없음',
-    defaults: {
-      level: 200, start: 15, target: 22, restore: 12, destroyCost: 0,
-      chanceN: 0, protect: [], protectExtra: 2, costMult: 1,
-      eventDestroyMult: 1, eventMaxStage: 21,
+export const TEMPLATES = {
+  standard: {
+    label: '기본 성장형 (하락·파괴)',
+    note: '+6부터 하락, +9부터 파괴가 생기는 일반적인 구조. 보조 아이템 3종(파괴방지·하락방지·성공률 증가)이 유료 재화로 판매된다고 가정.',
+    make: () => {
+      const stone = [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8];
+      const s = [95, 90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 35, 30, 25, 20];
+      const d = [0, 0, 0, 0, 0, 0, 10, 12, 15, 15, 18, 20, 20, 22, 25];
+      const b = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 7];
+      return {
+        start: 0, target: 15, restore: 7, double: false,
+        resources: [{ name: '골드', value: 0.001 }, { name: '강화석', value: 50 }, { name: '다이아', value: 10 }],
+        rows: s.map((sv, i) => row(i, sv, 0, d[i], b[i], [r100(2000 * 1.35 ** i), stone[i], 0])),
+        destroyCosts: [100000, 0, 0],
+        items: [
+          { id: 'protect', name: '파괴방지권', effect: 'protect', amount: 0, costs: [0, 0, 30], from: 9, to: 14 },
+          { id: 'nodrop', name: '하락방지권', effect: 'nodrop', amount: 0, costs: [0, 0, 10], from: 6, to: 14 },
+          { id: 'bless', name: '축복 주문서', effect: 'boost', amount: 10, costs: [0, 0, 20], from: 0, to: 14 },
+        ],
+        usage: {}, streak: { ...baseStreak }, event: { ...baseEvent },
+      };
     },
-    rows: (cfg) => mapleRows(cfg.level),
-    events: { label: '샤이닝 스타포스', destroyMult: 0.7, maxStage: 21, costMult: 0.7 },
   },
-  demo: {
-    label: '하락 + 찬스타임 예시 (가상)',
-    note: '실패 시 하락하는 구조를 보여주는 가상 수치 · 찬스타임을 켜고 꺼서 비교해 보세요',
-    defaults: {
-      start: 5, target: 14, restore: 8, destroyCost: 20000,
-      chanceN: 2, protect: [], protectExtra: 1, costMult: 1,
-      eventDestroyMult: 1, eventMaxStage: 99,
+  artisan: {
+    label: '실패 누적형 (보너스·천장)',
+    note: '하락·파괴 없이 실패할수록 성공률이 오르고(기본 성공률의 10%씩), 30회 연속 실패하면 확정 성공. 보조 재료로 성공률을 올릴 수 있다.',
+    make: () => {
+      const s = [80, 60, 45, 30, 20, 15, 10, 7, 5, 3];
+      const mats = [2, 2, 3, 3, 4, 5, 6, 8, 10, 12];
+      return {
+        start: 0, target: 10, restore: 0, double: false,
+        resources: [{ name: '골드', value: 0.001 }, { name: '재료', value: 30 }, { name: '크리스탈', value: 30 }],
+        rows: s.map((sv, i) => row(i, sv, 0, 0, 0, [r100(5000 * 1.5 ** i), mats[i], 0])),
+        destroyCosts: [0, 0, 0],
+        items: [{ id: 'breath', name: '숨결', effect: 'boost', amount: 5, costs: [0, 0, 10], from: 0, to: 9 }],
+        usage: {}, streak: { kind: 'fail', bonus: 10, bonusMode: 'rel', cap: 100, pity: 30 }, event: { ...baseEvent },
+      };
     },
-    rows: () => demoRows(),
-    events: { label: '파괴 감소 이벤트', destroyMult: 0.5, maxStage: 99, costMult: 1 },
   },
-  custom: {
-    label: '직접 입력',
-    note: '표의 확률과 비용을 직접 편집하세요 (행 추가·삭제 가능)',
-    defaults: {
-      start: 0, target: 5, restore: 0, destroyCost: 0,
-      chanceN: 0, protect: [], protectExtra: 1, costMult: 1,
-      eventDestroyMult: 1, eventMaxStage: 99,
-    },
-    rows: () => [
-      { stage: 0, s: 80, k: 20, d: 0, b: 0, cost: 100 },
-      { stage: 1, s: 60, k: 40, d: 0, b: 0, cost: 150 },
-      { stage: 2, s: 45, k: 30, d: 20, b: 5, cost: 200 },
-      { stage: 3, s: 30, k: 30, d: 30, b: 10, cost: 300 },
-      { stage: 4, s: 20, k: 30, d: 35, b: 15, cost: 500 },
-    ],
-    events: { label: '파괴 감소 이벤트', destroyMult: 0.5, maxStage: 99, costMult: 1 },
+  gamble: {
+    label: '고위험 고보상 (이중 강화·찬스타임)',
+    note: '+5부터 대성공(+2단계) 5%와 하락, +10부터 파괴. 2회 연속 하락하면 다음 시도 확정 성공(찬스타임).',
+    make: () => ({
+      start: 0, target: 20, restore: 10, double: true,
+      resources: [{ name: '골드', value: 0.001 }, { name: '강화석', value: 50 }, { name: '다이아', value: 10 }],
+      rows: Array.from({ length: 20 }, (_, i) => row(
+        i, 90 - i * 3.5, i >= 5 ? 5 : 0, i >= 5 ? 18 + (i - 5) * 1.5 : 0, i >= 10 ? 1 + (i - 10) : 0,
+        [r100(3000 * 1.3 ** i), 1 + Math.floor(i / 2), 0],
+      )),
+      destroyCosts: [500000, 0, 0],
+      items: [{ id: 'protect', name: '파괴방지권', effect: 'protect', amount: 0, costs: [0, 0, 50], from: 10, to: 19 }],
+      usage: {}, streak: { kind: 'drop', bonus: 0, bonusMode: 'abs', cap: 100, pity: 2 }, event: { ...baseEvent },
+    }),
+  },
+  blank: {
+    label: '빈 표 (직접 입력)',
+    note: '5단계 빈 표에서 시작합니다. 단계·재화·아이템을 추가하며 설계하세요.',
+    make: () => ({
+      start: 0, target: 5, restore: 0, double: false,
+      resources: [{ name: '골드', value: 1 }],
+      rows: Array.from({ length: 5 }, (_, i) => row(i, 50, 0, 0, 0, [1000])),
+      destroyCosts: [0],
+      items: [], usage: {}, streak: { ...baseStreak }, event: { ...baseEvent },
+    }),
   },
 };
