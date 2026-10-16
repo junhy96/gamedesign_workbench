@@ -1,22 +1,24 @@
-// 단계 표 두 개: 설계 입력용(확률·비용·아이템 사용 편집)과 결과 분석용(실효 확률·기대 시도·돌파 전 파괴·비용 비중·민감도)
+// 단계 표: 왼쪽은 설계 입력(확률·비용·아이템 사용), 오른쪽은 같은 줄의 계산 결과(기대 시도·돌파 전 파괴·비용 비중·민감도)
 import { h, fmtPct, fmtNum } from '../lib/util.js';
 import { money } from './currency.js';
 
 /**
  * 표 구조를 다시 그린다. 입력 중(포커스가 표 안)이면 구조는 유지하고 값만 갱신해 포커스를 지킨다.
  */
-export function renderTable(ctx, els) {
-  if (!ctx.tableDirty && els.table.contains(document.activeElement)) return updateValues(ctx, els);
+export function renderTable(ctx, els, res) {
+  if (!ctx.tableDirty && els.table.contains(document.activeElement)) return updateValues(ctx, els, res);
   ctx.tableDirty = false;
   const s = ctx.state;
   const lo = Math.min(s.start, s.restore), hi = s.target - 1;
   const onPath = (i) => i >= lo && i <= hi;
   const rows = s.rows.filter(r => s.showAll || onPath(r.stage));
 
-  const head = [
-    '단계', '성공 %', ...(s.double ? ['대성공 %'] : []), '유지 %', '하락 %', '파괴 %', '합계',
+  const input = [
+    '성공 %', ...(s.double ? ['대성공 %'] : []), '유지 %', '하락 %', '파괴 %', '합계',
     ...s.resources.map(r => `${r.name} 비용`), ...(s.items.length ? ['보조 아이템'] : []),
   ];
+  const result = ['기대 시도', '돌파 전 파괴', '비용 비중', '민감도'];
+  const th = (t, cls) => h('th', { title: HEAD_TIPS[t] || null, class: cls }, t);
   const probCell = (r, key) => h('td', {}, h('input', {
     type: 'number', value: r[key], step: 0.01, min: 0, max: 100, 'aria-label': `+${r.stage} ${key}`,
     oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { r[key] = v; ctx.schedule(250); } },
@@ -27,16 +29,22 @@ export function renderTable(ctx, els) {
   }));
 
   els.table.replaceChildren(
-    h('thead', {}, h('tr', {}, ...head.map((t, i) => h('th', { title: HEAD_TIPS[t] || null, class: i === 0 ? 'left' : null }, t)))),
+    h('thead', {},
+      h('tr.group', {}, h('th', {}), h('th.group-in', { colspan: input.length }, '설계 입력 — 칸을 직접 수정'), h('th.group-out', { colspan: result.length }, '계산 결과')),
+      h('tr', {}, th('단계', 'left'), ...input.map(t => th(t)), ...result.map((t, i) => th(t, i ? 'res' : 'res first')))),
     h('tbody', {}, ...rows.map(r => h(`tr${onPath(r.stage) ? '' : '.off'}`, { dataset: { stage: r.stage } },
       h('td.stage', {}, `+${r.stage} → +${r.stage + 1}`),
       probCell(r, 's'), s.double ? probCell(r, 's2') : null, probCell(r, 'k'), probCell(r, 'd'), probCell(r, 'b'),
       h('td.sum', { dataset: { k: 'sum' } }),
       ...s.resources.map((_, ri) => costCell(r, ri)),
       s.items.length ? h('td.chips', {}, ...itemChips(ctx, r.stage)) : null,
+      h('td.res.first', { dataset: { k: 'visits' } }),
+      h('td.res', { dataset: { k: 'risk' } }),
+      h('td.res', {}, h('div.share-cell', { dataset: { k: 'shareCell' } }, h('span', { dataset: { k: 'share' } }), h('div.share-bar', {}, h('i', { dataset: { k: 'bar' } })))),
+      h('td.res', { dataset: { k: 'sens' } }),
     ))),
   );
-  updateValues(ctx, els);
+  updateValues(ctx, els, res);
 
   els.rowBtns.replaceChildren(
     h('button.btn.small', { type: 'button', onclick: () => addRow(ctx) }, '+ 단계 추가'),
@@ -46,13 +54,9 @@ export function renderTable(ctx, els) {
 
 const HEAD_TIPS = {
   '합계': '성공·대성공·유지·하락·파괴의 합. 100이 아니면 빨간색으로 표시되고 계산하지 않습니다',
-  '성공 %': '아이템·이벤트를 반영한 실효 확률 (연속 카운터 0 기준)',
-  '파괴 %': '아이템·이벤트를 반영한 실효 확률 (연속 카운터 0 기준)',
-  '1회 비용': '이 단계 1회 시도 비용 (보조 아이템 포함, 표시 단위)',
-  '기대 비용': '목표까지 가는 동안 이 단계에서 쓰는 평균 비용 (파괴 복구 비용 포함)',
   '돌파 전 파괴': '이 단계에서 출발해 다음 단계에 닿기 전에 파괴될 확률. 하락해서 다시 올라오는 경로와 연속 보정까지 포함한 정확해',
   '기대 시도': '목표까지 가는 동안 이 단계에서 시도하는 평균 횟수',
-  '비용 비중': '총 기대 비용 중 이 단계에서 쓰는 비율 (파괴 복구 비용 포함)',
+  '비용 비중': '총 기대 비용 중 이 단계에서 쓰는 비율 (파괴 복구 비용 포함). 마우스를 올리면 기대 비용·1회 비용',
   '민감도': '이 단계 성공률을 1%p 올리면 총 기대 비용이 몇 % 바뀌는지 (수반 방법으로 정확히 계산한 1차 변화량)',
   '보조 아이템': '켠 아이템을 이 단계의 모든 시도에 사용. "상황별"은 최적화 결과로 연속 실패 횟수에 따라 사용 여부가 다름',
 };
@@ -77,44 +81,30 @@ function itemChips(ctx, stage) {
   });
 }
 
-function updateValues(ctx, els) {
+function updateValues(ctx, els, res) {
+  const byStage = new Map((res?.stages || []).map(st => [st.stage, st]));
+  const total = res ? res.expCost || 1 : 1;
+  const maxCost = Math.max(1e-12, ...(res?.stages || []).map(st => st.cost));
+  // 민감도 상위 3개 단계 강조
+  const top = new Set([...(res?.stages || [])].filter(st => st.sens < 0).sort((a, b) => a.sens - b.sens).slice(0, 3).map(st => st.stage));
   for (const tr of els.table.querySelectorAll('tbody tr')) {
-    const r = ctx.state.rows.find(x => x.stage === +tr.dataset.stage);
+    const stage = +tr.dataset.stage;
+    const r = ctx.state.rows.find(x => x.stage === stage);
     const sum = r.s + (ctx.state.double ? r.s2 : 0) + r.k + r.d + r.b;
     const bad = Math.abs(sum - 100) > 0.01;
     tr.classList.toggle('bad', bad);
-    const el = tr.querySelector('[data-k="sum"]');
-    el.textContent = bad ? fmtNum(sum, 2) : '100';
-    el.classList.toggle('hi', bad);
+    const set = (k, v) => { const el = tr.querySelector(`[data-k="${k}"]`); if (el) el.textContent = v; return el; };
+    set('sum', bad ? fmtNum(sum, 2) : '100').classList.toggle('hi', bad);
+    const st = byStage.get(stage);
+    if (!st) { ['risk', 'visits', 'share', 'sens'].forEach(k => set(k, '')); tr.querySelector('[data-k="bar"]').style.width = '0'; continue; }
+    const risk = st.destroyBeforePass;
+    set('risk', risk > 1e-9 ? fmtPct(risk) : '—').classList.toggle('hi', risk >= 0.3);
+    set('visits', st.visits > 0.0005 ? fmtNum(st.visits, 1) : '—');
+    set('share', st.cost > 0 ? fmtPct(st.cost / total) : '—');
+    tr.querySelector('[data-k="shareCell"]').title = `기대 비용 ${money(st.cost)} · 1회 비용 ${money(st.attemptCost)}${st.items.length ? ' (보조 아이템 포함)' : ''}`;
+    tr.querySelector('[data-k="bar"]').style.width = `${(st.cost / maxCost) * 100}%`;
+    set('sens', st.visits > 0.0005 && Math.abs(st.sensPct) >= 0.0005 ? `${(st.sensPct * 100).toFixed(1)}%` : '—').classList.toggle('top', top.has(stage));
   }
-}
-
-// ── 결과 분석 표 (읽기 전용) ─────────────────────────────
-export function renderAnalysis(ctx, els, res) {
-  if (!res) { els.analysis.replaceChildren(); return; }
-  const s = ctx.state;
-  const stages = res.stages.filter(st => st.visits > 0.0005).sort((a, b) => a.stage - b.stage);
-  const total = res.expCost || 1;
-  const maxCost = Math.max(1e-12, ...stages.map(st => st.cost));
-  const top = new Set(stages.filter(st => st.sens < 0).sort((a, b) => a.sens - b.sens).slice(0, 3).map(st => st.stage));
-  const head = ['단계', '성공 %', ...(s.double ? ['대성공 %'] : []), '파괴 %', '1회 비용', '기대 시도', '돌파 전 파괴', '기대 비용', '비용 비중', '민감도'];
-  const pct = (x) => String(+(x * 100).toFixed(2));
-  els.analysis.replaceChildren(
-    h('thead', {}, h('tr', {}, ...head.map((t, i) => h('th', { title: HEAD_TIPS[t] || null, class: i === 0 ? 'left' : null }, t)))),
-    h('tbody', {}, ...stages.map(st => {
-      const risk = st.destroyBeforePass;
-      return h('tr', {},
-        h('td.stage', {}, `+${st.stage} → +${st.stage + 1}`, st.items.length ? h('span.item-tag', { title: '이 단계에서 사용하는 보조 아이템' }, st.items.map(id => s.items.find(it => it.id === id)?.name).filter(Boolean).join(' + ')) : null),
-        h('td', {}, pct(st.p.s)), s.double ? h('td', {}, pct(st.p.s2)) : null, h('td', {}, pct(st.p.b)),
-        h('td', {}, money(st.attemptCost)),
-        h('td', {}, fmtNum(st.visits, 1)),
-        h(`td${risk >= 0.3 ? '.hi' : ''}`, {}, risk > 1e-9 ? fmtPct(risk) : '—'),
-        h('td', {}, money(st.cost)),
-        h('td', {}, h('div.share-cell', {}, h('span', {}, fmtPct(st.cost / total)), h('div.share-bar', {}, h('i', { style: `width:${(st.cost / maxCost) * 100}%` })))),
-        h(`td${top.has(st.stage) ? '.top' : ''}`, {}, Math.abs(st.sensPct) >= 0.0005 ? `${(st.sensPct * 100).toFixed(1)}%` : '—'),
-      );
-    })),
-  );
 }
 
 function addRow(ctx) {

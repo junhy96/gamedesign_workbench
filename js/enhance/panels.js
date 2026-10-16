@@ -94,7 +94,7 @@ export function renderCurrency(ctx, el) {
     oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v >= 0) { set(v); ctx.schedule(); } } });
   el.replaceChildren(
     h('div.card-head', {}, h('h2', {}, '재화와 비용'), h('span.hint', {}, '모든 비용을 원화로 환산해 한 기준으로 비교 · 무료 재화도 획득 시간·기회비용으로 환산')),
-    h('div.table-wrap', {}, h('table.edit-table', {},
+    h('div.table-wrap', {}, h('table.edit-table.currency-table', {},
       h('thead', {}, h('tr', {},
         h('th.left', {}, '재화'), h('th.left', { title: '예: 10,000 골드 = 10 원' }, '원화 환율'),
         h('th', { title: '파괴되면 복구 단계로 돌아가고 이 비용이 더해집니다 (복구 비용 또는 장비 재구매 비용)' }, '파괴 시 추가 비용'), h('th', {}, ''))),
@@ -139,7 +139,7 @@ function removeResource(ctx, ri) {
 }
 
 // ── 보조 아이템 편집기 ──────────────────────────────────
-const EFFECTS = [['protect', '파괴방지 (파괴 → 유지)'], ['nodrop', '하락방지 (하락 → 유지)'], ['boost', '성공률 증가 (%p)']];
+const EFFECTS = [['protect', '파괴방지 (파괴→유지)'], ['nodrop', '하락방지 (하락→유지)'], ['boost', '성공률 증가']];
 
 export function renderItems(ctx, el) {
   const s = ctx.state;

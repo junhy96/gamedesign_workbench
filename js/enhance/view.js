@@ -4,7 +4,7 @@ import { simulate } from './simulate.js';
 import { TEMPLATES } from './presets.js';
 import { renderRules, renderCurrency } from './panels.js';
 import { bindCurrency } from './currency.js';
-import { renderTable, renderAnalysis } from './table.js';
+import { renderTable } from './table.js';
 import {
   buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
   renderItemsCard, renderOptCard, renderInverse, drawChart,
@@ -13,12 +13,7 @@ import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSO
 
 const SCHEMA = 2;
 const STORE_KEY = 'enhance:v2';
-const VIEW_KEY = 'enhance:view'; // 마지막으로 본 화면 (이 브라우저에만 기억)
-const VIEWS = [
-  ['design', '설계 입력', '규칙 · 확률 · 비용 · 아이템'],
-  ['analysis', '결과 분석', '분포 · 단계별 분석 · 검증'],
-  ['tools', '밸런스 도구', '목표 비용 역산 · 최적 정책'],
-];
+const SECTIONS = [['enh-design', '설계 입력'], ['enh-analysis', '결과 분석'], ['enh-tools', '밸런스 도구']];
 const MC_STEP_BUDGET = 4e7;   // 시뮬레이션 계산량 상한 (기대 시도 × 반복 수)
 const MC_MAX_TRIALS = 20000;
 const MC_MIN_TRIALS = 1000;
@@ -72,8 +67,12 @@ export function mount(root) {
   });
 }
 
+// 한 화면 구성: 핵심 지표 → 설계 입력(규칙·단계 표·아이템·재화) → 결과 분석 → 밸런스 도구
+// 지표 카드가 화면 밖으로 나가면 상단 고정 띠에 같은 지표가 나타나 입력하면서도 결과를 본다.
 function build(root) {
   const card = (title, hint, ...body) => h('div.card', {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
+  const section = (id, title, sub) => h(`div.enh-section#${id}`, {}, h('h2', {}, title), h('span', {}, sub));
+  const kpis = buildKPIs(els);
   root.replaceChildren(
     h('div.tool-head', {},
       h('div', {},
@@ -82,18 +81,17 @@ function build(root) {
       ),
       els.head = h('div.tool-actions', {}),
     ),
-    els.bar = h('div.enh-bar', {},
-      h('div.enh-views', { role: 'tablist', 'aria-label': '강화 설계 화면' }, ...VIEWS.map(([id, label, sub], i) =>
-        els['view_' + id] = h('button', { type: 'button', role: 'tab', onclick: () => setView(id) },
-          h('span.step', {}, String(i + 1)), h('span.view-text', {}, h('b', {}, label), h('small', {}, sub))))),
+    els.bar = h('div.enh-bar', { 'aria-hidden': 'true' },
       buildStrip(els),
+      h('nav.enh-jump', {}, ...SECTIONS.map(([id, label]) => h('a', { href: `#${id}`, onclick: (e) => { e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); } }, label))),
     ),
     els.errors = h('ul.errors', { hidden: true }),
+    h('div.enh-page', {},
+      kpis,
 
-    // ① 설계 입력
-    els.pane_design = h('div.enh-pane', {},
+      section('enh-design', '설계 입력', '규칙 · 단계별 확률과 비용 · 보조 아이템 · 재화'),
       els.rules = h('div.card.rules'),
-      card('단계별 확률과 비용', '칸을 직접 수정 · 합계가 100이 아니면 빨간색',
+      card('단계별 확률과 비용', '왼쪽 칸을 고치면 같은 줄 오른쪽 결과가 바로 바뀝니다 · 머리글에 마우스를 올리면 설명',
         h('div.table-wrap', {}, els.table = h('table.stages', {})),
         h('div.table-foot', {},
           h('label.switch.inline', {},
@@ -102,37 +100,18 @@ function build(root) {
           els.rowBtns = h('div.tool-actions', {}),
         ),
       ),
-      els.itemsCard = h('div.card'),
-      els.currency = h('div.card'),
-    ),
+      h('div.two-col.wide-left', {}, els.itemsCard = h('div.card'), els.currency = h('div.card')),
 
-    // ② 결과 분석
-    els.pane_analysis = h('div.enh-pane', {},
-      buildKPIs(els),
+      section('enh-analysis', '결과 분석', '총비용 분포 · 재화별 소모 · 계산 검증'),
       buildDist(ctx, els),
-      card('단계별 분석', '실효 확률(아이템·이벤트 반영) 기준 · 머리글에 마우스를 올리면 설명',
-        h('div.table-wrap', {}, els.analysis = h('table.stages.analysis', {}))),
       h('div.two-col', {}, els.resources = h('div.card'), els.verify = h('div.card')),
-    ),
 
-    // ③ 밸런스 도구
-    els.pane_tools = h('div.enh-pane', {},
+      section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책'),
       h('div.two-col', {}, els.inverse = h('div.card.tool-card'), els.optCard = h('div.card.tool-card')),
     ),
   );
-  setView(store.get(VIEW_KEY) || 'design', false);
-}
-
-function setView(id, remember = true) {
-  if (!VIEWS.some(v => v[0] === id)) id = 'design';
-  ctx.view = id;
-  for (const [v] of VIEWS) {
-    els['pane_' + v].hidden = v !== id;
-    els['view_' + v].setAttribute('aria-selected', String(v === id));
-  }
-  els.bar.dataset.view = id; // 결과 분석 화면에서는 아래 큰 지표 카드가 있으므로 띠의 지표를 숨김
-  if (remember) store.set(VIEW_KEY, id);
-  if (id === 'analysis' && ctx.lastMC) drawChart(ctx, els, ctx.lastMC); // 숨겨진 동안 크기가 0이던 차트를 다시 그림
+  // 지표 카드가 위로 스크롤되어 사라졌을 때만 띠를 보여줌
+  new IntersectionObserver(([e]) => els.bar.classList.toggle('show', !e.isIntersecting && e.boundingClientRect.top < 0), { rootMargin: '-120px 0px 0px 0px' }).observe(kpis);
 }
 
 function renderHead() {
@@ -170,15 +149,13 @@ function recompute() {
     els.errors.replaceChildren(...res.errors.slice(0, 8).map(e => h('li', {}, e)));
     els.errors.hidden = false;
     ctx.lastRes = null;
-    renderTable(ctx, els);
-    renderAnalysis(ctx, els, null);
+    renderTable(ctx, els, null);
     return;
   }
   els.errors.hidden = true;
   ctx.lastRes = res;
   renderKPIs(ctx, els, res);
-  renderTable(ctx, els);
-  renderAnalysis(ctx, els, res);
+  renderTable(ctx, els, res);
   renderResources(els, res);
   if (!els.inverse.hasChildNodes()) renderInverse(ctx, els, res);
   runMC(cfg, res);
