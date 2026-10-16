@@ -564,3 +564,46 @@ body:has(#tab-enhance:not([hidden])) main { max-width: 1680px; }
   #tab-enhance .kpis { grid-template-columns: minmax(0, 1fr); }
   #tab-enhance .kpi.hero { grid-column: auto; }
 }
+
+/* ── 성장 재화 수급 설계 ─────────────────────────────── */
+body:has(#tab-supply:not([hidden])) main { max-width: 1680px; }
+#tab-supply .kpis.econ-kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+#tab-supply .kpi.hero .kpi-value { font-size: 26px; }
+.seg-row { grid-template-columns: 22px minmax(0, 1fr) 28px; }
+.radio { display: grid; place-items: center; cursor: pointer; }
+.radio input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.edit-table th.ref, .stages th.ref { color: var(--accent-ink); }
+.edit-table td.res { text-align: right; font-size: 12.5px; color: var(--text-2); white-space: nowrap; background: color-mix(in srgb, var(--accent-soft) 35%, transparent); }
+.edit-table td.res.fit { font-variant-numeric: tabular-nums; }
+.edit-table td.left { text-align: left; }
+.edit-table input.tiny { width: 52px; padding: 4px 5px; }
+.milestones { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ms { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.ms-x, .ms-add { border: 0; background: none; cursor: pointer; color: var(--text-3); font-size: 14px; line-height: 1; padding: 2px 5px; border-radius: 999px; }
+.ms-x:hover:not(:disabled) { color: var(--bad); }
+.ms-x:disabled { opacity: .3; cursor: default; }
+.ms-add { border: 1px dashed var(--line-strong); width: 26px; height: 26px; }
+.ms-add:hover { color: var(--accent-ink); border-color: var(--accent); }
+.bad-text { color: var(--bad) !important; font-weight: 700; }
+.seg-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+.seg-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--text-2); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
+.seg-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.supply-out { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; }
+.level-wrap { max-height: 520px; overflow-y: auto; }
+.level-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.level-table tr.ms-row td { font-weight: 700; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.level-table td { padding: 6px; }
+.supply-howto { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+@media (max-width: 1180px) { .supply-out { grid-template-columns: minmax(0, 1fr); } }
+/* 편집 표 (수급 설계 공급원·성장 항목) */
+table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.edit-table th { font-size: 12px; font-weight: 600; color: var(--text-3); text-align: right; padding: 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.edit-table th.left { text-align: left; }
+.edit-table td { padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; text-align: right; }
+.edit-table td.x { width: 34px; }
+.edit-table input[type="number"] { width: 76px; padding: 5px 7px; text-align: right; font-size: 13px; }
+.edit-table input.short { width: 60px; }
+.edit-table input.name { width: 100%; min-width: 110px; padding: 5px 8px; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.edit-table select { width: auto; padding: 5px 8px; font-size: 13px; }
+#tab-supply table.stages.level-table { min-width: 0; }
+.fit-err { display: block; font-size: 11px; color: var(--text-3); }

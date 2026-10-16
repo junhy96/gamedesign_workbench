@@ -4,10 +4,12 @@ import { mount as mountEnhance } from './enhance/view.js';
 import { mount as mountFrame } from './frame/view.js';
 import { mount as mountDiagram } from './diagram/view.js';
 import { mount as mountEconomy } from './economy/view.js';
+import { mount as mountSupply } from './supply/view.js';
 
 const TOOLS = {
   enhance: mountEnhance,
   economy: mountEconomy,
+  supply: mountSupply,
   frame: mountFrame,
   diagram: mountDiagram,
 };
