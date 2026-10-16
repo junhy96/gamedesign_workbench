@@ -439,7 +439,7 @@ async function exportPptx() {
   const btn = els.pptBtn, label = btn.textContent;
   btn.disabled = true; btn.textContent = '만드는 중…';
   try {
-    await exportFramePptx(last, state, `패턴 프레임 검증 - ${TEMPLATES[state.template].label}`);
+    await exportFramePptx(last, state, TEMPLATES[state.template].label);
     toast('PowerPoint 파일을 저장했습니다 (모든 요소가 편집 가능한 도형)');
   } catch (e) {
     toast(e.message || 'PowerPoint 파일을 만들지 못했습니다');

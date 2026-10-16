@@ -118,6 +118,24 @@ test('PPT 타임라인 사양: 모든 도형이 슬라이드 안, 긴 연계는 
   }
 });
 
+test('PPT 공격 일람·판정 표·검증 결과: 슬라이드 안, 공격마다 한 장', async () => {
+  const { attackSlides, summarySlides } = await import('../js/frame/export.js');
+  const { SLIDE } = await import('../js/lib/pptx.js');
+  for (const id of Object.keys(TEMPLATES)) {
+    const state = tpl(id), res = analyze(state);
+    const atk = attackSlides(res, state);
+    assert.equal(atk.length, state.attacks.length);
+    for (const s of [...atk, ...summarySlides(res, state)]) for (const sp of s.specs) {
+      assert.ok(sp.x >= 0 && sp.y >= 0 && sp.x + sp.w <= SLIDE.w + 0.01 && sp.y + sp.h <= SLIDE.h + 0.01, `${id} ${s.title} ${sp.name ?? sp.text}`);
+    }
+    // 공격 장에는 그 공격의 타격이 모두 그려진다
+    atk.forEach((s, ai) => {
+      const n = s.specs.filter(sp => sp.type === 'roundRect' && /판정/.test(sp.name) && sp.name.startsWith(`${ai + 1}. `)).length;
+      assert.equal(n, state.attacks[ai].hits, `${id} ${s.title}`);
+    });
+  }
+});
+
 test('입력 오류 감지', () => {
   const cfg = tpl('blank');
   cfg.attacks[0].active = 0;

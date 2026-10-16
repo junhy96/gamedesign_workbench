@@ -32,26 +32,51 @@ const hex = (c) => (c || '000000').replace('#', '').toUpperCase();
 
 /**
  * 도형 사양 배열을 슬라이드에 그린다.
- * spec: { type:'rect'|'roundRect'|'ellipse'|'text'|'path', x,y,w,h, fill?, line?, lineWidth?, dash?, text?, fontSize?, color?, bold?, align?, valign?, points?, arrowEnd?, arrowStart?, name? }
+ * spec: { type:'rect'|'roundRect'|'ellipse'|'diamond'|'text'|'path'|'line'|'table', x,y,w,h, fill?, line?, lineWidth?, dash?, text?, fontSize?, fontFace?, color?, bold?, align?, valign?, charSpacing?, points?, arrowEnd?, arrowStart?, name? }
+ *   dash: true(파선) 또는 PowerPoint 선 종류 이름('sysDot' 등)
+ *   text: 문자열('
+'은 줄바꿈) 또는 [{ text, options }] 런 배열
+ *   line: 직선 연결선(x,y → x+w,y+h)
+ *   table: { colW:[], rowH:[], rows:[[{ text, fill?, color?, fontFace?, fontSize?, bold?, align?, colspan? }]], border?, borderWidth? }
  */
 export function renderSpecs(pptx, slide, specs) {
+  const lineOf = (s) => (s.line ? {
+    color: hex(s.line), width: s.lineWidth ?? 0.75, dashType: typeof s.dash === 'string' ? s.dash : s.dash ? 'dash' : 'solid',
+    endArrowType: s.arrowEnd ? 'triangle' : undefined, beginArrowType: s.arrowStart ? 'triangle' : undefined,
+  } : { type: 'none' });
+  const textOpts = (s, color) => ({
+    fontFace: s.fontFace ?? FONT, fontSize: s.fontSize ?? 10, color: hex(s.color ?? color), bold: !!s.bold,
+    ...(s.charSpacing != null && { charSpacing: s.charSpacing }),
+  });
   for (const s of specs) {
-    const line = s.line ? { color: hex(s.line), width: s.lineWidth ?? 0.75, dashType: s.dash ? 'dash' : 'solid', endArrowType: s.arrowEnd ? 'triangle' : undefined, beginArrowType: s.arrowStart ? 'triangle' : undefined } : { type: 'none' };
+    const line = lineOf(s);
     const fill = s.fill ? { color: hex(s.fill), transparency: s.transparency ?? 0 } : { type: 'none' };
     const common = { x: s.x, y: s.y, w: Math.max(s.w, 0.001), h: Math.max(s.h, 0.001), objectName: s.name };
     if (s.type === 'text') {
       slide.addText(s.text, {
-        ...common, fontFace: FONT, fontSize: s.fontSize ?? 10, color: hex(s.color ?? '#222222'), bold: !!s.bold,
+        ...common, ...textOpts(s, '#222222'), isTextBox: true,
         align: s.align ?? 'left', valign: s.valign ?? 'middle', margin: s.margin ?? 0, fit: 'none', wrap: s.wrap ?? false,
         fill: s.fill ? fill : undefined, line: s.line ? line : undefined,
       });
+    } else if (s.type === 'line') {
+      slide.addShape(pptx.ShapeType.line, { x: s.x, y: s.y, w: s.w, h: s.h, objectName: s.name, line });
+    } else if (s.type === 'table') {
+      const border = { type: 'solid', pt: s.borderWidth ?? 1, color: hex(s.border ?? '#000000') };
+      const rows = s.rows.map(r => r.map(c => ({
+        text: c.text ?? '',
+        options: {
+          ...textOpts(c, '#000000'), fill: { color: hex(c.fill ?? '#FFFFFF') }, align: c.align ?? 'center', valign: 'middle',
+          ...(c.colspan > 1 && { colspan: c.colspan }), border: [border, border, border, border],
+        },
+      })));
+      slide.addTable(rows, { x: s.x, y: s.y, w: s.w, colW: s.colW, rowH: s.rowH, margin: s.cellMargin ?? [0.015, 0.07, 0.015, 0.08], objectName: s.name });
     } else if (s.type === 'path') {
       slide.addShape(pptx.ShapeType.custGeom, { ...common, points: s.points, fill, line });
     } else {
       const shape = { rect: pptx.ShapeType.rect, roundRect: pptx.ShapeType.roundRect, ellipse: pptx.ShapeType.ellipse, diamond: pptx.ShapeType.diamond }[s.type] ?? pptx.ShapeType.rect;
       const opts = { ...common, fill, line };
       if (s.type === 'roundRect') opts.rectRadius = s.radius ?? 0.06;
-      if (s.text != null) Object.assign(opts, { fontFace: FONT, fontSize: s.fontSize ?? 10, color: hex(s.color ?? '#FFFFFF'), bold: !!s.bold, align: s.align ?? 'center', valign: 'middle', margin: 0 });
+      if (s.text != null) Object.assign(opts, textOpts(s, '#FFFFFF'), { align: s.align ?? 'center', valign: 'middle', margin: s.margin ?? 0 });
       if (s.text != null) slide.addText(s.text, { ...opts, shape });
       else slide.addShape(shape, opts);
     }
