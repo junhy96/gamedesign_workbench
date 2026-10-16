@@ -1,4 +1,4 @@
-// 결과 영역: KPI(기준안 대비), 분포·예산, 재화별 소모, 검증, 아이템 최적화(MDP), 목표 비용 역산
+// 결과 영역: KPI(기준안 대비)·고정 띠, 분포·예산, 재화별 소모, 검증, 아이템 편집·최적화(MDP), 목표 비용 역산
 import { optimizeItems, solveForCost } from './model.js';
 import { reachProbability } from './simulate.js';
 import { renderItems } from './panels.js';
@@ -24,12 +24,21 @@ export function buildKPIs(els) {
   )));
 }
 
+/** 상단 고정 띠의 간단한 지표 (설계 입력·밸런스 도구 화면에서 입력을 바꾸며 바로 확인) */
+export function buildStrip(els) {
+  return h('div.kpi-strip', {}, ...KPI_DEFS.map(d => h(`div.mini-kpi${d.hero ? '.hero' : ''}`, {},
+    h('span.mini-label', {}, d.label.replace(' (정확해)', '')),
+    els[d.key + 'Mini'] = h('b.mini-value', {}, '—'),
+    els[d.key + 'MiniDelta'] = h('span.mini-delta', {}),
+  )));
+}
+
 export function renderKPIs(ctx, els, res) {
   const base = ctx.state.baseline;
   for (const d of KPI_DEFS) {
-    els[d.key].textContent = d.fmt(res[d.key]);
-    const el = els[d.key + 'Delta'];
-    if (!base) { el.replaceChildren(); continue; }
+    els[d.key].textContent = els[d.key + 'Mini'].textContent = d.fmt(res[d.key]);
+    const el = els[d.key + 'Delta'], mini = els[d.key + 'MiniDelta'];
+    if (!base) { el.replaceChildren(); mini.replaceChildren(); continue; }
     const b = base[d.key];
     const diff = d.key === 'noDestroy' ? res[d.key] - b : (b ? res[d.key] / b - 1 : 0);
     const same = Math.abs(diff) < 5e-4;
@@ -38,6 +47,7 @@ export function renderKPIs(ctx, els, res) {
       ? `기준안 대비 ${diff > 0 ? '+' : ''}${(diff * 100).toFixed(1)}%p`
       : `기준안 대비 ${diff > 0 ? '+' : ''}${(diff * 100).toFixed(1)}%`;
     el.replaceChildren(h(`span.delta${same ? '' : good ? '.good' : '.bad'}`, {}, txt));
+    mini.replaceChildren(same ? '' : h(`span.delta${good ? '.good' : '.bad'}`, { title: txt }, txt.replace('기준안 대비 ', '')));
   }
   const cv = res.expCost > 0 ? res.std / res.expCost : 0;
   els.stdSub.replaceChildren('변동계수 ', h('b', {}, cv.toFixed(2)), cv > 1 ? ' · 유저 간 편차가 평균보다 큼' : ' · σ ÷ 평균');
@@ -209,21 +219,24 @@ export function renderVerify(els, res, mc) {
   ].filter(Boolean));
 }
 
-// ── 보조 아이템(BM) + 최적 사용 ─────────────────────────
+// ── 보조 아이템(BM) 편집 + 최적 사용 정책 ──────────────
 export function renderItemsCard(ctx, els) {
   els.itemsCard.replaceChildren(
-    h('div.card-head', {}, h('h2', {}, '보조 아이템 (BM)'), h('span.hint', {}, '단계별 사용은 표의 아이템 칸에서 켭니다')),
+    h('div.card-head', {}, h('h2', {}, '보조 아이템 (BM)'), h('span.hint', {}, '단계별 사용은 위 표의 ‘보조 아이템’ 칸에서 켭니다')),
     els.itemsEditor = h('div', {}),
-    h('div.opt-box', {},
-      h('div', {},
-        h('b', {}, '최적 사용 정책 찾기'),
-        h('p.muted.small', {}, '상태(단계 × 연속 카운터)마다 어떤 아이템 조합을 쓸지 골라 기대 총비용을 최소화합니다 (마르코프 결정 과정, 정책 반복법). 아이템 가격이 적정한지, 유저가 합리적으로 쓰면 어디서 얼마나 팔리는지 확인하는 용도입니다.'),
-      ),
-      h('button.btn.primary', { type: 'button', disabled: !ctx.state.items.length, onclick: () => runOptimizer(ctx, els) }, '최적 정책 계산'),
-    ),
-    els.optOut = h('div', {}),
   );
   renderItems(ctx, els.itemsEditor);
+}
+
+export function renderOptCard(ctx, els) {
+  els.optCard.replaceChildren(
+    h('div.card-head', {}, h('h2', {}, '보조 아이템 최적 사용 정책'), h('span.hint', {}, '마르코프 결정 과정 · 정책 반복법')),
+    h('p.muted.small', {}, '상태(단계 × 연속 카운터)마다 어떤 아이템 조합을 쓸지 골라 기대 총비용을 최소화합니다. 아이템 가격이 적정한지, 유저가 합리적으로 쓰면 어디서 얼마나 팔리는지 확인하는 용도입니다.'),
+    h('div', {}, ctx.state.items.length
+      ? h('button.btn.primary', { type: 'button', onclick: () => runOptimizer(ctx, els) }, '최적 정책 계산')
+      : h('p.muted.small', {}, '설계 입력에서 보조 아이템을 먼저 추가하세요.')),
+    els.optOut = h('div', {}),
+  );
 }
 
 function runOptimizer(ctx, els) {

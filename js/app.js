@@ -42,3 +42,7 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
   store.set('theme', root.dataset.theme);
   document.dispatchEvent(new Event('themechange'));
 });
+
+// 고정 헤더 높이 → CSS 변수 (도구 안의 고정 띠가 헤더 바로 아래에 붙도록)
+const header = document.querySelector('.app-header');
+if (header) new ResizeObserver(() => document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`)).observe(header);

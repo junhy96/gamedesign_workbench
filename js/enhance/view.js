@@ -2,17 +2,23 @@
 import { analyze, effectiveProbs } from './model.js';
 import { simulate } from './simulate.js';
 import { TEMPLATES } from './presets.js';
-import { renderSettings } from './panels.js';
+import { renderRules, renderCurrency } from './panels.js';
 import { bindCurrency } from './currency.js';
-import { renderTable } from './table.js';
+import { renderTable, renderAnalysis } from './table.js';
 import {
-  buildKPIs, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
-  renderItemsCard, renderInverse, drawChart,
+  buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
+  renderItemsCard, renderOptCard, renderInverse, drawChart,
 } from './results.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
 
 const SCHEMA = 2;
 const STORE_KEY = 'enhance:v2';
+const VIEW_KEY = 'enhance:view'; // 마지막으로 본 화면 (이 브라우저에만 기억)
+const VIEWS = [
+  ['design', '설계 입력', '규칙 · 확률 · 비용 · 아이템'],
+  ['analysis', '결과 분석', '분포 · 단계별 분석 · 검증'],
+  ['tools', '밸런스 도구', '목표 비용 역산 · 최적 정책'],
+];
 const MC_STEP_BUDGET = 4e7;   // 시뮬레이션 계산량 상한 (기대 시도 × 반복 수)
 const MC_MAX_TRIALS = 20000;
 const MC_MIN_TRIALS = 1000;
@@ -67,6 +73,7 @@ export function mount(root) {
 }
 
 function build(root) {
+  const card = (title, hint, ...body) => h('div.card', {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
   root.replaceChildren(
     h('div.tool-head', {},
       h('div', {},
@@ -75,29 +82,57 @@ function build(root) {
       ),
       els.head = h('div.tool-actions', {}),
     ),
-    h('div.layout', {},
-      els.settings = h('aside.settings.card', { 'aria-label': '설정' }),
-      h('div.results', {},
-        els.errors = h('ul.errors', { hidden: true }),
-        buildKPIs(els),
-        buildDist(ctx, els),
-        h('div.card', {},
-          h('div.card-head', {}, h('h2', {}, '단계별 확률과 비용'), h('span.hint', {}, '칸을 직접 수정 · 머리글에 마우스를 올리면 설명')),
-          h('div.table-wrap', {}, els.table = h('table.stages', {})),
-          h('div.table-foot', {},
-            h('label.switch.inline', {},
-              els.showAll = h('input', { type: 'checkbox', onchange: (e) => { ctx.state.showAll = e.target.checked; ctx.tableDirty = true; recompute(); } }),
-              '경로 밖 단계도 표시'),
-            els.rowBtns = h('div.tool-actions', {}),
-          ),
-        ),
-        h('div.two-col', {},
-          els.itemsCard = h('div.card'),
-          h('div.stack', {}, els.inverse = h('div.card'), els.resources = h('div.card'), els.verify = h('div.card')),
+    els.bar = h('div.enh-bar', {},
+      h('div.enh-views', { role: 'tablist', 'aria-label': '강화 설계 화면' }, ...VIEWS.map(([id, label, sub], i) =>
+        els['view_' + id] = h('button', { type: 'button', role: 'tab', onclick: () => setView(id) },
+          h('span.step', {}, String(i + 1)), h('span.view-text', {}, h('b', {}, label), h('small', {}, sub))))),
+      buildStrip(els),
+    ),
+    els.errors = h('ul.errors', { hidden: true }),
+
+    // ① 설계 입력
+    els.pane_design = h('div.enh-pane', {},
+      els.rules = h('div.card.rules'),
+      card('단계별 확률과 비용', '칸을 직접 수정 · 합계가 100이 아니면 빨간색',
+        h('div.table-wrap', {}, els.table = h('table.stages', {})),
+        h('div.table-foot', {},
+          h('label.switch.inline', {},
+            els.showAll = h('input', { type: 'checkbox', onchange: (e) => { ctx.state.showAll = e.target.checked; ctx.tableDirty = true; recompute(); } }),
+            '경로 밖 단계도 표시'),
+          els.rowBtns = h('div.tool-actions', {}),
         ),
       ),
+      els.itemsCard = h('div.card'),
+      els.currency = h('div.card'),
+    ),
+
+    // ② 결과 분석
+    els.pane_analysis = h('div.enh-pane', {},
+      buildKPIs(els),
+      buildDist(ctx, els),
+      card('단계별 분석', '실효 확률(아이템·이벤트 반영) 기준 · 머리글에 마우스를 올리면 설명',
+        h('div.table-wrap', {}, els.analysis = h('table.stages.analysis', {}))),
+      h('div.two-col', {}, els.resources = h('div.card'), els.verify = h('div.card')),
+    ),
+
+    // ③ 밸런스 도구
+    els.pane_tools = h('div.enh-pane', {},
+      h('div.two-col', {}, els.inverse = h('div.card.tool-card'), els.optCard = h('div.card.tool-card')),
     ),
   );
+  setView(store.get(VIEW_KEY) || 'design', false);
+}
+
+function setView(id, remember = true) {
+  if (!VIEWS.some(v => v[0] === id)) id = 'design';
+  ctx.view = id;
+  for (const [v] of VIEWS) {
+    els['pane_' + v].hidden = v !== id;
+    els['view_' + v].setAttribute('aria-selected', String(v === id));
+  }
+  els.bar.dataset.view = id; // 결과 분석 화면에서는 아래 큰 지표 카드가 있으므로 띠의 지표를 숨김
+  if (remember) store.set(VIEW_KEY, id);
+  if (id === 'analysis' && ctx.lastMC) drawChart(ctx, els, ctx.lastMC); // 숨겨진 동안 크기가 0이던 차트를 다시 그림
 }
 
 function renderHead() {
@@ -116,8 +151,10 @@ function renderHead() {
 function rebuild() {
   bindCurrency(ctx.state);
   renderHead();
-  renderSettings(ctx, els.settings);
+  renderRules(ctx, els.rules);
+  renderCurrency(ctx, els.currency);
   renderItemsCard(ctx, els);
+  renderOptCard(ctx, els);
   els.showAll.checked = ctx.state.showAll;
   els.inverse.replaceChildren();
   ctx.tableDirty = true;
@@ -133,13 +170,15 @@ function recompute() {
     els.errors.replaceChildren(...res.errors.slice(0, 8).map(e => h('li', {}, e)));
     els.errors.hidden = false;
     ctx.lastRes = null;
-    renderTable(ctx, els, null);
+    renderTable(ctx, els);
+    renderAnalysis(ctx, els, null);
     return;
   }
   els.errors.hidden = true;
   ctx.lastRes = res;
   renderKPIs(ctx, els, res);
-  renderTable(ctx, els, res);
+  renderTable(ctx, els);
+  renderAnalysis(ctx, els, res);
   renderResources(els, res);
   if (!els.inverse.hasChildNodes()) renderInverse(ctx, els, res);
   runMC(cfg, res);

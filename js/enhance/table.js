@@ -1,11 +1,12 @@
-// 단계 표: 확률·비용 편집, 단계별 아이템 사용, 계산 결과(돌파 전 파괴·기대 시도·비용 비중·민감도)
+// 단계 표 두 개: 설계 입력용(확률·비용·아이템 사용 편집)과 결과 분석용(실효 확률·기대 시도·돌파 전 파괴·비용 비중·민감도)
 import { h, fmtPct, fmtNum } from '../lib/util.js';
+import { money } from './currency.js';
 
 /**
  * 표 구조를 다시 그린다. 입력 중(포커스가 표 안)이면 구조는 유지하고 값만 갱신해 포커스를 지킨다.
  */
-export function renderTable(ctx, els, res) {
-  if (!ctx.tableDirty && els.table.contains(document.activeElement)) return updateValues(ctx, els, res);
+export function renderTable(ctx, els) {
+  if (!ctx.tableDirty && els.table.contains(document.activeElement)) return updateValues(ctx, els);
   ctx.tableDirty = false;
   const s = ctx.state;
   const lo = Math.min(s.start, s.restore), hi = s.target - 1;
@@ -13,8 +14,7 @@ export function renderTable(ctx, els, res) {
   const rows = s.rows.filter(r => s.showAll || onPath(r.stage));
 
   const head = [
-    '단계', '성공 %', ...(s.double ? ['대성공 %'] : []), '유지 %', '하락 %', '파괴 %',
-    '돌파 전 파괴', '기대 시도', '비용 비중', '민감도',
+    '단계', '성공 %', ...(s.double ? ['대성공 %'] : []), '유지 %', '하락 %', '파괴 %', '합계',
     ...s.resources.map(r => `${r.name} 비용`), ...(s.items.length ? ['보조 아이템'] : []),
   ];
   const probCell = (r, key) => h('td', {}, h('input', {
@@ -31,15 +31,12 @@ export function renderTable(ctx, els, res) {
     h('tbody', {}, ...rows.map(r => h(`tr${onPath(r.stage) ? '' : '.off'}`, { dataset: { stage: r.stage } },
       h('td.stage', {}, `+${r.stage} → +${r.stage + 1}`),
       probCell(r, 's'), s.double ? probCell(r, 's2') : null, probCell(r, 'k'), probCell(r, 'd'), probCell(r, 'b'),
-      h('td.res', { dataset: { k: 'risk' } }),
-      h('td.res', { dataset: { k: 'visits' } }),
-      h('td.res', {}, h('div.share-cell', {}, h('span', { dataset: { k: 'share' } }), h('div.share-bar', {}, h('i', { dataset: { k: 'bar' } })))),
-      h('td.res', { dataset: { k: 'sens' } }),
+      h('td.sum', { dataset: { k: 'sum' } }),
       ...s.resources.map((_, ri) => costCell(r, ri)),
       s.items.length ? h('td.chips', {}, ...itemChips(ctx, r.stage)) : null,
     ))),
   );
-  updateValues(ctx, els, res);
+  updateValues(ctx, els);
 
   els.rowBtns.replaceChildren(
     h('button.btn.small', { type: 'button', onclick: () => addRow(ctx) }, '+ 단계 추가'),
@@ -48,6 +45,11 @@ export function renderTable(ctx, els, res) {
 }
 
 const HEAD_TIPS = {
+  '합계': '성공·대성공·유지·하락·파괴의 합. 100이 아니면 빨간색으로 표시되고 계산하지 않습니다',
+  '성공 %': '아이템·이벤트를 반영한 실효 확률 (연속 카운터 0 기준)',
+  '파괴 %': '아이템·이벤트를 반영한 실효 확률 (연속 카운터 0 기준)',
+  '1회 비용': '이 단계 1회 시도 비용 (보조 아이템 포함, 표시 단위)',
+  '기대 비용': '목표까지 가는 동안 이 단계에서 쓰는 평균 비용 (파괴 복구 비용 포함)',
   '돌파 전 파괴': '이 단계에서 출발해 다음 단계에 닿기 전에 파괴될 확률. 하락해서 다시 올라오는 경로와 연속 보정까지 포함한 정확해',
   '기대 시도': '목표까지 가는 동안 이 단계에서 시도하는 평균 횟수',
   '비용 비중': '총 기대 비용 중 이 단계에서 쓰는 비율 (파괴 복구 비용 포함)',
@@ -75,29 +77,44 @@ function itemChips(ctx, stage) {
   });
 }
 
-function updateValues(ctx, els, res) {
-  const byStage = new Map((res?.stages || []).map(st => [st.stage, st]));
-  const total = res ? res.expCost || 1 : 1;
-  const maxCost = Math.max(1e-12, ...(res?.stages || []).map(st => st.cost));
-  // 민감도 상위 3개 단계 강조
-  const top = new Set([...(res?.stages || [])].filter(st => st.sens < 0).sort((a, b) => a.sens - b.sens).slice(0, 3).map(st => st.stage));
+function updateValues(ctx, els) {
   for (const tr of els.table.querySelectorAll('tbody tr')) {
-    const stage = +tr.dataset.stage;
-    const st = byStage.get(stage);
-    const r = ctx.state.rows.find(x => x.stage === stage);
+    const r = ctx.state.rows.find(x => x.stage === +tr.dataset.stage);
     const sum = r.s + (ctx.state.double ? r.s2 : 0) + r.k + r.d + r.b;
-    tr.classList.toggle('bad', Math.abs(sum - 100) > 0.01);
-    const set = (k, v) => { const el = tr.querySelector(`[data-k="${k}"]`); if (el) el.textContent = v; return el; };
-    if (!st) { ['risk', 'visits', 'share', 'sens'].forEach(k => set(k, '')); continue; }
-    const risk = st.destroyBeforePass;
-    set('risk', risk > 1e-9 ? fmtPct(risk) : '—').classList.toggle('hi', risk >= 0.3);
-    set('visits', st.visits > 0.0005 ? fmtNum(st.visits, 1) : '—');
-    set('share', st.cost > 0 ? fmtPct(st.cost / total) : '—');
-    const bar = tr.querySelector('[data-k="bar"]');
-    if (bar) bar.style.width = `${(st.cost / maxCost) * 100}%`;
-    const sensEl = set('sens', st.visits > 0.0005 && Math.abs(st.sensPct) >= 0.0005 ? `${(st.sensPct * 100).toFixed(1)}%` : '—');
-    sensEl.classList.toggle('top', top.has(stage));
+    const bad = Math.abs(sum - 100) > 0.01;
+    tr.classList.toggle('bad', bad);
+    const el = tr.querySelector('[data-k="sum"]');
+    el.textContent = bad ? fmtNum(sum, 2) : '100';
+    el.classList.toggle('hi', bad);
   }
+}
+
+// ── 결과 분석 표 (읽기 전용) ─────────────────────────────
+export function renderAnalysis(ctx, els, res) {
+  if (!res) { els.analysis.replaceChildren(); return; }
+  const s = ctx.state;
+  const stages = res.stages.filter(st => st.visits > 0.0005).sort((a, b) => a.stage - b.stage);
+  const total = res.expCost || 1;
+  const maxCost = Math.max(1e-12, ...stages.map(st => st.cost));
+  const top = new Set(stages.filter(st => st.sens < 0).sort((a, b) => a.sens - b.sens).slice(0, 3).map(st => st.stage));
+  const head = ['단계', '성공 %', ...(s.double ? ['대성공 %'] : []), '파괴 %', '1회 비용', '기대 시도', '돌파 전 파괴', '기대 비용', '비용 비중', '민감도'];
+  const pct = (x) => String(+(x * 100).toFixed(2));
+  els.analysis.replaceChildren(
+    h('thead', {}, h('tr', {}, ...head.map((t, i) => h('th', { title: HEAD_TIPS[t] || null, class: i === 0 ? 'left' : null }, t)))),
+    h('tbody', {}, ...stages.map(st => {
+      const risk = st.destroyBeforePass;
+      return h('tr', {},
+        h('td.stage', {}, `+${st.stage} → +${st.stage + 1}`, st.items.length ? h('span.item-tag', { title: '이 단계에서 사용하는 보조 아이템' }, st.items.map(id => s.items.find(it => it.id === id)?.name).filter(Boolean).join(' + ')) : null),
+        h('td', {}, pct(st.p.s)), s.double ? h('td', {}, pct(st.p.s2)) : null, h('td', {}, pct(st.p.b)),
+        h('td', {}, money(st.attemptCost)),
+        h('td', {}, fmtNum(st.visits, 1)),
+        h(`td${risk >= 0.3 ? '.hi' : ''}`, {}, risk > 1e-9 ? fmtPct(risk) : '—'),
+        h('td', {}, money(st.cost)),
+        h('td', {}, h('div.share-cell', {}, h('span', {}, fmtPct(st.cost / total)), h('div.share-bar', {}, h('i', { style: `width:${(st.cost / maxCost) * 100}%` })))),
+        h(`td${top.has(st.stage) ? '.top' : ''}`, {}, Math.abs(st.sensPct) >= 0.0005 ? `${(st.sensPct * 100).toFixed(1)}%` : '—'),
+      );
+    })),
+  );
 }
 
 function addRow(ctx) {
