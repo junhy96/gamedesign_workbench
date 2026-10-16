@@ -1,7 +1,6 @@
-// 결과 영역: KPI(기준안 대비)·고정 띠, 분포·예산, 재화별 소모, 검증, 아이템 편집·최적화(MDP), 목표 비용 역산
+// 결과 영역: KPI(기준안 대비)·고정 띠, 분포·예산, 재화별 소모, 검증, 아이템 최적화(MDP), 목표 비용 역산
 import { optimizeItems, solveForCost } from './model.js';
 import { reachProbability } from './simulate.js';
-import { renderItems } from './panels.js';
 import { h, fmtMoney, fmtMoneyShort, fmtPct, fmtNum, comma, toast } from '../lib/util.js';
 import { money as won, moneyShort as wonShort, currency, toDisplay, fromDisplay } from './currency.js';
 export { won };
@@ -219,15 +218,7 @@ export function renderVerify(els, res, mc) {
   ].filter(Boolean));
 }
 
-// ── 보조 아이템(BM) 편집 + 최적 사용 정책 ──────────────
-export function renderItemsCard(ctx, els) {
-  els.itemsCard.replaceChildren(
-    h('div.card-head', {}, h('h2', {}, '보조 아이템 (BM)'), h('span.hint', {}, '단계별 사용은 위 표의 ‘보조 아이템’ 칸에서 켭니다')),
-    els.itemsEditor = h('div', {}),
-  );
-  renderItems(ctx, els.itemsEditor);
-}
-
+// ── 보조 아이템 최적 사용 정책 ──────────────
 export function renderOptCard(ctx, els) {
   els.optCard.replaceChildren(
     h('div.card-head', {}, h('h2', {}, '보조 아이템 최적 사용 정책'), h('span.hint', {}, '마르코프 결정 과정 · 정책 반복법')),

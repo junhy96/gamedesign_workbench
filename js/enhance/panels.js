@@ -1,7 +1,7 @@
-// 설계 입력: 기본 규칙(템플릿·구간·연속 보정·이벤트), 재화와 비용, 보조 아이템 편집기
+// 왼쪽 설정 메뉴: 템플릿·구간, 연속 보정, 이벤트, 재화와 비용, 보조 아이템
 import { TEMPLATES } from './presets.js';
 import { MAX_ITEMS } from './model.js';
-import { h } from '../lib/util.js';
+import { h, store } from '../lib/util.js';
 import { rateOf, setRate } from './currency.js';
 
 const MAX_RESOURCES = 4;
@@ -35,11 +35,25 @@ function select(options, value, onchange) {
     ...options.map(([v, label]) => h('option', { value: v, selected: v === value }, label)));
 }
 
-// ── 기본 규칙 (템플릿·구간·이중 강화·연속 보정·이벤트) ──
-export function renderRules(ctx, el) {
+// ── 왼쪽 설정 메뉴 ─────────────────────────────────────
+// 접을 수 있는 구역(템플릿·구간 / 연속 보정 / 이벤트 / 재화와 비용 / 보조 아이템). 펼침 상태는 이 브라우저에 기억.
+const OPEN_KEY = 'enhance:sideOpen';
+const openState = () => store.get(OPEN_KEY) || {};
+
+function section(id, title, summary, ...body) {
+  return h('details.side-sec', {
+    open: openState()[id] ?? (id === 'base' || matchMedia('(min-width: 1101px)').matches), // 좁은 화면에서는 기본으로 접음
+    ontoggle: (e) => store.set(OPEN_KEY, { ...openState(), [id]: e.target.open }),
+  },
+  h('summary', {}, h('span.side-title', {}, title), summary ? h('span.side-sum', {}, summary) : null),
+  h('div.side-body', {}, ...body.filter(Boolean)));
+}
+
+export function renderSidebar(ctx, el) {
   const s = ctx.state;
   const t = TEMPLATES[s.template];
   const st = s.streak, ev = s.event;
+  const STREAK = { none: '없음', fail: '연속 실패 기준', drop: '찬스타임' };
 
   const streakFields = st.kind === 'none' ? [h('p.desc', {}, '실패가 쌓일수록 성공률이 오르는 보너스, n회 실패 시 확정 성공(천장), 연속 하락 후 확정 성공(찬스타임)을 설정합니다.')] : [
     h('div.row2', {},
@@ -56,67 +70,58 @@ export function renderRules(ctx, el) {
   ];
 
   el.replaceChildren(
-    h('div.rule-block', {},
-      h('span.group-title', {}, '템플릿'),
+    section('base', '템플릿 · 강화 구간', `+${s.start} → +${s.target}`,
       select(Object.entries(TEMPLATES).map(([id, x]) => [id, x.label]), s.template, (v) => ctx.loadTemplate(v)),
       h('p.desc', {}, t.note),
-    ),
-    h('div.rule-block', {},
-      h('span.group-title', {}, '강화 구간'),
       h('div.row3', {},
         field('시작', numInput(ctx, s, 'start', { int: true, min: 0, label: '시작 단계' })),
         field('목표', numInput(ctx, s, 'target', { int: true, min: 1, label: '목표 단계', after: () => ctx.markTableDirty() })),
         field('파괴 시 복구', numInput(ctx, s, 'restore', { int: true, min: 0, label: '복구 단계' })),
       ),
       toggle(ctx, '이중 강화 (대성공 +2단계)', s, 'double', () => ctx.markTableDirty()),
-      h('p.desc', {}, '켜면 표에 대성공 칸이 생깁니다. 파괴 시 추가 비용은 아래 ‘재화와 비용’에서 정합니다.'),
     ),
-    h('div.rule-block', {},
-      h('span.group-title', {}, '연속 보정 (천장·보너스·찬스타임)'),
+    section('streak', '연속 보정', STREAK[st.kind],
       select([['none', '없음'], ['fail', '연속 실패 기준 (천장·실패 누적 보너스)'], ['drop', '연속 하락 기준 (찬스타임)']], st.kind, (v) => { st.kind = v; ctx.rebuild(); }),
       ...streakFields,
     ),
-    h('div.rule-block', {},
-      toggle(ctx, '이벤트 배율', ev, 'on'),
+    section('event', '이벤트 배율', ev.on ? '켜짐' : '꺼짐',
+      toggle(ctx, '이벤트 적용', ev, 'on'),
       ev.on ? h('div.row3', {},
         field('성공 ×', numInput(ctx, ev, 'successMult', { min: 0, step: 0.05, label: '성공 배율' })),
         field('파괴 ×', numInput(ctx, ev, 'destroyMult', { min: 0, step: 0.05, label: '파괴 배율' })),
         field('비용 ×', numInput(ctx, ev, 'costMult', { min: 0, step: 0.05, label: '비용 배율' })),
       ) : h('p.desc', {}, '성공·파괴 확률과 강화 비용에 일괄 배율을 적용해 이벤트 효과를 봅니다.'),
     ),
+    section('currency', '재화와 비용', s.resources.map(r => r.name).join(' · '), ...currencyBody(ctx)),
+    section('items', '보조 아이템 (BM)', s.items.length ? `${s.items.length}개` : '없음', ...itemsBody(ctx)),
   );
 }
 
-// ── 재화와 비용 (환율·파괴 시 추가 비용·표시 단위) ──────
-export function renderCurrency(ctx, el) {
+// 재화: 이름 · 환율 · 파괴 시 추가 비용, 결과 표시 단위
+function currencyBody(ctx) {
   const s = ctx.state;
-  const num = (value, label, set, cls = '') => h(`input${cls}`, { type: 'number', value, min: 0, step: 'any', 'aria-label': label,
-    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v >= 0) { set(v); ctx.schedule(); } } });
-  el.replaceChildren(
-    h('div.card-head', {}, h('h2', {}, '재화와 비용'), h('span.hint', {}, '모든 비용을 원화로 환산해 한 기준으로 비교 · 무료 재화도 획득 시간·기회비용으로 환산')),
-    h('div.table-wrap', {}, h('table.edit-table.currency-table', {},
-      h('thead', {}, h('tr', {},
-        h('th.left', {}, '재화'), h('th.left', { title: '예: 10,000 골드 = 10 원' }, '원화 환율'),
-        h('th', { title: '파괴되면 복구 단계로 돌아가고 이 비용이 더해집니다 (복구 비용 또는 장비 재구매 비용)' }, '파괴 시 추가 비용'), h('th', {}, ''))),
-      h('tbody', {}, ...s.resources.map((res, ri) => {
-        const rate = rateOf(res);
-        return h('tr', {},
-          h('td', {}, h('input.name', { type: 'text', value: res.name, 'aria-label': '재화 이름', oninput: (e) => { res.name = e.target.value || `재화${ri + 1}`; ctx.schedule(400, true); } })),
-          h('td', {}, h('div.rate-inline', {},
-            num(rate.units, `${res.name} 수량`, (v) => { rate.units = v; setRate(res, rate.units, rate.won); }), h('span', {}, res.name), h('span.eq', {}, '='),
-            num(rate.won, '원화 금액', (v) => { rate.won = v; setRate(res, rate.units, rate.won); }), h('span', {}, '원'))),
-          h('td', {}, h('div.unit-input.right', {}, num(s.destroyCosts[ri], `파괴 시 ${res.name}`, (v) => { s.destroyCosts[ri] = v; }), h('span', {}, res.name))),
-          h('td.x', {}, h('button.icon-x', { type: 'button', title: '재화 삭제', disabled: s.resources.length <= 1, onclick: () => removeResource(ctx, ri) }, '×')),
-        );
-      })),
-    )),
-    h('div.table-foot', {},
-      s.resources.length < MAX_RESOURCES ? h('button.btn.small', { type: 'button', onclick: () => addResource(ctx) }, '+ 재화 추가') : h('span'),
-      h('label.field.inline-field', { title: '기대 비용·분포·예산을 이 단위로 보여줍니다. 골드를 고르면 “기대 총비용 2,796만 골드”처럼 표시' }, h('span', {}, '결과 표시 단위'),
-        select([['won', '원'], ...s.resources.map((r, i) => [String(i), r.name])], String(s.display ?? 'won'),
-          (v) => { s.display = v === 'won' ? 'won' : +v; ctx.rebuild(); })),
-    ),
-  );
+  return [
+    h('p.desc', {}, '재화마다 원화 환율을 정합니다 (예: 10,000 골드 = 10 원). 무료 재화도 획득 시간·기회비용으로 환산해 두세요.'),
+    ...s.resources.map((res, ri) => {
+      const rate = rateOf(res);
+      const n = (key, label) => h('input', {
+        type: 'number', value: rate[key], min: 0, step: 'any', 'aria-label': label,
+        oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v >= 0) { rate[key] = v; setRate(res, rate.units, rate.won); ctx.schedule(); } },
+      });
+      return h('div.res-block', {},
+        h('div.res-row', {},
+          h('input', { type: 'text', value: res.name, 'aria-label': '재화 이름', oninput: (e) => { res.name = e.target.value || `재화${ri + 1}`; ctx.schedule(400, true); } }),
+          h('button.icon-x', { type: 'button', title: '재화 삭제', disabled: s.resources.length <= 1, onclick: () => removeResource(ctx, ri) }, '×')),
+        h('div.rate-row', {}, n('units', `${res.name} 수량`), h('span', {}, res.name), h('span.eq', {}, '='), n('won', '원화 금액'), h('span', {}, '원')),
+        h('div.kv-row', { title: '파괴되면 복구 단계로 돌아가고 이 비용이 더해집니다 (복구 비용 또는 장비 재구매 비용)' },
+          h('span', {}, '파괴 시 추가'), numInput(ctx, s.destroyCosts, ri, { min: 0, label: `파괴 시 ${res.name}` }), h('span', {}, res.name)),
+      );
+    }),
+    s.resources.length < MAX_RESOURCES ? h('button.btn.small', { type: 'button', onclick: () => addResource(ctx) }, '+ 재화 추가') : null,
+    field('결과 표시 단위', select([['won', '원'], ...s.resources.map((r, i) => [String(i), r.name])], String(s.display ?? 'won'),
+      (v) => { s.display = v === 'won' ? 'won' : +v; ctx.rebuild(); }),
+    '기대 비용·분포·예산을 이 단위로 보여줍니다'),
+  ];
 }
 
 function addResource(ctx) {
@@ -139,33 +144,28 @@ function removeResource(ctx, ri) {
 }
 
 // ── 보조 아이템 편집기 ──────────────────────────────────
-const EFFECTS = [['protect', '파괴방지 (파괴→유지)'], ['nodrop', '하락방지 (하락→유지)'], ['boost', '성공률 증가']];
+const EFFECTS = [['protect', '파괴방지 (파괴→유지)'], ['nodrop', '하락방지 (하락→유지)'], ['boost', '성공률 증가 (%p)']];
 
-export function renderItems(ctx, el) {
+function itemsBody(ctx) {
   const s = ctx.state;
-  el.replaceChildren(
-    s.items.length ? h('div.table-wrap', {}, h('table.edit-table', {},
-      h('thead', {}, h('tr', {},
-        h('th.left', {}, '아이템'), h('th.left', {}, '효과'),
-        ...s.resources.map(r => h('th', { title: '1회 사용 비용' }, `${r.name}`)),
-        h('th', { title: '이 단계 범위에서만 사용할 수 있습니다' }, '적용 단계'), h('th', {}, ''))),
-      h('tbody', {}, ...s.items.map((it) => h('tr', {},
-        h('td', {}, h('input.name', { type: 'text', value: it.name, 'aria-label': '아이템 이름', oninput: (e) => { it.name = e.target.value || '아이템'; ctx.schedule(400, true); } })),
-        h('td', {}, h('div.effect-cell', {},
-          select(EFFECTS, it.effect, (v) => { it.effect = v; ctx.rebuild(); }),
-          it.effect === 'boost' ? h('div.unit-input', {}, numInput(ctx, it, 'amount', { min: 0, max: 100, label: '증가량', cls: 'short' }), h('span', {}, '%p')) : null)),
-        ...s.resources.map((res, ri) => h('td', {}, numInput(ctx, it.costs, ri, { min: 0, label: `${it.name} ${res.name}` }))),
-        h('td', {}, h('div.range-cell', {},
-          numInput(ctx, it, 'from', { int: true, min: 0, label: '적용 시작', cls: 'short', after: () => ctx.markTableDirty() }), h('span', {}, '~'),
-          numInput(ctx, it, 'to', { int: true, min: 0, label: '적용 끝', cls: 'short', after: () => ctx.markTableDirty() }))),
-        h('td.x', {}, h('button.icon-x', { type: 'button', title: '아이템 삭제', onclick: () => removeItem(ctx, it.id) }, '×')),
-      ))),
-    )) : h('p.muted', {}, '보조 아이템이 없습니다. 파괴방지권·하락방지권·성공률 증가 아이템을 추가해 BM 구조를 설계하세요.'),
-    h('div.table-foot', {},
-      s.items.length < MAX_ITEMS ? h('button.btn.small', { type: 'button', onclick: () => addItem(ctx) }, '+ 아이템 추가') : h('span'),
-      h('span.muted.small', {}, '비용 열 = 1회 사용 비용'),
-    ),
-  );
+  return [
+    s.items.length ? null : h('p.desc', {}, '파괴방지권·하락방지권·성공률 증가 아이템을 추가해 BM 구조를 설계하세요.'),
+    ...s.items.map((it) => h('div.res-block', {},
+      h('div.res-row', {},
+        h('input', { type: 'text', value: it.name, 'aria-label': '아이템 이름', oninput: (e) => { it.name = e.target.value || '아이템'; ctx.schedule(400, true); } }),
+        h('button.icon-x', { type: 'button', title: '아이템 삭제', onclick: () => removeItem(ctx, it.id) }, '×')),
+      h('div.effect-row', {},
+        select(EFFECTS, it.effect, (v) => { it.effect = v; ctx.rebuild(); }),
+        it.effect === 'boost' ? h('div.unit-input', {}, numInput(ctx, it, 'amount', { min: 0, max: 100, label: '증가량' }), h('span', {}, '%p')) : null),
+      h('div.cost-mini', {}, ...s.resources.map((res, ri) => h('label.mini-field', {}, h('span', {}, res.name), numInput(ctx, it.costs, ri, { min: 0, label: `${it.name} ${res.name}` })))),
+      h('div.kv-row', { title: '이 단계 범위에서만 사용할 수 있습니다. 실제 사용 여부는 단계 표의 아이템 칸에서 켭니다' },
+        h('span', {}, '적용 단계'),
+        numInput(ctx, it, 'from', { int: true, min: 0, label: '적용 시작', after: () => ctx.markTableDirty() }), h('span', {}, '~'),
+        numInput(ctx, it, 'to', { int: true, min: 0, label: '적용 끝', after: () => ctx.markTableDirty() })),
+    )),
+    s.items.length < MAX_ITEMS ? h('button.btn.small', { type: 'button', onclick: () => addItem(ctx) }, '+ 아이템 추가') : null,
+    s.items.length ? h('p.desc', {}, '비용 = 1회 사용 비용. 단계별 사용은 오른쪽 단계 표의 아이템 칸에서 켭니다.') : null,
+  ];
 }
 
 function addItem(ctx) {

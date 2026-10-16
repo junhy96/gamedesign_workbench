@@ -14,7 +14,7 @@ export function renderTable(ctx, els, res) {
   const rows = s.rows.filter(r => s.showAll || onPath(r.stage));
 
   const input = [
-    '성공 %', ...(s.double ? ['대성공 %'] : []), '유지 %', '하락 %', '파괴 %', '합계',
+    '성공 %', ...(s.double ? ['대성공 %'] : []), '유지 %', '하락 %', '파괴 %',
     ...s.resources.map(r => `${r.name} 비용`), ...(s.items.length ? ['보조 아이템'] : []),
   ];
   const result = ['기대 시도', '돌파 전 파괴', '비용 비중', '민감도'];
@@ -33,9 +33,8 @@ export function renderTable(ctx, els, res) {
       h('tr.group', {}, h('th', {}), h('th.group-in', { colspan: input.length }, '설계 입력 — 칸을 직접 수정'), h('th.group-out', { colspan: result.length }, '계산 결과')),
       h('tr', {}, th('단계', 'left'), ...input.map(t => th(t)), ...result.map((t, i) => th(t, i ? 'res' : 'res first')))),
     h('tbody', {}, ...rows.map(r => h(`tr${onPath(r.stage) ? '' : '.off'}`, { dataset: { stage: r.stage } },
-      h('td.stage', {}, `+${r.stage} → +${r.stage + 1}`),
+      h('td.stage', {}, `+${r.stage} → +${r.stage + 1}`, h('span.sum-bad', { dataset: { k: 'sum' } })),
       probCell(r, 's'), s.double ? probCell(r, 's2') : null, probCell(r, 'k'), probCell(r, 'd'), probCell(r, 'b'),
-      h('td.sum', { dataset: { k: 'sum' } }),
       ...s.resources.map((_, ri) => costCell(r, ri)),
       s.items.length ? h('td.chips', {}, ...itemChips(ctx, r.stage)) : null,
       h('td.res.first', { dataset: { k: 'visits' } }),
@@ -46,6 +45,12 @@ export function renderTable(ctx, els, res) {
   );
   updateValues(ctx, els, res);
 
+  els.legend.replaceChildren(...(s.items.length ? [
+    h('span.muted', {}, '아이템 칸: '),
+    ...s.items.map(it => h('span.legend-item', {}, h('b', {}, abbr(s.items, it)), ` ${it.name}`)),
+    h('span.muted', {}, ' · * 상황별 사용'),
+  ] : []));
+
   els.rowBtns.replaceChildren(
     h('button.btn.small', { type: 'button', onclick: () => addRow(ctx) }, '+ 단계 추가'),
     h('button.btn.small', { type: 'button', onclick: () => removeRow(ctx), disabled: s.rows.length <= 1 }, '마지막 단계 삭제'),
@@ -53,7 +58,6 @@ export function renderTable(ctx, els, res) {
 }
 
 const HEAD_TIPS = {
-  '합계': '성공·대성공·유지·하락·파괴의 합. 100이 아니면 빨간색으로 표시되고 계산하지 않습니다',
   '돌파 전 파괴': '이 단계에서 출발해 다음 단계에 닿기 전에 파괴될 확률. 하락해서 다시 올라오는 경로와 연속 보정까지 포함한 정확해',
   '기대 시도': '목표까지 가는 동안 이 단계에서 시도하는 평균 횟수',
   '비용 비중': '총 기대 비용 중 이 단계에서 쓰는 비율 (파괴 복구 비용 포함). 마우스를 올리면 기대 비용·1회 비용',
@@ -61,11 +65,18 @@ const HEAD_TIPS = {
   '보조 아이템': '켠 아이템을 이 단계의 모든 시도에 사용. "상황별"은 최적화 결과로 연속 실패 횟수에 따라 사용 여부가 다름',
 };
 
+/** 아이템 약자: 이름 첫 글자, 겹치면 두 글자 */
+function abbr(items, it) {
+  const first = (x) => [...x.name.trim()][0] ?? '?';
+  return items.some(o => o !== it && first(o) === first(it)) ? [...it.name.trim()].slice(0, 2).join('') : first(it);
+}
+
 function itemChips(ctx, stage) {
   const s = ctx.state;
   const u = s.usage[stage];
   const flat = Array.isArray(u) ? u : null;
-  return s.items.filter(it => stage >= it.from && stage <= it.to).map(it => {
+  return s.items.map(it => {
+    if (stage < it.from || stage > it.to) return h('span.chip-slot', { title: `${it.name}: 적용 단계 밖` }); // 칸 정렬 유지
     const on = flat ? flat.includes(it.id) : u?.byCounter.some(a => a.includes(it.id));
     const partial = !flat && on && !u.byCounter.every(a => a.includes(it.id));
     return h(`button.chip${on ? '.on' : ''}${partial ? '.partial' : ''}`, {
@@ -77,7 +88,7 @@ function itemChips(ctx, stage) {
         s.usage[stage] = on && !partial ? all.filter(id => id !== it.id) : [...new Set([...all, it.id])];
         ctx.markTableDirty(); ctx.recompute();
       },
-    }, it.name, partial ? ' (상황별)' : '');
+    }, abbr(s.items, it), partial ? '*' : '');
   });
 }
 
@@ -94,7 +105,7 @@ function updateValues(ctx, els, res) {
     const bad = Math.abs(sum - 100) > 0.01;
     tr.classList.toggle('bad', bad);
     const set = (k, v) => { const el = tr.querySelector(`[data-k="${k}"]`); if (el) el.textContent = v; return el; };
-    set('sum', bad ? fmtNum(sum, 2) : '100').classList.toggle('hi', bad);
+    set('sum', bad ? `합 ${fmtNum(sum, 2)}` : '');
     const st = byStage.get(stage);
     if (!st) { ['risk', 'visits', 'share', 'sens'].forEach(k => set(k, '')); tr.querySelector('[data-k="bar"]').style.width = '0'; continue; }
     const risk = st.destroyBeforePass;

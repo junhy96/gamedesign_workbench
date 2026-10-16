@@ -2,18 +2,18 @@
 import { analyze, effectiveProbs } from './model.js';
 import { simulate } from './simulate.js';
 import { TEMPLATES } from './presets.js';
-import { renderRules, renderCurrency } from './panels.js';
+import { renderSidebar } from './panels.js';
 import { bindCurrency } from './currency.js';
 import { renderTable } from './table.js';
 import {
   buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
-  renderItemsCard, renderOptCard, renderInverse, drawChart,
+  renderOptCard, renderInverse, drawChart,
 } from './results.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
 
 const SCHEMA = 2;
 const STORE_KEY = 'enhance:v2';
-const SECTIONS = [['enh-design', '설계 입력'], ['enh-analysis', '결과 분석'], ['enh-tools', '밸런스 도구']];
+const SECTIONS = [['enh-stages', '단계 표'], ['enh-analysis', '결과 분석'], ['enh-tools', '밸런스 도구']];
 const MC_STEP_BUDGET = 4e7;   // 시뮬레이션 계산량 상한 (기대 시도 × 반복 수)
 const MC_MAX_TRIALS = 20000;
 const MC_MIN_TRIALS = 1000;
@@ -67,8 +67,8 @@ export function mount(root) {
   });
 }
 
-// 한 화면 구성: 핵심 지표 → 설계 입력(규칙·단계 표·아이템·재화) → 결과 분석 → 밸런스 도구
-// 지표 카드가 화면 밖으로 나가면 상단 고정 띠에 같은 지표가 나타나 입력하면서도 결과를 본다.
+// 화면 구성: 왼쪽 = 설정 메뉴(고정, 따로 스크롤), 오른쪽 = 핵심 지표 → 단계 표(입력 + 같은 줄 결과) → 결과 분석 → 밸런스 도구
+// 지표 카드가 위로 사라지면 오른쪽 위 고정 띠에 같은 지표가 나타나 입력하면서도 결과를 본다.
 function build(root) {
   const card = (title, hint, ...body) => h('div.card', {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
   const section = (id, title, sub) => h(`div.enh-section#${id}`, {}, h('h2', {}, title), h('span', {}, sub));
@@ -81,33 +81,34 @@ function build(root) {
       ),
       els.head = h('div.tool-actions', {}),
     ),
-    els.bar = h('div.enh-bar', { 'aria-hidden': 'true' },
-      buildStrip(els),
-      h('nav.enh-jump', {}, ...SECTIONS.map(([id, label]) => h('a', { href: `#${id}`, onclick: (e) => { e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); } }, label))),
-    ),
-    els.errors = h('ul.errors', { hidden: true }),
-    h('div.enh-page', {},
-      kpis,
-
-      section('enh-design', '설계 입력', '규칙 · 단계별 확률과 비용 · 보조 아이템 · 재화'),
-      els.rules = h('div.card.rules'),
-      card('단계별 확률과 비용', '왼쪽 칸을 고치면 같은 줄 오른쪽 결과가 바로 바뀝니다 · 머리글에 마우스를 올리면 설명',
-        h('div.table-wrap', {}, els.table = h('table.stages', {})),
-        h('div.table-foot', {},
-          h('label.switch.inline', {},
-            els.showAll = h('input', { type: 'checkbox', onchange: (e) => { ctx.state.showAll = e.target.checked; ctx.tableDirty = true; recompute(); } }),
-            '경로 밖 단계도 표시'),
-          els.rowBtns = h('div.tool-actions', {}),
+    h('div.enh-layout', {},
+      els.side = h('aside.enh-side', { 'aria-label': '설정' }),
+      h('div.enh-main', {},
+        els.bar = h('div.enh-bar', {},
+          buildStrip(els),
+          h('nav.enh-jump', {}, ...SECTIONS.map(([id, label]) => h('a', { href: `#${id}`, onclick: (e) => { e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); } }, label))),
         ),
+        els.errors = h('ul.errors', { hidden: true }),
+        kpis,
+        h('div#enh-stages.anchor', {}),
+        card('단계별 확률과 비용', '왼쪽 칸을 고치면 같은 줄 오른쪽 결과가 바로 바뀝니다 · 머리글에 마우스를 올리면 설명',
+          h('div.table-wrap', {}, els.table = h('table.stages', {})),
+          h('div.table-foot', {},
+            h('label.switch.inline', {},
+              els.showAll = h('input', { type: 'checkbox', onchange: (e) => { ctx.state.showAll = e.target.checked; ctx.tableDirty = true; recompute(); } }),
+              '경로 밖 단계도 표시'),
+            els.legend = h('span.chip-legend', {}),
+            els.rowBtns = h('div.tool-actions', {}),
+          ),
+        ),
+
+        section('enh-analysis', '결과 분석', '총비용 분포 · 재화별 소모 · 계산 검증'),
+        buildDist(ctx, els),
+        h('div.two-col', {}, els.resources = h('div.card'), els.verify = h('div.card')),
+
+        section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책'),
+        h('div.two-col', {}, els.inverse = h('div.card.tool-card'), els.optCard = h('div.card.tool-card')),
       ),
-      h('div.two-col.wide-left', {}, els.itemsCard = h('div.card'), els.currency = h('div.card')),
-
-      section('enh-analysis', '결과 분석', '총비용 분포 · 재화별 소모 · 계산 검증'),
-      buildDist(ctx, els),
-      h('div.two-col', {}, els.resources = h('div.card'), els.verify = h('div.card')),
-
-      section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책'),
-      h('div.two-col', {}, els.inverse = h('div.card.tool-card'), els.optCard = h('div.card.tool-card')),
     ),
   );
   // 지표 카드가 위로 스크롤되어 사라졌을 때만 띠를 보여줌
@@ -130,9 +131,7 @@ function renderHead() {
 function rebuild() {
   bindCurrency(ctx.state);
   renderHead();
-  renderRules(ctx, els.rules);
-  renderCurrency(ctx, els.currency);
-  renderItemsCard(ctx, els);
+  renderSidebar(ctx, els.side);
   renderOptCard(ctx, els);
   els.showAll.checked = ctx.state.showAll;
   els.inverse.replaceChildren();
