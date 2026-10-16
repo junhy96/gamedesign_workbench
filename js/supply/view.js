@@ -1,5 +1,6 @@
 // 성장 재화 수급 설계 — 화면: 왼쪽 설정 메뉴, 오른쪽 공급원 → 성장 항목(마일스톤) → 도달 곡선 → 레벨별 필요량
-import { design, PERIODS } from './model.js';
+import { design, PERIODS, targetLevel } from './model.js';
+import { importGrowthTable } from '../economy/view.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadText, toast, debounce, comma, fmtNum } from '../lib/util.js';
 
@@ -100,7 +101,9 @@ function renderSide() {
         h('button.icon-x', { type: 'button', title: '삭제', disabled: s.segments.length <= 1, onclick: () => removeSegment(i) }, '×'))),
       s.segments.length < 4 ? h('button.btn.small', { type: 'button', onclick: addSegment }, '+ 세그먼트 추가') : null,
     ),
-    section('shape', '필요량 다듬기', `${s.smooth ? '단조 보정' : '공급 그대로'} · ${s.round}단위`,
+    section('shape', '필요량 다듬기', `${s.curve === 'smooth' ? '곡선' : '직선'} · ${s.smooth ? '단조 보정' : '공급 그대로'} · ${s.round}단위`,
+      field('마일스톤 사이 연결', select([['linear', '직선 (구간마다 일정한 속도)'], ['smooth', '곡선 (초반 빠르고 점점 완만)']], s.curve ?? 'linear', (v) => { s.curve = v; renderSide(); schedule(0); }),
+        '곡선은 마일스톤을 그대로 지나는 단조 3차 곡선입니다. 레벨이 되돌아가지 않고, 구간 경계에서 속도가 갑자기 꺾이지 않습니다'),
       h('label.switch', {}, '레벨이 오를수록 줄지 않게 보정', h('input', { type: 'checkbox', checked: s.smooth, onchange: (e) => { s.smooth = e.target.checked; renderSide(); schedule(0); } })),
       h('p.desc', {}, '끄면 공급량 그대로라 해금일·주간 보상 때문에 필요량이 들쭉날쭉할 수 있습니다. 켜면 인접 구간을 평균으로 묶어(총량 유지) 단조 증가로 만들고, 대신 도달일이 조금 어긋납니다.'),
       field('반올림 단위', num(s, 'round', { min: 1, label: '반올림 단위' }), '누적량을 반올림한 뒤 차이를 필요량으로 써서 총량 오차가 쌓이지 않습니다'),
@@ -257,6 +260,9 @@ function drawChart(res) {
     const color = cssVar(SERIES[si % SERIES.length]);
     return { label: sp.seg.name + (si === state.ref ? ' (기준)' : ''), data: pts, borderColor: color, backgroundColor: color, stepped: 'before', pointRadius: 0, borderWidth: si === state.ref ? 2.5 : 1.75 };
   });
+  const pts = [];
+  for (let d = 0; d <= maxDay; d += Math.max(0.5, maxDay / 200)) pts.push({ x: d, y: Math.min(g.max, targetLevel(g, d, state.curve)) });
+  datasets.push({ label: '목표 곡선', data: pts, borderColor: ink, borderDash: [5, 4], borderWidth: 1.25, pointRadius: 0, stepped: false });
   datasets.push({
     label: '마일스톤', type: 'scatter', data: g.milestones.map(m => ({ x: m.day, y: m.level })),
     pointRadius: 6, pointHoverRadius: 7, pointStyle: 'rectRot', backgroundColor: ink, borderColor: cssVar('--surface'), borderWidth: 2,
@@ -290,7 +296,9 @@ function renderLevels(res) {
   };
   const ms = new Set(k.sink.milestones.map(m => m.level));
   els.levelCard.replaceChildren(
-    h('div.card-head', {}, h('h2', {}, `③ 레벨별 필요량 — ${k.sink.name}`), h('span.hint', {}, `단위 ${state.currency} · 굵은 줄 = 마일스톤 레벨`)),
+    h('div.card-head', {}, h('h2', {}, `③ 레벨별 필요량 — ${k.sink.name}`),
+      h('div.tool-actions', {}, h('span.hint', {}, `단위 ${state.currency} · 굵은 줄 = 마일스톤 레벨`),
+        h('button.btn.small.primary', { type: 'button', title: '이 표를 재화 흐름 시뮬레이터의 같은 이름 성장 항목 비용으로 넣고 이동', onclick: () => sendToEconomy(k) }, '재화 흐름으로 보내기'))),
     h('div.table-wrap.level-wrap', {}, h('table.stages.level-table', {},
       h('thead', {}, h('tr', {},
         h('th.left', {}, 'Lv'), h('th', {}, '필요량'), h('th', {}, '누적'), h('th', { title: '마일스톤을 선형으로 이은 목표 일차' }, '목표일'),
@@ -318,6 +326,13 @@ function renderWarnings(res) {
       h('p.muted.small', {}, `레벨 L 누적 필요량 = 배분 % × 기준 세그먼트의 누적 공급(목표일). 기준 세그먼트는 마일스톤에 정확히 닿고(보정·반올림 전), 다른 세그먼트는 같은 표로 자기 공급이 누적 필요량을 넘는 첫 날에 도달합니다.`),
     ),
   );
+}
+
+// ── 재화 흐름 시뮬레이터로 보내기 ───────────────────────
+function sendToEconomy(k) {
+  const r = importGrowthTable({ currency: state.currency.trim() || '재화', name: k.sink.name.trim() || '성장', max: k.sink.max, start: k.sink.start ?? 0, costs: k.cost });
+  location.hash = '#economy';
+  toast(`재화 흐름에 '${k.sink.name}' 필요량 표를 ${r.created ? '새 성장 항목으로 추가' : '적용'}했습니다${r.currencyCreated ? ` (재화 '${state.currency}' 추가)` : ''}`);
 }
 
 // ── 공유·내보내기 ───────────────────────────────────────

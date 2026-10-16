@@ -1,5 +1,5 @@
 // 재화 흐름 시뮬레이터 v2 — 화면: 성장 루프(콘텐츠 → 재화 → 성장 → 전투력 → 콘텐츠)
-import { simulate, toMermaid } from './model.js';
+import { simulate, toMermaid, applyGrowthTable } from './model.js';
 import { TEMPLATES } from './presets.js';
 import { renderSvg, renderOffscreen, isDark } from '../lib/mermaid.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
@@ -18,6 +18,18 @@ function defaultState(id) { return { v: SCHEMA, template: id, view: { currency: 
 function hydrate(o) { return o && o.v === SCHEMA && TEMPLATES[o.template] ? { ...defaultState(o.template), ...o } : null; }
 function readHash() { const m = location.hash.match(/^#economy\?s=([\w-]+)/); return m ? hydrate(decodeState(m[1])) : null; }
 const curName = (id) => state.currencies.find(c => c.id === id)?.name ?? id;
+
+/**
+ * 성장 재화 수급 설계에서 보낸 필요량 표 적용. 이 탭이 열려 있으면 화면 상태에, 아니면 저장된 상태에 넣는다
+ * (다음에 탭을 열 때 저장된 상태를 읽으므로 즉시 저장).
+ */
+export function importGrowthTable(payload) {
+  const target = state ?? (hydrate(store.get(STORE_KEY)) || defaultState('mobile'));
+  const r = applyGrowthTable(target, payload);
+  store.set(STORE_KEY, target);
+  if (state && els.tables) rebuild();
+  return r;
+}
 
 export function mount(root) {
   state = readHash() || hydrate(store.get(STORE_KEY)) || defaultState('mobile');
@@ -149,6 +161,7 @@ function rebuildTables() {
       [{ key: 'name', label: '이름', type: 'text', width: 110 }, { key: 'max', label: '최대 Lv', type: 'num', width: 55 }, { key: 'rate', label: '증가율', type: 'num', width: 60 },
         { key: 'power', label: '전투력/Lv', type: 'num', width: 60 }, ...curCols('cost', '비용')],
       () => ({ id: newId(), name: '새 성장', max: 20, start: 0, rate: 1.1, power: 10, cost: { [firstCur()]: 1000 } })),
+    ...[tableNote()].filter(Boolean),
     editTable('재화', '시작 보유량', state.currencies,
       [{ key: 'name', label: '이름', type: 'text', width: 110 }, { key: 'start', label: '시작 보유량', type: 'num', width: 110 }],
       () => ({ id: newId(), name: '새 재화', start: 0 })),
@@ -159,6 +172,18 @@ function rebuildTables() {
         { key: 'amount', label: '양', type: 'num', width: 80 }, { key: 'rate', label: '비율', type: 'num', width: 90 },
         { key: 'threshold', label: '기준 보유량', type: 'num', width: 100 }, { key: 'maxPerDay', label: '하루 최대', type: 'num', width: 55 }],
       () => ({ id: newId(), name: '새 교환', from: firstCur(), to: state.currencies[1]?.id ?? firstCur(), amount: 100, rate: 1, threshold: 100, maxPerDay: 1 })),
+  );
+}
+
+function tableNote() {
+  const items = state.growth.filter(g => g.table && Object.keys(g.table).length);
+  if (!items.length) return null;
+  return h('div.card.table-note', {},
+    h('div.card-head', {}, h('h2', {}, '필요량 표를 쓰는 성장 항목'), h('span.hint', {}, '성장 재화 수급 설계에서 보낸 레벨별 표 — 이 재화는 위 표의 기본 비용·증가율 대신 레벨별 값을 씁니다')),
+    h('ul.note-list', {}, ...items.flatMap(g => Object.entries(g.table).map(([cid, t]) => h('li', {},
+      h('b', {}, g.name), ` · ${curName(cid)} ${t.length}레벨 (Lv1 ${t[0]?.toLocaleString('ko-KR')} → 마지막 ${t.at(-1)?.toLocaleString('ko-KR')})`,
+      h('button.btn.small', { type: 'button', onclick: () => { delete g.table[cid]; if (!Object.keys(g.table).length) { delete g.table; delete g.tableStart; } rebuild(); } }, '표 해제'),
+    )))),
   );
 }
 

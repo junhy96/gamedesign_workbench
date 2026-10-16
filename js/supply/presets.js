@@ -9,7 +9,7 @@ export const TEMPLATES = {
     label: '강화석 — 장비·장신구 강화',
     note: '일일 퀘스트·던전·주간 레이드·월정액이 강화석을 뿌리고, 장비 강화(70%)와 장신구 강화(30%)가 나눠 씁니다. 코어 유저가 장비 +20을 7일, +40을 30일, +60을 90일에 찍도록 필요량을 역산합니다.',
     make: () => ({
-      days: 120, start: 50, ref: 1, round: 5, smooth: true, gapWarn: 3,
+      days: 120, start: 50, ref: 1, round: 5, smooth: true, curve: 'smooth', gapWarn: 3,
       currency: '강화석',
       segments: SEGS.map(s => ({ ...s })),
       sources: [
@@ -30,7 +30,7 @@ export const TEMPLATES = {
     label: '빈 설계 (직접 입력)',
     note: '공급원 1개, 성장 항목 1개에서 시작합니다.',
     make: () => ({
-      days: 60, start: 0, ref: 0, round: 1, smooth: true, gapWarn: 3,
+      days: 60, start: 0, ref: 0, round: 1, smooth: true, curve: 'linear', gapWarn: 3,
       currency: '재화',
       segments: [seg('u1', '기준 유저')],
       sources: [{ id: 's1', name: '일일 보상', amount: 10, period: 'day', unlock: 1, runs: { u1: 1 } }],

@@ -90,3 +90,20 @@ test('배분 합 100% 초과·마일스톤 역순은 경고·오류', () => {
   const bad = one({ sinks: [{ id: 'g', name: 'A', share: 100, max: 10, start: 0, milestones: [{ day: 10, level: 5 }, { day: 5, level: 8 }] }] });
   assert.match(validate(bad).join(), /커지는 순서/);
 });
+
+test('곡선 연결: 마일스톤을 지나고, 항상 증가하며, 직선과 역함수가 일치', async () => {
+  const { targetLevel } = await import('../js/supply/model.js');
+  const g = { start: 0, milestones: [{ day: 7, level: 20 }, { day: 30, level: 40 }, { day: 90, level: 60 }] };
+  for (const m of g.milestones) assert.ok(Math.abs(targetLevel(g, m.day, 'smooth') - m.level) < 1e-9);
+  let prev = -1;
+  for (let d = 0; d <= 120; d += 0.5) { const v = targetLevel(g, d, 'smooth'); assert.ok(v >= prev - 1e-9, `d=${d}`); prev = v; }
+  for (const L of [5, 20, 33, 59]) assert.ok(Math.abs(targetLevel(g, targetDay(g, L, 'smooth'), 'smooth') - L) < 1e-6);
+  // 감속하는 마일스톤이면 곡선은 첫 구간 중간에서 직선보다 앞선다(초반 빠름)
+  assert.ok(targetLevel(g, 3.5, 'smooth') > targetLevel(g, 3.5, 'linear'));
+  const cfg = tpl('stone'); cfg.curve = 'smooth'; cfg.smooth = false; cfg.round = 1;
+  const r = design(cfg);
+  for (const k of r.sinks) for (const m of k.sink.milestones) {
+    const d = k.reach[cfg.ref][k.levels.indexOf(m.level)];
+    assert.ok(Math.abs(d - m.day) <= 1, `${k.sink.name} Lv${m.level}: ${d}`);
+  }
+});

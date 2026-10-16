@@ -92,3 +92,20 @@ test('순환 교환 거부, 루프 다이어그램 구성', () => {
   const code = toMermaid(TEMPLATES.mobile.make());
   for (const s of ['전투력', '일반 던전', '장비 강화', '과금']) assert.ok(code.includes(s), s);
 });
+
+test('수급 설계 필요량 표: 표가 있는 재화는 레벨별 값, 같은 이름이면 갱신', async () => {
+  const { applyGrowthTable, growthCost, simulate } = await import('../js/economy/model.js');
+  const { TEMPLATES } = await import('../js/economy/presets.js');
+  const cfg = TEMPLATES.mobile.make();
+  const costs = Array.from({ length: 60 }, (_, i) => 10 + i);
+  const r = applyGrowthTable(cfg, { currency: '강화석', name: '장비 강화', max: 60, costs });
+  assert.equal(r.created, false); assert.equal(r.currencyCreated, false);
+  const g = cfg.growth.find(x => x.name === '장비 강화');
+  const stone = cfg.currencies.find(c => c.name === '강화석').id;
+  assert.equal(growthCost(g, 0, stone), 10);
+  assert.equal(growthCost(g, 59, stone), 69);
+  assert.equal(growthCost(g, 5, 'gold'), Math.round(g.cost.gold * g.rate ** 5)); // 다른 재화는 기존 식
+  const r2 = applyGrowthTable(cfg, { currency: '룬', name: '룬 각인', max: 3, costs: [5, 6, 7] });
+  assert.equal(r2.created, true); assert.equal(r2.currencyCreated, true);
+  assert.equal(simulate(cfg).ok, true);
+});

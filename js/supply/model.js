@@ -5,7 +5,7 @@
 //   S_seg(d) = 시작 보유량 + d일차까지 누적 획득량   (d일차가 끝났을 때, 일차 사이는 선형 보간)
 //
 // ■ 목표 성장 속도
-//   성장 항목마다 공급 배분 비율 p와 마일스톤 (일차, 레벨). 마일스톤 사이는 레벨을 선형 보간 →
+//   성장 항목마다 공급 배분 비율 p와 마일스톤 (일차, 레벨). 마일스톤 사이는 직선 또는 단조 3차 곡선으로 연결 →
 //   기준 세그먼트가 레벨 L에 닿아야 하는 일차 d(L)
 //
 // ■ 역산
@@ -79,15 +79,53 @@ const at = (S, x) => { // 일차 사이 선형 보간 (공급이 하루 동안 �
   return S[i] + (S[i + 1] - S[i]) * (x - i);
 };
 
-/** 레벨 L에 닿아야 하는 일차 (마일스톤 선형 보간, 마지막 마일스톤 이후는 마지막 구간 기울기로 연장) */
-export function targetDay(g, L) {
-  const pts = [{ day: 0, level: g.start ?? 0 }, ...g.milestones];
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
-    if (L <= b.level) return a.day + ((L - a.level) / (b.level - a.level)) * (b.day - a.day);
-  }
-  const a = pts.at(-2), b = pts.at(-1);
-  return b.day + ((L - b.level) / (b.level - a.level)) * (b.day - a.day);
+/** 마일스톤 점들: (0, 시작 레벨) + 마일스톤 */
+const points = (g) => [{ day: 0, level: g.start ?? 0 }, ...g.milestones];
+
+/**
+ * 단조 3차 보간(Fritsch–Butland) 기울기. 모든 구간이 증가하므로 결과 곡선도 항상 증가(레벨이 되돌아가지 않음).
+ * 마일스톤 간격이 점점 느려지면 '초반 빠르고 갈수록 완만한' 곡선이 된다.
+ */
+function slopes(pts) {
+  const n = pts.length;
+  const h = [], d = [];
+  for (let i = 0; i < n - 1; i++) { h.push(pts[i + 1].day - pts[i].day); d.push((pts[i + 1].level - pts[i].level) / h[i]); }
+  if (n === 2) return [d[0], d[0]];
+  const m = new Array(n);
+  for (let k = 1; k < n - 1; k++) m[k] = (3 * (h[k - 1] + h[k])) / ((2 * h[k] + h[k - 1]) / d[k - 1] + (h[k] + 2 * h[k - 1]) / d[k]);
+  // 시작: 한쪽 3점 공식(0.5~3배 범위로 제한해 첫 레벨이 지나치게 느려지지 않게)
+  // 끝: 마지막 구간 기울기 — 마일스톤 뒤 직선 연장과 기울기가 이어지고, 마지막 레벨 직전에 멈칫하지 않음
+  m[0] = Math.min(Math.max(((2 * h[0] + h[1]) * d[0] - h[0] * d[1]) / (h[0] + h[1]), 0.5 * d[0]), 3 * d[0]);
+  m[n - 1] = d[n - 2];
+  return m;
+}
+
+/** d일차의 목표 레벨 (curve: 'linear' 직선 | 'smooth' 곡선). 마지막 마일스톤 이후는 마지막 구간 기울기로 연장 */
+export function targetLevel(g, d, curve = 'linear') {
+  const pts = points(g);
+  const last = pts.at(-1), prev = pts.at(-2);
+  if (d >= last.day) return last.level + ((d - last.day) * (last.level - prev.level)) / (last.day - prev.day);
+  let i = 0;
+  while (d > pts[i + 1].day) i++;
+  const a = pts[i], b = pts[i + 1], hh = b.day - a.day, t = (d - a.day) / hh;
+  if (curve !== 'smooth') return a.level + t * (b.level - a.level);
+  const m = slopes(pts);
+  const t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * a.level + (t3 - 2 * t2 + t) * hh * m[i] + (-2 * t3 + 3 * t2) * b.level + (t3 - t2) * hh * m[i + 1];
+}
+
+/** 레벨 L에 닿아야 하는 일차 (targetLevel의 역함수 — 직선은 바로, 곡선은 이분 탐색) */
+export function targetDay(g, L, curve = 'linear') {
+  const pts = points(g);
+  const last = pts.at(-1), prev = pts.at(-2);
+  if (L >= last.level) return last.day + ((L - last.level) / (last.level - prev.level)) * (last.day - prev.day);
+  let i = 0;
+  while (L > pts[i + 1].level) i++;
+  const a = pts[i], b = pts[i + 1];
+  if (curve !== 'smooth') return a.day + ((L - a.level) / (b.level - a.level)) * (b.day - a.day);
+  let lo = a.day, hi = b.day;
+  for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (targetLevel(g, mid, 'smooth') < L) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
 }
 
 /** PAV: 단조 증가가 되도록 위반 구간을 평균으로 합침 (합계 유지) */
@@ -122,7 +160,7 @@ export function design(cfg) {
   const ref = cfg.segments[cfg.ref];
 
   // 계산 구간: 표시 기간과 모든 목표일 중 큰 쪽 (목표가 기간 밖이어도 공급은 이어진다고 보고 역산)
-  const lastDay = Math.max(...cfg.sinks.map(g => targetDay(g, g.max)));
+  const lastDay = Math.max(...cfg.sinks.map(g => targetDay(g, g.max, cfg.curve)));
   const H = Math.max(cfg.days, Math.ceil(lastDay) + 1);
   const supply = cfg.segments.map(seg => {
     const { daily, bySource } = dailySupply(cfg, seg, H);
@@ -139,7 +177,7 @@ export function design(cfg) {
     const start = g.start ?? 0;
     const levels = [];
     for (let L = start + 1; L <= g.max; L++) levels.push(L);
-    const days = levels.map(L => targetDay(g, L));
+    const days = levels.map(L => targetDay(g, L, cfg.curve));
     const cumRaw = days.map(d => p * at(refS, d));
     let raw = cumRaw.map((c, i) => c - (i ? cumRaw[i - 1] : 0));
     const exact = raw.slice();

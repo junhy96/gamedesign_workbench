@@ -35,7 +35,7 @@ export function validate(cfg) {
   });
   cfg.growth.forEach((g, i) => {
     if (!(g.max >= 1)) errors.push(`성장 ${i + 1}번 '${g.name}': 최대 레벨은 1 이상이어야 합니다.`);
-    if (!Object.values(g.cost || {}).some(v => v > 0)) errors.push(`성장 ${i + 1}번 '${g.name}': 비용이 하나 이상 있어야 합니다.`);
+    if (!Object.values(g.cost || {}).some(v => v > 0) && !Object.values(g.table || {}).some(t => t.some(v => v > 0))) errors.push(`성장 ${i + 1}번 '${g.name}': 비용이 하나 이상 있어야 합니다.`);
   });
   cfg.exchanges.forEach((x, i) => {
     if (!ids.has(x.from) || !ids.has(x.to) || x.from === x.to) errors.push(`상점 ${i + 1}번 '${x.name}': 내는 재화와 받는 재화를 다르게 선택하세요.`);
@@ -63,7 +63,30 @@ export function findCycle(exchanges) {
   return null;
 }
 
-export const growthCost = (g, level, cur) => Math.round((g.cost[cur] || 0) * Math.pow(g.rate ?? 1, level));
+/** 레벨 level → level+1 비용. 필요량 표(성장 재화 수급 설계에서 보낸 것)가 있는 재화는 표를, 없으면 기본 비용 × 증가율^레벨 */
+export const growthCost = (g, level, cur) => {
+  const t = g.table?.[cur];
+  if (t?.length) return Math.round(t[Math.min(level - (g.tableStart ?? 0), t.length - 1)] ?? 0);
+  return Math.round((g.cost[cur] || 0) * Math.pow(g.rate ?? 1, level));
+};
+
+/**
+ * 성장 재화 수급 설계의 레벨별 필요량 표를 성장 항목에 넣는다 (같은 이름이면 갱신, 없으면 추가).
+ * 재화는 이름으로 찾고 없으면 추가. cfg를 직접 바꾸고 무엇을 만들었는지 돌려준다.
+ */
+export function applyGrowthTable(cfg, { currency, name, max, start = 0, costs }) {
+  let cur = cfg.currencies.find(c => c.name === currency);
+  const currencyCreated = !cur;
+  if (!cur) { cur = { id: 'c' + Date.now().toString(36), name: currency, start: 0 }; cfg.currencies.push(cur); }
+  let g = cfg.growth.find(x => x.name === name);
+  const created = !g;
+  if (!g) { g = { id: 'g' + Date.now().toString(36), name, max, start, rate: 1, power: 10, cost: {} }; cfg.growth.push(g); }
+  g.max = max;
+  g.tableStart = start;
+  g.table = { ...(g.table || {}), [cur.id]: costs.slice() };
+  g.cost = { ...(g.cost || {}), [cur.id]: costs[0] ?? 0 }; // 다이어그램·검증용 대표값 (계산은 표 사용)
+  return { created, currencyCreated, growthId: g.id, currencyId: cur.id };
+}
 export const effectiveRegen = (stamina, seg) => Math.min(stamina.regenPerDay, stamina.cap * Math.max(1, seg.logins));
 
 /** 세그먼트 1개 시뮬레이션 */
