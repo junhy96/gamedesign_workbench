@@ -3,9 +3,8 @@ import { optimizeItems, solveForCost } from './model.js';
 import { reachProbability } from './simulate.js';
 import { renderItems } from './panels.js';
 import { h, fmtMoney, fmtMoneyShort, fmtPct, fmtNum, comma, toast } from '../lib/util.js';
-
-export const won = (n) => (Number.isFinite(n) ? `${fmtMoney(n)}원` : '—');
-const wonShort = (n) => (Number.isFinite(n) ? `${fmtMoneyShort(n)}원` : '—');
+import { money as won, moneyShort as wonShort, currency, toDisplay, fromDisplay } from './currency.js';
+export { won };
 
 // ── KPI ────────────────────────────────────────────────
 const KPI_DEFS = [
@@ -49,15 +48,15 @@ export function renderKPIs(ctx, els, res) {
 // ── 분포 + 예산 ─────────────────────────────────────────
 export function buildDist(ctx, els) {
   els.budgetInput = h('input', {
-    type: 'number', min: 0, step: 'any', inputmode: 'decimal', 'aria-label': '예산(원)',
-    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { ctx.state.budget = v; ctx.save(); renderBudget(ctx, els); } },
+    type: 'number', min: 0, step: 'any', inputmode: 'decimal', 'aria-label': '예산',
+    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { ctx.state.budget = fromDisplay(v); ctx.save(); renderBudget(ctx, els); } },
   });
   return h('div.card', {},
     h('div.card-head', {}, h('h2', {}, '총비용 분포와 예산'), els.distHint = h('span.hint', {})),
     h('div.dist', {},
       h('div.chart-box', {}, els.canvas = h('canvas', { role: 'img', 'aria-label': '총비용 분포 히스토그램' })),
       h('div.budget', {},
-        h('label.field', {}, h('span', {}, '예산 (원)'), els.budgetInput),
+        h('label.field', {}, els.budgetLabel = h('span', {}, '예산 (원)'), els.budgetInput),
         els.budgetOut = h('div.budget-out', {}),
         els.pct = h('dl.pct-list', {}),
       ),
@@ -69,7 +68,8 @@ export function renderBudget(ctx, els) {
   const mc = ctx.lastMC;
   if (!mc) { els.budgetOut.replaceChildren(h('span.muted', {}, '시뮬레이션 대기 중')); return; }
   const b = ctx.state.budget;
-  if (document.activeElement !== els.budgetInput) els.budgetInput.value = Math.round(b);
+  els.budgetLabel.textContent = `예산 (${currency().name})`;
+  if (document.activeElement !== els.budgetInput) els.budgetInput.value = Math.round(toDisplay(b));
   const p = reachProbability(mc.sortedCost, b);
   els.budgetOut.replaceChildren(
     h('div.big', {}, fmtPct(p, 1)),
@@ -147,7 +147,7 @@ export function drawChart(ctx, els, mc) {
       responsive: true, maintainAspectRatio: false, animation: false,
       layout: { padding: { top: 6 } },
       scales: {
-        x: { type: 'linear', offset: false, min: edges[0], max: edges.at(-1) + binW * 0.01, grid: { display: false }, border: { color: grid }, ticks: { color: text, maxTicksLimit: 6, callback: (v) => fmtMoneyShort(v) } },
+        x: { type: 'linear', offset: false, min: edges[0], max: edges.at(-1) + binW * 0.01, grid: { display: false }, border: { color: grid }, ticks: { color: text, maxTicksLimit: 6, callback: (v) => fmtMoneyShort(toDisplay(v)) } },
         y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: text, maxTicksLimit: 5, callback: (v) => `${v}%` } },
       },
       plugins: {
@@ -171,7 +171,7 @@ export function renderResources(els, res) {
   els.resources.replaceChildren(
     h('div.card-head', {}, h('h2', {}, '재화별 기대 소모'), h('span.hint', {}, '파괴 복구 비용·보조 아이템 포함')),
     h('table.mini', {},
-      h('thead', {}, h('tr', {}, h('th.left', {}, '재화'), h('th', {}, '기대 소모량'), h('th', {}, '원화 환산'), h('th', {}, '비중'))),
+      h('thead', {}, h('tr', {}, h('th.left', {}, '재화'), h('th', {}, '기대 소모량'), h('th', {}, `환산 (${currency().name})`), h('th', {}, '비중'))),
       h('tbody', {}, ...res.resources.map(r => h('tr', {},
         h('td.left', {}, r.name), h('td', {}, fmtMoney(r.units)), h('td', {}, won(r.worth)), h('td', {}, fmtPct(r.worth / total)),
       ))),
@@ -258,14 +258,16 @@ function describeByCounter(u, names) {
 export function renderInverse(ctx, els, res) {
   const s = ctx.state;
   const inv = s.inverse ??= { target: Math.round(res.expCost * 0.8), from: s.start, to: s.target - 1 };
+  // 목표 비용은 표시 단위로 입력받고 원으로 저장
+  const money = (key) => key === 'target';
   const num = (key, label) => h('label.field', {}, h('span', {}, label), h('input', {
-    type: 'number', value: inv[key], step: 'any', 'aria-label': label,
-    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { inv[key] = v; ctx.save(); } },
+    type: 'number', value: money(key) ? Math.round(toDisplay(inv[key])) : inv[key], step: 'any', 'aria-label': label,
+    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { inv[key] = money(key) ? fromDisplay(v) : v; ctx.save(); } },
   }));
   els.inverse.replaceChildren(
     h('div.card-head', {}, h('h2', {}, '목표 비용 역산'), h('span.hint', {}, '확률 자동 조정')),
     h('p.muted.small', {}, '원하는 기대 총비용을 넣으면, 지정한 구간의 성공·대성공 확률에 같은 배율을 곱해 그 비용이 되는 값을 찾습니다(이분 탐색). 실패 결과의 비율은 유지됩니다.'),
-    h('div.row3', {}, num('target', '목표 기대 비용 (원)'), num('from', '구간 시작'), num('to', '구간 끝')),
+    h('div.row3', {}, num('target', `목표 기대 비용 (${currency().name})`), num('from', '구간 시작'), num('to', '구간 끝')),
     h('div', {}, h('button.btn.primary', { type: 'button', onclick: () => runInverse(ctx, els) }, '역산')),
     els.invOut = h('div', {}),
   );

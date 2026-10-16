@@ -22,7 +22,7 @@ export const TEMPLATES = {
       const b = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 7];
       return {
         start: 0, target: 15, restore: 7, double: false,
-        resources: [{ name: '골드', value: 0.001 }, { name: '강화석', value: 50 }, { name: '다이아', value: 10 }],
+        resources: [{ name: '골드', value: 0.001, rate: { units: 10000, won: 10 } }, { name: '강화석', value: 50 }, { name: '다이아', value: 10 }],
         rows: s.map((sv, i) => row(i, sv, 0, d[i], b[i], [r100(2000 * 1.35 ** i), stone[i], 0])),
         destroyCosts: [100000, 0, 0],
         items: [
@@ -42,7 +42,7 @@ export const TEMPLATES = {
       const mats = [2, 2, 3, 3, 4, 5, 6, 8, 10, 12];
       return {
         start: 0, target: 10, restore: 0, double: false,
-        resources: [{ name: '골드', value: 0.001 }, { name: '재료', value: 30 }, { name: '크리스탈', value: 30 }],
+        resources: [{ name: '골드', value: 0.001, rate: { units: 10000, won: 10 } }, { name: '재료', value: 30 }, { name: '크리스탈', value: 30 }],
         rows: s.map((sv, i) => row(i, sv, 0, 0, 0, [r100(5000 * 1.5 ** i), mats[i], 0])),
         destroyCosts: [0, 0, 0],
         items: [{ id: 'breath', name: '숨결', effect: 'boost', amount: 5, costs: [0, 0, 10], from: 0, to: 9 }],
@@ -55,7 +55,7 @@ export const TEMPLATES = {
     note: '+5부터 대성공(+2단계) 5%와 하락, +10부터 파괴. 2회 연속 하락하면 다음 시도 확정 성공(찬스타임).',
     make: () => ({
       start: 0, target: 20, restore: 10, double: true,
-      resources: [{ name: '골드', value: 0.001 }, { name: '강화석', value: 50 }, { name: '다이아', value: 10 }],
+      resources: [{ name: '골드', value: 0.001, rate: { units: 10000, won: 10 } }, { name: '강화석', value: 50 }, { name: '다이아', value: 10 }],
       rows: Array.from({ length: 20 }, (_, i) => row(
         i, 90 - i * 3.5, i >= 5 ? 5 : 0, i >= 5 ? 18 + (i - 5) * 1.5 : 0, i >= 10 ? 1 + (i - 10) : 0,
         [r100(3000 * 1.3 ** i), 1 + Math.floor(i / 2), 0],

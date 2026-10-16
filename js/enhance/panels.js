@@ -2,6 +2,7 @@
 import { TEMPLATES } from './presets.js';
 import { MAX_ITEMS } from './model.js';
 import { h } from '../lib/util.js';
+import { rateOf, setRate } from './currency.js';
 
 const MAX_RESOURCES = 4;
 
@@ -65,14 +66,24 @@ export function renderSettings(ctx, el) {
     ),
 
     h('div.option', {},
-      h('span.group-title', {}, '재화와 가치'),
-      h('p.desc', {}, '1단위당 원화 환산 가치. 무료 재화도 획득 시간·기회비용으로 환산해 넣으면 총비용을 한 숫자로 비교할 수 있습니다.'),
-      ...s.resources.map((res, ri) => h('div.res-row', {},
-        h('input', { type: 'text', value: res.name, 'aria-label': '재화 이름', oninput: (e) => { res.name = e.target.value || `재화${ri + 1}`; ctx.schedule(400, true); } }),
-        h('div.unit-input', {}, numInput(ctx, res, 'value', { min: 0, label: `${res.name} 가치` }), h('span', {}, '원')),
-        h('button.icon-x', { type: 'button', title: '재화 삭제', disabled: s.resources.length <= 1, onclick: () => removeResource(ctx, ri) }, '×'),
-      )),
+      h('span.group-title', {}, '재화와 환율'),
+      h('p.desc', {}, '재화마다 원화 환율을 정합니다 (예: 10,000 골드 = 10 원). 무료 재화도 획득 시간·기회비용으로 환산해 두면 모든 비용을 한 기준으로 비교할 수 있습니다.'),
+      ...s.resources.map((res, ri) => {
+        const rate = rateOf(res);
+        const apply = () => { setRate(res, rate.units, rate.won); ctx.schedule(); };
+        const n = (key, label) => h('input', { type: 'number', value: rate[key], min: 0, step: 'any', 'aria-label': label,
+          oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v >= 0) { rate[key] = v; apply(); } } });
+        return h('div.res-block', {},
+          h('div.res-row', {},
+            h('input', { type: 'text', value: res.name, 'aria-label': '재화 이름', oninput: (e) => { res.name = e.target.value || `재화${ri + 1}`; ctx.schedule(400, true); } }),
+            h('button.icon-x', { type: 'button', title: '재화 삭제', disabled: s.resources.length <= 1, onclick: () => removeResource(ctx, ri) }, '×')),
+          h('div.rate-row', {}, n('units', `${res.name} 수량`), h('span', {}, res.name), h('span.eq', {}, '='), n('won', '원화 금액'), h('span', {}, '원')),
+        );
+      }),
       s.resources.length < MAX_RESOURCES ? h('button.btn.small', { type: 'button', onclick: () => addResource(ctx) }, '+ 재화 추가') : null,
+      field('결과 표시 단위', select([['won', '원'], ...s.resources.map((r, i) => [String(i), r.name])], String(s.display ?? 'won'),
+        (v) => { s.display = v === 'won' ? 'won' : +v; ctx.rebuild(); }),
+      '기대 비용·분포·예산을 이 단위로 보여줍니다. 골드를 고르면 “기대 총비용 2,796만 골드”처럼 표시'),
     ),
 
     h('div.option', {},
@@ -105,7 +116,7 @@ export function renderSettings(ctx, el) {
 
 function addResource(ctx) {
   const s = ctx.state;
-  s.resources.push({ name: `재화${s.resources.length + 1}`, value: 1 });
+  s.resources.push({ name: `재화${s.resources.length + 1}`, value: 1, rate: { units: 1, won: 1 } });
   s.rows.forEach(r => r.costs.push(0));
   s.destroyCosts.push(0);
   s.items.forEach(it => it.costs.push(0));
@@ -115,6 +126,7 @@ function addResource(ctx) {
 function removeResource(ctx, ri) {
   const s = ctx.state;
   s.resources.splice(ri, 1);
+  if (s.display === ri) s.display = 'won'; else if (typeof s.display === 'number' && s.display > ri) s.display--;
   s.rows.forEach(r => r.costs.splice(ri, 1));
   s.destroyCosts.splice(ri, 1);
   s.items.forEach(it => it.costs.splice(ri, 1));

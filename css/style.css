@@ -429,3 +429,28 @@ a.btn { text-decoration: none; }
 .desc { font-size: 12.5px; color: var(--text-3); line-height: 1.5; }
 input[type="password"] { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; font-size: 14px; }
 input[type="password"]:focus, input[type="text"]:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 프레임 타임라인 직접 편집 */
+svg.tl .editable { cursor: pointer; }
+svg.tl .b-gap { fill: transparent; stroke: var(--line-strong); stroke-dasharray: 3 3; }
+svg.tl .b-gap:hover { fill: var(--surface-2); }
+svg.tl .tl-handle { fill: transparent; cursor: ew-resize; }
+svg.tl .tl-handle:hover { fill: var(--accent); opacity: .55; }
+body.tl-dragging, body.tl-dragging * { cursor: ew-resize !important; user-select: none; }
+.tl-pop {
+  position: absolute; z-index: 6; width: 250px; display: grid; gap: 8px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18);
+}
+.tl-pop-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13.5px; }
+.tl-pop-head .icon-x { width: 24px; height: 24px; }
+.tl-pop-body { display: flex; align-items: center; gap: 6px; }
+.tl-pop-body input { width: 72px; text-align: right; }
+.tl-pop-body .btn.small { width: 30px; justify-content: center; padding: 5px 0; }
+.res-block { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.rate-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr) auto; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-3); }
+.rate-row input { min-width: 0; }
+.rate-row .eq { font-weight: 700; color: var(--text-2); }
+.res-block .res-row { grid-template-columns: minmax(0, 1fr) 28px; }
+.seg-kpi .seg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--seg); margin-right: 6px; vertical-align: 0; }
+.seg-kpi .kpi-sub + .kpi-sub { margin-top: 2px; }
+.flow-tables { display: grid; gap: 10px; }

@@ -3,6 +3,7 @@ import { analyze, effectiveProbs } from './model.js';
 import { simulate } from './simulate.js';
 import { TEMPLATES } from './presets.js';
 import { renderSettings } from './panels.js';
+import { bindCurrency } from './currency.js';
 import { renderTable } from './table.js';
 import {
   buildKPIs, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
@@ -113,6 +114,7 @@ function renderHead() {
 }
 
 function rebuild() {
+  bindCurrency(ctx.state);
   renderHead();
   renderSettings(ctx, els.settings);
   renderItemsCard(ctx, els);

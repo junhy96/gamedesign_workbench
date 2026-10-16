@@ -85,7 +85,7 @@ function buildLegend() {
 // ── 설정 ────────────────────────────────────────────────
 function num(obj, key, label, opts = {}) {
   return h('label.field', {}, h('span', {}, label), h('input', {
-    type: 'number', value: obj[key], min: opts.min ?? 0, step: opts.step ?? 1, inputmode: 'numeric', 'aria-label': label,
+    type: 'number', value: obj[key], min: opts.min ?? 0, step: opts.step ?? 1, inputmode: 'numeric', 'aria-label': label, 'data-key': key,
     oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { obj[key] = opts.float ? v : Math.round(v); schedule(); } },
   }));
 }
@@ -195,17 +195,23 @@ function drawTimeline(r) {
 
   // 보스
   const rect = (f0, f1, y, cls, tip, extra = {}) => s('rect', { x: x(f0), y, width: Math.max(1, (f1 - f0 + 1) * pxf), height: extra.h ?? bar, rx: 3, class: cls, ...tipAttrs(tip), ...extra.attrs });
+  /** 편집 가능한 구간: 클릭하면 팝업, 오른쪽 끝을 끌면 길이 조절 (edit = 'a:공격번호:필드' | 'p:필드') */
+  const seg = (f0, f1, y, cls, tip, edit) => {
+    g.append(rect(f0, f1, y, `${cls} editable`, `${tip} · 클릭해서 수정, 오른쪽 끝을 끌어 조절`, { attrs: { 'data-edit': edit } }));
+    g.append(s('rect', { x: x(f1 + 1) - 4, y, width: 8, height: bar, class: 'tl-handle', 'data-edit': edit, 'data-drag': '1' }));
+  };
   tl.attacks.forEach((a) => {
     const atk = state.attacks[a.ai];
-    const y = rows.boss;
-    if (atk.startup > 0) g.append(rect(a.start, a.hits[0].h0 - 1, y, 'b-startup', `${a.ai + 1}. ${a.name} · 선딜 ${atk.startup}f (${a.start}~${a.hits[0].h0 - 1})`));
+    const y = rows.boss, id = `a:${a.ai}`;
+    if (atk.startup > 0) seg(a.start, a.hits[0].h0 - 1, y, 'b-startup', `${a.ai + 1}. ${a.name} · 선딜 ${atk.startup}f (${a.start}~${a.hits[0].h0 - 1})`, `${id}:startup`);
     a.hits.forEach((hit, k) => {
-      if (k > 0 && hit.h0 - a.hits[k - 1].h1 > 1) g.append(rect(a.hits[k - 1].h1 + 1, hit.h0 - 1, y, 'b-startup', `${a.name} · 타격 간격 ${atk.hitGap}f`));
-      g.append(rect(hit.h0, hit.h1, y, 'b-active', `${a.name}${a.hits.length > 1 ? ` ${k + 1}타` : ''} · 판정 ${atk.active}f (${hit.h0}~${hit.h1})`));
+      if (k > 0 && hit.h0 - a.hits[k - 1].h1 > 1) seg(a.hits[k - 1].h1 + 1, hit.h0 - 1, y, 'b-startup', `${a.name} · 타격 간격 ${atk.hitGap}f`, `${id}:hitGap`);
+      seg(hit.h0, hit.h1, y, 'b-active', `${a.name}${a.hits.length > 1 ? ` ${k + 1}타` : ''} · 판정 ${atk.active}f (${hit.h0}~${hit.h1})`, `${id}:active`);
     });
-    if (atk.recovery > 0) g.append(rect(a.hits.at(-1).h1 + 1, a.recoveryEnd, y, 'b-recovery', `${a.name} · 후딜 ${atk.recovery}f`));
+    if (atk.recovery > 0) seg(a.hits.at(-1).h1 + 1, a.recoveryEnd, y, 'b-recovery', `${a.name} · 후딜 ${atk.recovery}f`, `${id}:recovery`);
+    if (atk.gap > 0) seg(a.recoveryEnd + 1, a.next - 1, y, 'b-gap', `${a.name} → 다음 공격까지 ${atk.gap}f`, `${id}:gap`);
     g.append(s('text', { x: x(a.start) + 2, y: y - 5, class: 'tl-name' }, `${a.ai + 1}. ${a.name}`));
-    if (atk.recog > 0) g.append(s('line', { x1: x(a.recog), x2: x(a.recog), y1: y - 2, y2: y + bar + 2, class: 'tl-recog', ...tipAttrs(`${a.name} · 식별 가능 시점 ${a.recog}f`) }));
+    if (atk.recog > 0) g.append(s('line', { x1: x(a.recog), x2: x(a.recog), y1: y - 2, y2: y + bar + 2, class: 'tl-recog editable', 'data-edit': `${id}:recog`, ...tipAttrs(`${a.name} · 식별 가능 시점 ${a.recog}f · 클릭해서 수정`) }));
   });
 
   // 회피 윈도우 + 반응 시점
@@ -227,9 +233,9 @@ function drawTimeline(r) {
   const p = state.player;
   r.hits.filter(hit => hit.kind === 'dodge').forEach((hit) => {
     const y = rows.player, p0 = hit.press;
-    if (p.dodgeStartup) g.append(rect(p0, p0 + p.dodgeStartup - 1, y, 'p-dodge', `회피 선딜 ${p.dodgeStartup}f (입력 ${p0}f)`));
-    g.append(rect(hit.cover[0], hit.cover[1], y, 'p-inv', `회피 무적 ${p.dodgeInv}f (${hit.cover[0]}~${hit.cover[1]})`));
-    if (p.dodgeRecovery) g.append(rect(hit.cover[1] + 1, hit.ready - 1, y, 'p-dodge', `회피 후딜 ${p.dodgeRecovery}f · ${hit.ready}f부터 행동 가능`));
+    if (p.dodgeStartup) seg(p0, p0 + p.dodgeStartup - 1, y, 'p-dodge', `회피 선딜 ${p.dodgeStartup}f (입력 ${p0}f)`, 'p:dodgeStartup');
+    seg(hit.cover[0], hit.cover[1], y, 'p-inv', `회피 무적 ${p.dodgeInv}f (${hit.cover[0]}~${hit.cover[1]})`, 'p:dodgeInv');
+    if (p.dodgeRecovery) seg(hit.cover[1] + 1, hit.ready - 1, y, 'p-dodge', `회피 후딜 ${p.dodgeRecovery}f · ${hit.ready}f부터 행동 가능`, 'p:dodgeRecovery');
   });
   r.counters.forEach((c) => {
     if (!Number.isFinite(c.window) || c.window <= 0) return;
@@ -240,6 +246,101 @@ function drawTimeline(r) {
 
   els.tlWrap.replaceChildren(g);
   wireTooltip(g);
+  wireEditing(g, pxf);
+}
+
+// ── 타임라인 직접 편집 (팝업 · 드래그) ──────────────────
+const FIELD = {
+  startup: ['선딜', 0], active: ['판정', 1], hitGap: ['타격 간격', 0], recovery: ['후딜', 0], gap: ['다음 공격까지', 0], recog: ['식별 시점', 0],
+  dodgeStartup: ['회피 선딜', 0], dodgeInv: ['회피 무적', 1], dodgeRecovery: ['회피 후딜', 0],
+};
+/** 'a:1:startup' → {obj, key, label, min, title} */
+function editTarget(spec) {
+  const parts = spec.split(':');
+  const key = parts.at(-1);
+  const [label, min] = FIELD[key];
+  if (parts[0] === 'p') return { obj: state.player, key, label, min, title: `플레이어 · ${label}` };
+  const ai = +parts[1];
+  return { obj: state.attacks[ai], key, label, min, title: `${ai + 1}. ${state.attacks[ai].name} · ${label}` };
+}
+function setFrames(t, v) {
+  const nv = Math.max(t.min, Math.round(v));
+  if (nv === t.obj[t.key]) return false;
+  t.obj[t.key] = nv; tableDirty = true; recompute(); syncSettings();
+  return true;
+}
+/** 플레이어 값은 설정 패널에도 있으므로 숫자 칸을 맞춰 준다 (포커스 중인 칸은 건드리지 않음) */
+function syncSettings() {
+  for (const input of els.settings.querySelectorAll('input[type=number]')) {
+    const key = input.dataset.key;
+    if (key && key in state.player && document.activeElement !== input) input.value = state.player[key];
+  }
+}
+
+function wireEditing(svg, pxf) {
+  svg.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('[data-edit]');
+    if (!el) return;
+    e.preventDefault();
+    const t = editTarget(el.dataset.edit);
+    const drag = el.dataset.drag === '1';
+    const startX = e.clientX, orig = t.obj[t.key];
+    let moved = false;
+    const onMove = (ev) => {
+      if (!drag) { if (Math.abs(ev.clientX - startX) > 3) moved = true; return; }
+      moved = true;
+      const delta = Math.round((ev.clientX - startX) / pxf);
+      setFrames(t, orig + delta);
+      showDragTip(ev, `${t.title} ${t.obj[t.key]}f (${t.obj[t.key] - orig >= 0 ? '+' : ''}${t.obj[t.key] - orig})`);
+    };
+    const onUp = (ev) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      els.tip.hidden = true;
+      document.body.classList.remove('tl-dragging');
+      if (!moved) openPopover(t, ev);
+    };
+    if (drag) document.body.classList.add('tl-dragging');
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+}
+
+function showDragTip(ev, text) {
+  els.tip.textContent = text; els.tip.hidden = false;
+  const box = els.tip.parentElement.getBoundingClientRect();
+  els.tip.style.left = `${Math.min(Math.max(8, ev.clientX - box.left + 12), box.width - els.tip.offsetWidth - 8)}px`;
+  els.tip.style.top = `${ev.clientY - box.top - els.tip.offsetHeight - 14}px`;
+}
+
+function openPopover(t, ev) {
+  closePopover();
+  const input = h('input', { type: 'number', value: t.obj[t.key], min: t.min, step: 1, 'aria-label': t.label,
+    oninput: () => { const v = parseInt(input.value, 10); if (Number.isFinite(v)) { setFrames(t, v); ms.textContent = fmtMs(t.obj[t.key]); } },
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === 'Escape') closePopover(); } });
+  const ms = h('span.muted.small', {}, fmtMs(t.obj[t.key]));
+  const step = (d) => { setFrames(t, t.obj[t.key] + d); input.value = t.obj[t.key]; ms.textContent = fmtMs(t.obj[t.key]); };
+  const pop = h('div.tl-pop', { role: 'dialog', 'aria-label': `${t.title} 프레임 수정` },
+    h('div.tl-pop-head', {}, h('b', {}, t.title), h('button.icon-x', { type: 'button', title: '닫기', onclick: closePopover }, '×')),
+    h('div.tl-pop-body', {},
+      h('button.btn.small', { type: 'button', onclick: () => step(-1), title: '1프레임 줄이기' }, '−'),
+      input, h('span', {}, 'f'),
+      h('button.btn.small', { type: 'button', onclick: () => step(1), title: '1프레임 늘리기' }, '+'),
+      ms),
+    h('p.muted.small', {}, '바로 반영됩니다 · Enter로 닫기'));
+  const card = els.tlWrap.closest('.tl-card');
+  card.append(pop);
+  const box = card.getBoundingClientRect();
+  pop.style.left = `${Math.min(Math.max(8, ev.clientX - box.left - 20), box.width - pop.offsetWidth - 8)}px`;
+  pop.style.top = `${ev.clientY - box.top + 14}px`;
+  els.pop = pop;
+  input.focus(); input.select();
+  setTimeout(() => document.addEventListener('pointerdown', outside), 0);
+}
+function outside(e) { if (els.pop && !els.pop.contains(e.target) && !e.target.closest('[data-edit]')) closePopover(); }
+function closePopover() {
+  els.pop?.remove(); els.pop = null;
+  document.removeEventListener('pointerdown', outside);
 }
 
 function wireTooltip(svg) {
