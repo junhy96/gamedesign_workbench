@@ -317,3 +317,31 @@ export function decorateSequence(svg, an, style, dark) {
 export function edgeIcon(stroke, dash) {
   return `<svg viewBox="0 0 32 20" width="32" height="20" aria-hidden="true"><path d="M2 10h24" stroke="${stroke}" stroke-width="2.2"${dash ? ' stroke-dasharray="4 3"' : ''}/><path d="M24 6l6 4-6 4z" fill="${stroke}"/></svg>`;
 }
+
+/** 상태도 [*] 시작·종료 점을 범례와 같은 색으로 (시작 = 채운 원, 종료 = 테두리 원 + 채운 점) */
+export function decorateState(svg, an, dark) {
+  if (an.kind !== 'state') return;
+  const ink = dark ? '#E8E6E1' : '#1B1B1A';
+  for (const g of svg.querySelectorAll('g.node')) {
+    const id = g.id || '';
+    if (/state-.*_start-\d+$/.test(id)) {
+      for (const c of g.querySelectorAll('circle, path')) { c.style.fill = ink; c.style.stroke = ink; }
+    } else if (/state-.*_end-\d+$/.test(id)) {
+      // 가장 큰 원 = 바깥 고리(테두리만), 작은 원 = 안쪽 점(채움). Mermaid는 같은 원을 채움용·선용 두 번 그림
+      const parts = [...g.querySelectorAll('circle, path')].map(p => ({ p, w: p.getBBox().width }));
+      const max = Math.max(...parts.map(x => x.w));
+      for (const { p, w } of parts) {
+        const ring = w > max * 0.8;
+        p.style.stroke = ink;
+        p.style.fill = ring ? 'none' : ink;
+        p.style.strokeWidth = ring ? '1.5px' : '1px';
+      }
+    }
+  }
+}
+
+/** 렌더 후 꾸미기 (시퀀스 참여자 색·메시지 색, 상태도 시작·종료 점) */
+export function decorate(svg, an, style, dark) {
+  decorateSequence(svg, an, style, dark);
+  decorateState(svg, an, dark);
+}

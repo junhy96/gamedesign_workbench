@@ -3,7 +3,7 @@ import { MODELS, createDiagram, editDiagram, fixDiagram, requestText } from './l
 import { EXAMPLES } from './examples.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
 import { isDark, parseError, renderSvg, renderOffscreen as offscreen, loadMermaid } from '../lib/mermaid.js';
-import { CATS, PALETTES, DEFAULT_STYLE, analyze, styledCode, legendItems, shapeIcon, edgeIcon, decorateSequence } from './style.js';
+import { CATS, PALETTES, DEFAULT_STYLE, analyze, styledCode, legendItems, shapeIcon, edgeIcon, decorate } from './style.js';
 import { h, store, encodeState, decodeState, downloadText, toast, debounce } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -213,7 +213,7 @@ async function renderPreview() {
     if (!latest()) return; // 더 최신 렌더가 있음
     els.preview.innerHTML = svg; // Mermaid(securityLevel: strict)가 정화한 SVG
     const el = els.preview.querySelector('svg');
-    if (el) decorateSequence(el, prep.an, state.style, dark);
+    if (el) decorate(el, prep.an, state.style, dark);
     renderLegend(prep.an, dark);
     els.previewErr.hidden = true;
     els.previewHint.textContent = '코드를 고치면 바로 반영됩니다';
@@ -228,7 +228,7 @@ async function renderOffscreen() {
   if (err) throw new Error('문법 오류를 먼저 고쳐 주세요.');
   const prep = await prepare(state.code, false);
   const r = await offscreen(prep.code, renderOpts());
-  decorateSequence(r.svg, prep.an, state.style, false);
+  decorate(r.svg, prep.an, state.style, false);
   renderPreview(); // 미리보기는 현재 테마로 되돌림
   return { ...r, an: prep.an };
 }

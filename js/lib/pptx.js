@@ -122,7 +122,7 @@ function samplePath(el, m) {
   // 직선 위주의 경로(화살표·테두리)는 꼭짓점만, 곡선은 길이에 비례해 샘플링
   const d = el.getAttribute('d') || '';
   const curvy = /[CcSsQqTtAa]/.test(d);
-  const n = curvy ? Math.min(64, Math.max(8, Math.round(len / 6))) : 0;
+  const n = curvy ? Math.min(96, Math.max(24, Math.round(len / 4))) : 0; // 작은 원도 매끈하게 (8점이면 팔각형이 됨)
   if (!curvy) {
     const pts = [];
     const cmds = d.match(/[MLHVZmlhvz][^MLHVZmlhvz]*/g) || [];
@@ -221,6 +221,22 @@ export function collectSvgShapes(svg) {
         if (tag === 'polygon' && pts.length) pts.push({ ...pts[0], close: true });
       } else pts = samplePath(el, m);
       if (pts.length < 2) continue;
+      // 닫힌 곡선이 원·타원이면(모든 점이 중심에서 거의 같은 거리) PowerPoint 타원으로 — 상태도 종료 점 등
+      const span = Math.hypot(Math.max(...pts.map(p => p.x)) - Math.min(...pts.map(p => p.x)), Math.max(...pts.map(p => p.y)) - Math.min(...pts.map(p => p.y)));
+      const closed = pts.some(p => p.close) || (pts.length > 8 && Math.hypot(pts[0].x - pts.at(-1).x, pts[0].y - pts.at(-1).y) < span * 0.03); // Z 없이 시작점으로 돌아온 경로
+      if (tag === 'path' && closed) {
+        const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+        const round = rx > 0 && ry > 0 && pts.length >= 12 && pts.every(p => Math.abs(Math.hypot((p.x - cx) / rx, (p.y - cy) / ry) - 1) < 0.06);
+        if (round) {
+          // Mermaid는 같은 원을 채움용·선용으로 두 번 그림 → 같은 자리 타원은 합침
+          const dup = shapes.find(o => o.kind === 'ellipse' && Math.abs(o.x - x0) < 0.5 && Math.abs(o.y - y0) < 0.5 && Math.abs(o.w - (x1 - x0)) < 0.5);
+          if (dup) { dup.fill ??= base.fill; dup.stroke ??= base.stroke; continue; }
+          shapes.push({ ...base, kind: 'ellipse', x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+          continue;
+        }
+      }
       const markerEnd = (el.getAttribute('marker-end') || cs.markerEnd || 'none') !== 'none';
       const markerStart = (el.getAttribute('marker-start') || cs.markerStart || 'none') !== 'none';
       shapes.push({ ...base, kind: 'path', pts, arrowEnd: markerEnd, arrowStart: markerStart, fill: pts.some(p => p.close) ? base.fill : null });
