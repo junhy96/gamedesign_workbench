@@ -1,5 +1,5 @@
 // 가챠·수집 설계 — 화면: 왼쪽 설정(템플릿·비용·천장·픽업·마일리지·기준 유저), 오른쪽 등급·확률 → 목표 → 달성 곡선·예산 → 검증
-import { analyze, helpers, GOAL_TYPES } from './model.js';
+import { analyze, helpers, GOAL_TYPES, disclosure, unitExpectations } from './model.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma, fmtMoney, fmtPct } from '../lib/util.js';
 
@@ -12,7 +12,7 @@ const save = debounce(() => store.set(STORE_KEY, state), 300);
 const schedule = (ms = 200) => { clearTimeout(timer); timer = setTimeout(recompute, ms); };
 const newId = (p) => p + Date.now().toString(36) + Math.floor(Math.random() * 1e3);
 
-function defaultState(id) { return { v: SCHEMA, template: id, view: 0, budgetWon: 0, ...TEMPLATES[id].make() }; }
+function defaultState(id) { return { v: SCHEMA, template: id, view: 0, budgetWon: 0, discLevel: 0, discDigits: 4, ...TEMPLATES[id].make() }; }
 function hydrate(o) { return o && o.v === SCHEMA && TEMPLATES[o.template] ? { ...defaultState(o.template), ...o } : null; }
 function readHash() { const m = location.hash.match(/^#gacha\?s=([\w-]+)/); return m ? hydrate(decodeState(m[1])) : null; }
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -57,9 +57,9 @@ function build(root) {
       h('div.enh-main', {},
         els.errors = h('ul.errors', { hidden: true }),
         els.kpis = h('div.kpis.econ-kpis'),
-        els.grades = h('div.card'),
-        els.goals = h('div.card'),
-        h('div.card', {},
+        els.grades = h('div.card.role-in'),
+        els.goals = h('div.card.role-in'),
+        h('div.card.role-out', {},
           h('div.card-head', {}, els.distTitle = h('h2', {}, '달성 확률과 예산'), els.distHint = h('span.hint', {})),
           h('div.dist', {},
             h('div.chart-box', {}, els.canvas = h('canvas', { role: 'img', 'aria-label': '뽑기 수별 목표 달성 확률' })),
@@ -71,10 +71,11 @@ function build(root) {
           ),
         ),
         h('div.two-col', {},
-          els.why = h('div.card'),
-          els.verify = h('div.card'),
+          els.why = h('div.card.role-out'),
+          els.verify = h('div.card.role-check'),
         ),
-        els.warnCard = h('div.card'),
+        els.disc = h('div.card.role-out.disc-card'),
+        els.warnCard = h('div.card.role-check'),
       ),
     ),
   );
@@ -220,13 +221,13 @@ function renderGoals() {
         h('th', {}, '무과금'), h('th', {}, '과금 유저'), h('th', {}, '계산'), h('th', {}, ''))),
       h('tbody', {}, ...s.goals.map((goal, i) => {
         const o = els.goalOut[goal.id] = { mean: h('td.res', {}), cost: h('td.res', {}), p90: h('td.res', {}), ratio: h('td.res', {}), free: h('td.res', {}), paid: h('td.res', {}), how: h('td.res', {}) };
-        const isPickup = goal.type === 'pickup';
+        const isPickup = goal.type === 'pickup', isCollect = goal.type === 'collect';
         return h(`tr${i === s.view ? '.sel' : ''}`, {},
           h('td', {}, h('label.radio', { title: '분석에 표시' }, h('input', { type: 'radio', name: 'gacha-view', checked: i === s.view, onchange: () => { s.view = i; save(); renderGoals(); if (last) showSelected(last); } }))),
           h('td', {}, text(goal, 'name', '목표 이름')),
-          h('td', {}, select(Object.entries(GOAL_TYPES), goal.type, (v) => { goal.type = v; if (v === 'collect' && !goal.grade) { goal.grade = s.grades.at(-1).id; goal.kinds = 1; } rebuild(); })),
+          h('td', {}, select(Object.entries(GOAL_TYPES), goal.type, (v) => { goal.type = v; if (v !== 'pickup' && !s.grades.some(g => g.id === goal.grade)) goal.grade = s.grades.at(-1).id; goal.kinds = Math.max(1, goal.kinds || 1); rebuild(); })),
           h('td', {}, isPickup ? h('span.muted', {}, s.grades.at(-1).name) : select(gradeOpts, goal.grade, (v) => { goal.grade = v; const g = s.grades.find(x => x.id === v); goal.kinds = Math.min(goal.kinds || 1, g.kinds); rebuild(); })),
-          h('td', {}, isPickup ? h('span.muted', {}, '1') : num(goal, 'kinds', { int: true, min: 1, label: `${goal.name} 종 수`, cls: 'short' })),
+          h('td', {}, isCollect ? num(goal, 'kinds', { int: true, min: 1, label: `${goal.name} 종 수`, cls: 'short' }) : h('span.muted', { title: isPickup ? '픽업 캐릭터 1종' : (s.pickup.enabled && goal.grade === s.grades.at(-1).id ? '픽업이 아닌 캐릭터 1종' : '정해진 캐릭터 1종') }, '1')),
           h('td', {}, num(goal, 'copies', { int: true, min: 1, label: `${goal.name} 장수`, cls: 'short' })),
           o.mean, o.cost, o.p90, o.ratio, o.free, o.paid, o.how,
           h('td.x', {}, h('button.icon-x', { type: 'button', title: '삭제', disabled: s.goals.length <= 1, onclick: () => { s.goals.splice(i, 1); s.view = 0; rebuild(); } }, '×')),
@@ -272,6 +273,7 @@ function recompute() {
   showSelected(res);
   renderVerify(res);
   renderWarnings(res);
+  renderDisclosure();
 }
 
 function showSelected(res) {
@@ -411,6 +413,106 @@ function renderWarnings(res) {
       ? h('ul.findings', {}, ...res.warnings.map(w => h(`li.${w.level === 'info' ? 'info' : w.level}`, {}, h('span.lv', {}, LV[w.level]), h('span', {}, w.text))))
       : h('p.muted', {}, '단순 계산과 크게 다르지 않고, 기준 유저가 1년 안에 모든 목표에 닿습니다.'),
   );
+}
+
+// ── 확률 공시표 ─────────────────────────────────────────
+// 모든 캐릭터의 확률(소환 레벨별), 확률이 바뀌는 조건(천장·픽업 보장·마일리지·교환), 천장을 포함한 실효 확률.
+// 표시 자릿수로 반올림했을 때 0으로 보이는 확률과 합계 오차를 함께 검사한다.
+function renderDisclosure() {
+  const d = disclosure(state);
+  const L = d.levels.length;
+  if (!(state.discLevel < L)) state.discLevel = 0;
+  const lv = d.levels[state.discLevel];
+  const digits = state.discDigits ?? 4;
+  const pct = (p) => `${(p * 100).toFixed(digits)}%`;
+  const exp = unitExpectations(state);
+  const expOf = (gi, featured) => exp.find(x => x.gi === gi && x.featured === featured) ?? exp.find(x => x.gi === gi);
+  const top = state.grades.length - 1;
+
+  // 반올림 검사: 0보다 큰데 0으로 보이는 캐릭터, 표시값 합계
+  const hidden = [], shownSum = d.levels.map(l => l.grades.reduce((a, g) => a + g.units.reduce((b, u) => b + +(u.prob * 100).toFixed(digits), 0), 0));
+  d.levels.forEach(l => l.grades.forEach(g => g.units.forEach(u => { if (u.prob > 0 && +(u.prob * 100).toFixed(digits) === 0) hidden.push(`Lv${l.level} ${u.name}`); })));
+  const sumOff = shownSum.map((v, i) => [i, v]).filter(([, v]) => Math.abs(v - 100) > 10 ** -(digits + 2));
+
+  const lvLabel = (l) => `Lv${l.level} (${comma(l.from)}회~${l.to != null ? `${comma(l.to)}회` : ''})`;
+  const gradeTable = h('table.mini.disc-table', {},
+    h('thead', {}, h('tr', {}, h('th.left', {}, '등급'), h('th', {}, '종 수'), ...d.levels.map(l => h('th', {}, L > 1 ? lvLabel(l) : '확률')))),
+    h('tbody', {}, ...state.grades.map((g, gi) => h('tr', {}, h('td.left', {}, g.name), h('td', {}, comma(g.kinds)), ...d.levels.map(l => h('td', {}, pct(l.grades[gi].prob)))))),
+    h('tfoot', {}, h('tr', {}, h('td.left', { colspan: 2 }, '합계'), ...d.levels.map(l => h('td', {}, pct(l.sum))))),
+  );
+
+  const unitRows = lv.grades.flatMap(g => g.units.map((u, i) => {
+    const e = expOf(g.gi, u.featured);
+    return h(`tr${i === 0 ? '.grade-first' : ''}${u.featured ? '.featured' : ''}`, {},
+      h('td.left', {}, i === 0 ? g.name : ''),
+      h('td.left', {}, u.name, u.featured ? h('span.disc-tag', {}, '픽업') : null),
+      h('td', {}, pct(u.prob)),
+      h('td', { title: e?.exact ? '정확해' : '시뮬레이션' }, e && Number.isFinite(e.mean) ? `${comma(e.mean)}회` : '—'),
+      h('td', {}, e && Number.isFinite(e.mean) ? pullsMoney(e.mean) : '—'),
+    );
+  }));
+  const unitTable = h('table.mini.disc-table', {},
+    h('thead', {}, h('tr', {}, h('th.left', {}, '등급'), h('th.left', {}, '캐릭터'), h('th', {}, `확률${L > 1 ? ` · Lv${lv.level}` : ''}`),
+      h('th', { title: '처음(누적 0회)부터 이 캐릭터 1장을 얻을 때까지 — 소환 레벨·천장·보장 포함' }, '1장 기대 뽑기'), h('th', {}, '1장 기대 비용'))),
+    h('tbody', {}, ...unitRows),
+  );
+
+  const pity = d.pity?.[state.discLevel];
+  const eff = d.effective[state.discLevel];
+  const topName = state.grades[top].name;
+  const nameInputs = state.grades.map((g, gi) => h('label.field', {}, h('span', {}, `${g.name} (${g.kinds}종)`),
+    h('input', { type: 'text', value: (g.names || []).join(', '), placeholder: `비우면 ${gi === top && state.pickup.enabled ? `${g.name} 픽업, ${g.name} 1, …` : `${g.name} 1, ${g.name} 2, …`}`,
+      oninput: (e) => { g.names = e.target.value.split(',').map(t => t.trim()); save(); clearTimeout(timer); timer = setTimeout(renderDisclosure, 300); } })));
+
+  els.disc.replaceChildren(...[
+    h('div.card-head', {}, h('h2', {}, '확률 공시표'),
+      h('div.tool-actions', {},
+        L > 1 ? select(d.levels.map((l, i) => [i, `소환 ${lvLabel(l)}`]), state.discLevel, (v) => { state.discLevel = +v; save(); renderDisclosure(); }) : null,
+        select([2, 3, 4, 5, 6].map(n => [n, `소수 ${n}자리`]), digits, (v) => { state.discDigits = +v; save(); renderDisclosure(); }),
+        h('button.btn.small', { type: 'button', onclick: () => exportDisclosureCSV(d) }, '공시표 CSV'),
+      )),
+    h('p.muted.small', {}, '확률형 아이템 공시용: 모든 캐릭터의 개별 확률과, 확률이 바뀌는 조건(소환 레벨·천장·픽업 보장)을 함께 냅니다. 같은 등급 안에서는 균등, 픽업 등급은 픽업 비율로 나눕니다.'),
+    hidden.length || sumOff.length ? h('ul.findings', {},
+      ...hidden.slice(0, 3).map(t => h('li.warn', {}, h('span.lv', {}, '주의'), h('span', {}, `${t}: 0보다 크지만 소수 ${digits}자리로는 0%로 보입니다 — 자릿수를 늘리세요.`))),
+      sumOff.length ? h('li.info', {}, h('span.lv', {}, '참고'), h('span', {}, `${L > 1 ? `${sumOff.map(([i]) => `Lv${i + 1}`).join('·')}: ` : ''}표시값 합계가 반올림 때문에 100%에서 최대 ±${Math.max(...sumOff.map(([, v]) => Math.abs(v - 100))).toFixed(digits)}%p 어긋납니다 (실제 합은 100%).`)) : null) : null,
+    h('h3.disc-h', {}, '① 등급별 확률'),
+    h('div.table-wrap', {}, gradeTable),
+    h('h3.disc-h', {}, `② 캐릭터별 확률${L > 1 ? ` — 소환 Lv${lv.level}` : ''}`),
+    h('div.table-wrap.disc-units', {}, unitTable),
+    h('details.disc-names', {}, h('summary', {}, '캐릭터 이름 입력 (쉼표로 구분)'), h('div.row2', {}, ...nameInputs)),
+    pity ? h('h3.disc-h', {}, `③ ${topName} 확률 변동 (천장)`) : null,
+    pity ? h('div.table-wrap', {}, h('table.mini.disc-table', {},
+      h('thead', {}, h('tr', {}, h('th.left', {}, `마지막 ${topName} 이후`), h('th', {}, `그 뽑기의 ${topName} 확률`), h('th', {}, '그때까지 1번 이상 나올 확률'))),
+      h('tbody', {}, ...pity.map(r => h('tr', {}, h('td.left', {}, r.from === r.to ? `${r.from}번째` : `${r.from}~${r.to}번째`), h('td', {}, pct(r.prob)), h('td', {}, pct(r.cum))))),
+    )) : null,
+    h('h3.disc-h', {}, `${pity ? '④' : '③'} 실효 확률 (천장·보장 포함, 소환 Lv${state.discLevel + 1} 기준)`),
+    h('dl.pct-list.disc-eff', {},
+      h('div', {}, h('dt', {}, `${topName} 기본 확률`), h('dd', {}, pct(eff.base))),
+      h('div', {}, h('dt', {}, `${topName} 실효 확률`), h('dd', {}, Number.isFinite(eff.meanPerTop) ? `${pct(eff.topRate)} (평균 ${eff.meanPerTop.toFixed(1)}회에 1장)` : '—')),
+      eff.featuredRate != null ? h('div', {}, h('dt', {}, '픽업 캐릭터 실효 확률'), h('dd', {}, pct(eff.featuredRate))) : null,
+      h('div', {}, h('dt', {}, `${eff.featuredRate != null ? '픽업이 아닌 ' : ''}${topName} 1종 실효 확률`), h('dd', {}, pct(eff.otherRate))),
+    ),
+    h('h3.disc-h', {}, '확률이 바뀌는 조건'),
+    d.notes.length ? h('ul.disc-notes', {}, ...d.notes.map(t => h('li', {}, t))) : h('p.muted.small', {}, '확률이 바뀌는 조건이 없습니다 (고정 확률).'),
+  ].filter(Boolean));
+}
+
+function exportDisclosureCSV(d) {
+  const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const digits = Math.max(state.discDigits ?? 4, 6); // CSV는 최소 소수 6자리
+  const pct = (p) => (p * 100).toFixed(digits);
+  const lines = [['구분', '소환 레벨', '시작 누적 뽑기', '등급', '캐릭터', '픽업', '확률(%)'].map(esc).join(',')];
+  for (const l of d.levels) for (const g of l.grades) {
+    lines.push([esc('등급'), l.level, l.from, esc(g.name), '', '', pct(g.prob)].join(','));
+    for (const u of g.units) lines.push([esc('캐릭터'), l.level, l.from, esc(g.name), esc(u.name), u.featured ? 'Y' : '', pct(u.prob)].join(','));
+  }
+  if (d.pity) {
+    lines.push('', ['천장 확률 변동', '소환 레벨', '뽑기(이후 n번째)', '', '', '', '확률(%)', '누적(%)'].map(esc).join(','));
+    d.pity.forEach((rows, li) => rows.forEach(r => lines.push([esc('천장'), li + 1, esc(r.from === r.to ? r.from : `${r.from}~${r.to}`), '', '', '', pct(r.prob), pct(r.cum)].join(','))));
+  }
+  lines.push('', esc('확률이 바뀌는 조건'), ...d.notes.map(esc));
+  downloadText(`확률공시-${state.template}.csv`, '\ufeff' + lines.join('\r\n'), 'text/csv');
+  toast('공시표 CSV를 저장했습니다');
 }
 
 // ── 공유·내보내기 ───────────────────────────────────────

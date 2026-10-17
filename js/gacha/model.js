@@ -14,18 +14,24 @@
 // ■ 목표
 //   수집: 등급 g의 K종을 각 k장씩 (픽업 등급이면 픽업 유닛이 K종의 첫 번째)
 //   픽업: 픽업 유닛 k장 (= 최상위 등급 1종 × k장)
+//   특정 캐릭터: 등급 g의 정해진 1종 k장. 픽업이 있는 최상위 등급이면 '픽업이 아닌' 캐릭터 —
+//     최상위가 나왔을 때 이 캐릭터일 확률 = (1 − 픽업 비율) ÷ (종 수 − 1), 보장 상태에서는 0 (다음 최상위는 픽업 확정)
+//
+// ■ 확률 공시표
+//   소환 레벨별 등급 확률과 캐릭터별 확률(등급 확률 × 등급 안 비중), 천장 확률 변동표(j번째 뽑기의 확률과 누적 확률),
+//   천장·보장을 포함한 실효 확률(= 1 ÷ 한 장당 평균 뽑기 수), 확률이 바뀌는 조건 문장
 //
 // ■ 계산
 //   시뮬레이션: 목표 등급의 다음 당첨까지를 기하분포로 한 번에 건너뛴다(확률이 바뀌는 지점 — 소환 레벨, 천장 확률 상승 구간,
 //     마일리지·조각이 교환 가격에 닿는 시점 — 에서 끊음). 다른 등급의 중복 조각은 뽑기당 기대값으로 쌓는다.
 //   정확해 ①(수집, 확률 고정·교환 없음): 포아송화. 시행 횟수의 기댓값 = 연속 시간 포아송 과정에서 완료 시각의 기댓값
 //     E[N] = (1/λ) ∫₀^∞ 1 − P(k, u)^K du,  λ = 등급 확률 ÷ 종 수, P = 정칙화 하부 불완전 감마 (= 포아송 ≥ k 확률)
-//   정확해 ②(픽업, 분해 교환 없음): 상태(모은 장수, 천장 카운터, 보장 여부)의 분포를 뽑기마다 전진하는 동적 계획법.
+//   정확해 ②(픽업·특정 캐릭터, 분해 교환 없음): 상태(모은 장수, 천장 카운터, 보장 여부)의 분포를 뽑기마다 전진하는 동적 계획법.
 //     마일리지는 뽑기 수만으로 정해지는 시점에 1장을 더하므로 그대로 반영된다. 분포 전체(분위수·예산별 도달 확률)가 정확하다.
 
 import { mulberry32 } from '../enhance/simulate.js';
 
-export const GOAL_TYPES = { collect: '수집 (K종 × k장)', pickup: '픽업 유닛 k장' };
+export const GOAL_TYPES = { collect: '수집 (K종 × k장)', pickup: '픽업 유닛 k장', unit: '특정 캐릭터 k장' };
 const MAX_PULLS = 1e9; // 한 번 시행의 상한 (확률 0 등으로 닿지 못하는 목표)
 
 export function validate(cfg) {
@@ -60,10 +66,10 @@ export function validate(cfg) {
   cfg.goals.forEach((goal, i) => {
     const label = `목표 ${i + 1}번 '${goal.name}'`;
     if (!(Number.isInteger(goal.copies) && goal.copies >= 1)) errors.push(`${label}: 장수는 1 이상 정수여야 합니다.`);
-    if (goal.type === 'collect') {
+    if (goal.type === 'collect' || goal.type === 'unit') {
       const g = cfg.grades.find(x => x.id === goal.grade);
       if (!g) errors.push(`${label}: 등급을 선택하세요.`);
-      else if (!(Number.isInteger(goal.kinds) && goal.kinds >= 1 && goal.kinds <= g.kinds)) errors.push(`${label}: 종 수는 1~${g.kinds}(${g.name} 전체 종 수)여야 합니다.`);
+      else if (goal.type === 'collect' && !(Number.isInteger(goal.kinds) && goal.kinds >= 1 && goal.kinds <= g.kinds)) errors.push(`${label}: 종 수는 1~${g.kinds}(${g.name} 전체 종 수)여야 합니다.`);
     }
   });
   return errors;
@@ -82,21 +88,31 @@ export function topProb(cfg, base, j) {
   return base;
 }
 
-/** 목표 → 계산용 정의: 등급 인덱스, 종 수(K), 장수(k), 등급 전체 종 수(n) */
+/**
+ * 목표 → 계산용 정의: 등급 인덱스, 종 수(K), 장수(k), 등급 전체 종 수(n), 목표 캐릭터 시작 번호(off)
+ * 캐릭터 번호 0 = 픽업(최상위·픽업 켬일 때). 특정 캐릭터 목표는 픽업 등급이면 1번(픽업 아님), 아니면 0번.
+ */
 export function goalSpec(cfg, goal) {
   const top = cfg.grades.length - 1;
   const g = goal.type === 'pickup' ? top : cfg.grades.findIndex(x => x.id === goal.grade);
-  return { g, isTop: g === top, K: goal.type === 'pickup' ? 1 : goal.kinds, k: goal.copies, n: cfg.grades[g].kinds };
+  const isTop = g === top;
+  const off = goal.type === 'unit' && isTop && cfg.pickup?.enabled ? 1 : 0;
+  return { g, isTop, K: goal.type === 'collect' ? goal.kinds : 1, k: goal.copies, n: cfg.grades[g].kinds, off, featured: goal.type === 'pickup' };
+}
+
+/** 등급 g가 나왔을 때 i번 캐릭터일 확률 (보장 상태를 무시한 기본값) */
+export function unitShare(cfg, g, i) {
+  const n = cfg.grades[g].kinds;
+  if (g !== cfg.grades.length - 1 || !cfg.pickup?.enabled) return 1 / n;
+  const s = cfg.pickup.share / 100;
+  return i === 0 ? s : (1 - s) / (n - 1);
 }
 
 /** 단순 계산: 필요한 총 장수 ÷ (목표 유닛이 나올 확률), 확률은 가장 높은 소환 레벨 기준 — 엑셀에서 흔히 쓰는 근사 */
 export function naivePulls(cfg, goal) {
   const { g, K, k, n } = goalSpec(cfg, goal);
   const pMax = Math.max(...cfg.levels.map((_, l) => (cfg.grades[g].probs[l] ?? 0) / 100));
-  if (goal.type === 'pickup') {
-    const share = cfg.pickup?.enabled ? cfg.pickup.share / 100 : 1 / n;
-    return k / (pMax * share);
-  }
+  if (goal.type === 'pickup' || goal.type === 'unit') return k / (pMax * unitShare(cfg, g, goalSpec(cfg, goal).off));
   return (K * k) / (pMax * K / n); // 목표 K종이 나올 확률 = 등급 확률 × K/n
 }
 
@@ -125,7 +141,7 @@ function geometric(p, rnd) {
 export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
   const rnd = mulberry32(seed);
   const P = probTable(cfg);
-  const { g, isTop, K, k, n } = goalSpec(cfg, goal);
+  const { g, isTop, K, k, n, off } = goalSpec(cfg, goal);
   const levels = cfg.levels;
   const pityOn = isTop && cfg.pity?.enabled;
   const softFrom = pityOn ? Math.min(cfg.pity.hard, cfg.pity.softStep > 0 ? cfg.pity.softStart : Infinity) : Infinity;
@@ -180,7 +196,7 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
         if (guar || rnd() < pick.share) { kind = 0; guar = false; }
         else { kind = 1 + Math.floor(rnd() * (n - 1)); guar = pick.guarantee; }
       } else kind = Math.floor(rnd() * n);
-      if (kind < K && need[kind] > 0) { need[kind]--; remaining--; if (forced) src.pity++; else src.pull++; }
+      if (kind >= off && kind < off + K && need[kind - off] > 0) { need[kind - off]--; remaining--; if (forced) src.pity++; else src.pull++; }
       else shards += shardDup;
     }
     out[r] = t;
@@ -243,7 +259,7 @@ export function gammaP(a, x) {
 
 /** 수집 목표의 정확한 기대 뽑기 수 (조건이 안 맞으면 null) */
 export function exactCollectMean(cfg, goal) {
-  if (goal.type !== 'collect') return null;
+  if (goal.type !== 'collect' && goal.type !== 'unit') return null;
   const { g, isTop, K, k, n } = goalSpec(cfg, goal);
   if (cfg.levels.length !== 1) return null;
   if ((cfg.grades[g].exchange || 0) > 0) return null;
@@ -261,20 +277,22 @@ export function exactCollectMean(cfg, goal) {
   return (s * h / 3) / lambda;
 }
 
-// ── 정확해 ② 픽업: 상태 분포 동적 계획법 ─────────────────
+// ── 정확해 ② 픽업·특정 캐릭터: 상태 분포 동적 계획법 ──────
 /**
- * 픽업 유닛 k장 (최상위 1종 × k장)의 뽑기 수 분포. 최상위 분해 교환이 있으면 null.
+ * 캐릭터 1종 k장(픽업 유닛, 또는 아무 등급의 특정 캐릭터)의 뽑기 수 분포. 그 등급에 분해 교환이 있으면 null.
  * 반환: 평균, 분위수, 누적 분포(구간 축약 표), 예산별 도달 확률 함수.
  */
-export function exactPickup(cfg, goal, { maxWork = 3e8, tol = 1e-10 } = {}) {
-  const { g, isTop, K, k, n } = goalSpec(cfg, goal);
-  if (!isTop || K !== 1) return null;
+export function exactUnit(cfg, goal, { maxWork = 3e8, tol = 1e-10 } = {}) {
+  const { g, isTop, K, k, n, off } = goalSpec(cfg, goal);
+  if (K !== 1) return null;
   if ((cfg.grades[g].exchange || 0) > 0) return null;
   const P = probTable(cfg);
-  const pityOn = !!cfg.pity?.enabled;
+  const pityOn = isTop && !!cfg.pity?.enabled;
   const C = pityOn ? cfg.pity.hard : 1;
-  const pick = cfg.pickup?.enabled ? { share: cfg.pickup.share / 100, guarantee: !!cfg.pickup.guarantee } : null;
-  const mil = cfg.mileage?.enabled ? cfg.mileage : null;
+  const pick = isTop && cfg.pickup?.enabled ? { share: cfg.pickup.share / 100, guarantee: !!cfg.pickup.guarantee } : null;
+  const mil = isTop && cfg.mileage?.enabled ? cfg.mileage : null;
+  const other = pick && off === 1; // 픽업이 아닌 특정 캐릭터
+  if (!pityOn && !mil && P.every(row => !(row[g] > 0))) return null; // 이 등급이 끝까지 나오지 않음 (분포 계산 불가)
   const G = pick?.guarantee ? 2 : 1;
   const S = k * C * G;
   const idx = (m, c, gu) => (m * C + c) * G + gu;
@@ -301,8 +319,18 @@ export function exactPickup(cfg, goal, { maxWork = 3e8, tol = 1e-10 } = {}) {
       if (!mass) continue;
       const pj = pityOn ? topProb(cfg, base, c + 1) : base;
       if (pj < 1) next[idx(m, pityOn ? Math.min(c + 1, C - 1) : 0, gu)] += mass * (1 - pj);
-      const w = pick ? (gu ? 1 : pick.share) : win;
       const hit = mass * pj;
+      if (other) {
+        // 보장 상태면 이번 최상위는 픽업 확정 → 보장만 풀림. 아니면 이 캐릭터 q, 다른 비픽업 (1 − s − q) → 보장, 픽업 s → 그대로
+        const gNext = pick.guarantee ? 1 : 0;
+        if (gu) { next[idx(m, 0, 0)] += hit; continue; }
+        const q = (1 - pick.share) / (n - 1);
+        if (m + 1 >= k) absorbed += hit * q; else next[idx(m + 1, 0, gNext)] += hit * q;
+        next[idx(m, 0, gNext)] += hit * (1 - pick.share - q);
+        next[idx(m, 0, 0)] += hit * pick.share;
+        continue;
+      }
+      const w = pick ? (gu ? 1 : pick.share) : win;
       if (m + 1 >= k) absorbed += hit * w; else next[idx(m + 1, 0, 0)] += hit * w;
       if (w < 1) next[idx(m, 0, pick?.guarantee ? 1 : 0)] += hit * (1 - w);
     }
@@ -334,6 +362,110 @@ export function exactPickup(cfg, goal, { maxWork = 3e8, tol = 1e-10 } = {}) {
   };
   return { mean, q50: qv[0], q90: qv[1], q99: qv[2], cdf, reach };
 }
+export const exactPickup = exactUnit; // 이전 이름
+
+// ── 확률 공시표 ──────────────────────────────────────────
+/** 캐릭터 이름: 입력한 이름(쉼표 구분)을 앞에서부터 쓰고, 모자라면 '등급 n' */
+export function unitNames(cfg, gi) {
+  const g = cfg.grades[gi];
+  const given = (g.names || []).map(s => String(s).trim());
+  const featured = gi === cfg.grades.length - 1 && cfg.pickup?.enabled;
+  return Array.from({ length: g.kinds }, (_, i) => given[i] || (featured && i === 0 ? `${g.name} 픽업` : `${g.name} ${featured ? i : i + 1}`));
+}
+
+/** 천장 확률 변동표: 마지막 최상위 이후 j번째 뽑기의 확률(같은 값은 구간으로 묶음)과 그 뽑기까지 한 번이라도 나올 누적 확률 */
+export function pitySchedule(cfg, level = 0) {
+  const top = cfg.grades.length - 1;
+  const base = (cfg.grades[top].probs[level] ?? 0) / 100;
+  const N = cfg.pity?.enabled ? cfg.pity.hard : null;
+  if (!N) return [];
+  const rows = [];
+  let survive = 1;
+  for (let j = 1; j <= N; j++) {
+    const p = topProb(cfg, base, j);
+    survive *= 1 - p;
+    const last = rows.at(-1);
+    if (last && Math.abs(last.prob - p) < 1e-15) { last.to = j; last.cum = 1 - survive; }
+    else rows.push({ from: j, to: j, prob: p, cum: 1 - survive });
+  }
+  return rows;
+}
+
+/**
+ * 실효 확률(천장·보장 포함): 최상위 한 장당 평균 뽑기 수의 역수. 픽업은 보장이 있으면 최상위 (2 − s)장당 1장.
+ * 같은 소환 레벨에 머문다고 보고 레벨마다 계산한다.
+ */
+export function effectiveRates(cfg, level = 0) {
+  const top = cfg.grades.length - 1, n = cfg.grades[top].kinds;
+  const base = (cfg.grades[top].probs[level] ?? 0) / 100;
+  let meanPerTop;
+  if (cfg.pity?.enabled) {
+    meanPerTop = 0;
+    let survive = 1;
+    for (let j = 1; j <= cfg.pity.hard; j++) { meanPerTop += survive; survive *= 1 - topProb(cfg, base, j); }
+  } else meanPerTop = base > 0 ? 1 / base : Infinity;
+  const topRate = Number.isFinite(meanPerTop) ? 1 / meanPerTop : 0;
+  let featuredShare = null;
+  if (cfg.pickup?.enabled) { const s = cfg.pickup.share / 100; featuredShare = cfg.pickup.guarantee ? 1 / (2 - s) : s; }
+  return {
+    base, meanPerTop, topRate,
+    featuredRate: featuredShare != null ? topRate * featuredShare : null,
+    otherRate: featuredShare != null ? topRate * (1 - featuredShare) / (n - 1) : topRate / n,
+  };
+}
+
+/** 확률 공시표 전체 */
+export function disclosure(cfg) {
+  const top = cfg.grades.length - 1;
+  const levels = cfg.levels.map((from, l) => {
+    const grades = cfg.grades.map((g, gi) => {
+      const p = (g.probs[l] ?? 0) / 100;
+      const names = unitNames(cfg, gi);
+      const units = names.map((name, i) => ({ name, i, prob: p * unitShare(cfg, gi, i), featured: gi === top && !!cfg.pickup?.enabled && i === 0 }));
+      return { gi, name: g.name, prob: p, units };
+    });
+    return { level: l + 1, from, to: l + 1 < cfg.levels.length ? cfg.levels[l + 1] - 1 : null, grades, sum: grades.reduce((a, x) => a + x.units.reduce((b, u) => b + u.prob, 0), 0) };
+  });
+  const topName = cfg.grades[top].name;
+  const notes = [];
+  if (cfg.levels.length > 1) notes.push(`소환 레벨: 누적 뽑기 수에 따라 확률표가 바뀝니다 (${cfg.levels.map((f, l) => `Lv${l + 1} ${f.toLocaleString('ko-KR')}회~`).join(', ')}). 레벨별 확률을 모두 공시합니다.`);
+  if (cfg.pity?.enabled) {
+    const p = cfg.pity;
+    notes.push(p.softStep > 0 && p.softStart < p.hard
+      ? `${topName} 확률 변동: 마지막 ${topName} 이후 ${p.softStart}번째 뽑기부터 한 번마다 ${p.softStep}%p씩 오르고, ${p.hard}번째 뽑기에서 100%입니다. ${topName}가 나오면 횟수가 0으로 돌아갑니다.`
+      : `${topName} 확정: 마지막 ${topName} 이후 ${p.hard}번째 뽑기에서 100%입니다. ${topName}가 나오면 횟수가 0으로 돌아갑니다.`);
+  }
+  if (cfg.pickup?.enabled) notes.push(`픽업: ${topName}가 나오면 ${cfg.pickup.share}% 확률로 픽업 캐릭터, 나머지는 다른 ${topName} ${cfg.grades[top].kinds - 1}종 중 균등.${cfg.pickup.guarantee ? ` 픽업이 아닌 ${topName}가 나오면 다음 ${topName}는 픽업 확정입니다.` : ''}`);
+  if (cfg.mileage?.enabled) notes.push(`마일리지: 뽑기 1회마다 ${cfg.mileage.per} 적립, ${cfg.mileage.cost}로 ${topName} 중 원하는 1장과 교환 (확률이 아닌 확정 교환).`);
+  const ex = cfg.grades.filter(g => (g.exchange || 0) > 0);
+  if (ex.length) notes.push(`조각 교환: 중복을 ${cfg.shardName || '조각'}으로 분해해 ${ex.map(g => `${g.name} 원하는 1장 = ${g.exchange.toLocaleString('ko-KR')}`).join(', ')} (확정 교환).`);
+  return {
+    levels, notes,
+    pity: cfg.pity?.enabled ? cfg.levels.map((_, l) => pitySchedule(cfg, l)) : null,
+    effective: cfg.levels.map((_, l) => effectiveRates(cfg, l)),
+  };
+}
+
+/**
+ * 캐릭터 1장 기대 뽑기 수: 등급마다 대표 캐릭터 하나(픽업 등급이면 픽업·비픽업 각각)를 정확해로.
+ * 반환: [{ gi, featured, mean }] — 정확해를 못 쓰는 설정(그 등급 조각 교환)은 시뮬레이션 평균
+ */
+export function unitExpectations(cfg, runs = 2000) {
+  const top = cfg.grades.length - 1;
+  const out = [];
+  cfg.grades.forEach((g, gi) => {
+    const kinds = gi === top && cfg.pickup?.enabled ? [['pickup', true], ['unit', false]] : [['unit', false]];
+    for (const [type, featured] of kinds) {
+      if (gi === top && cfg.pickup?.enabled && !featured && g.kinds < 2) continue;
+      const goal = { id: `u${gi}${type}`, name: '', type, grade: g.id, kinds: 1, copies: 1 };
+      const never = cfg.levels.every((_, l) => !((g.probs[l] ?? 0) > 0)) && !(gi === top && (cfg.pity?.enabled || cfg.mileage?.enabled));
+      const ex = never ? null : exactUnit(cfg, goal);
+      const mean = never ? Infinity : ex ? ex.mean : simulateGoal(cfg, goal, runs, 777 + gi).mean;
+      out.push({ gi, featured, mean, exact: !!ex });
+    }
+  });
+  return out;
+}
 
 // ── 전체 분석 ────────────────────────────────────────────
 export function analyze(cfg, { runs = cfg.runs ?? 3000 } = {}) {
@@ -343,7 +475,7 @@ export function analyze(cfg, { runs = cfg.runs ?? 3000 } = {}) {
   const gemPerDayPaid = gemPerDayFree + (cfg.wonPerGem > 0 ? (cfg.user?.monthlyWon || 0) / 30 / cfg.wonPerGem : 0);
   const goals = cfg.goals.map((goal, i) => {
     const sim = simulateGoal(cfg, goal, runs, 20261017 + i * 7919);
-    const exact = goal.type === 'pickup' ? exactPickup(cfg, goal) : null;
+    const exact = goal.type === 'pickup' || goal.type === 'unit' ? exactUnit(cfg, goal) : null;
     const exactMean = exact ? exact.mean : exactCollectMean(cfg, goal);
     const mean = exactMean ?? sim.mean;
     const pct = exact ? { p50: exact.q50, p90: exact.q90, p99: exact.q99 } : { p50: sim.q(0.5), p90: sim.q(0.9), p99: sim.q(0.99) };

@@ -1,7 +1,7 @@
 // 실행: npm test  (node --test)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze, validate, simulateGoal, exactCollectMean, exactPickup, gammaP, noDupConfig, topProb } from '../js/gacha/model.js';
+import { analyze, validate, simulateGoal, exactCollectMean, exactPickup, exactUnit, gammaP, noDupConfig, topProb, disclosure, effectiveRates, pitySchedule, unitExpectations, unitNames } from '../js/gacha/model.js';
 import { TEMPLATES } from '../js/gacha/presets.js';
 
 const tpl = (id) => TEMPLATES[id].make();
@@ -139,4 +139,60 @@ test('검증: 확률 합, 종 수 범위, 픽업 등급 종 수', () => {
   assert.ok(validate(c2).some(e => e.includes('종 수')));
   const c3 = base({ pickup: { enabled: true, share: 50, guarantee: true } }); c3.grades[1].kinds = 1; c3.goals[0].kinds = 1;
   assert.ok(validate(c3).some(e => e.includes('픽업')));
+});
+
+test('특정 캐릭터(픽업 아님, 보장 있음): 최상위 기준 E = (2 − s − q) ÷ q, 뽑기 = E ÷ p — 정확해 ② = 해석해 = 시뮬레이션', () => {
+  const cfg = base({ pickup: { enabled: true, share: 50, guarantee: true }, goals: [{ id: 'u', name: '상시 캐릭터', type: 'unit', grade: 'b', copies: 1 }] });
+  const s = 0.5, n = 5, q = (1 - s) / (n - 1), p = 0.05;
+  const expect = (2 - s - q) / q / p;
+  close(exactUnit(cfg, cfg.goals[0]).mean, expect, 1e-6, '정확해');
+  close(simulateGoal(cfg, cfg.goals[0], 20000).mean, expect, 0.03, '시뮬레이션');
+  cfg.pickup.guarantee = false; // 보장이 없으면 단순 역수
+  close(exactUnit(cfg, cfg.goals[0]).mean, 1 / (p * q), 1e-6, '보장 없음');
+});
+
+test('특정 캐릭터: 천장·확률 상승 템플릿에서 정확해 ② = 시뮬레이션, 다른 등급은 n ÷ p', () => {
+  const cfg = tpl('pity');
+  const goal = { id: 'u', name: 'SSR 상시', type: 'unit', grade: 'ssr', copies: 2 };
+  const ex = exactUnit(cfg, goal);
+  close(simulateGoal(cfg, goal, 20000).mean, ex.mean, 0.02);
+  const sr = { id: 'v', name: 'SR 특정', type: 'unit', grade: 'sr', copies: 1 };
+  close(exactUnit(cfg, sr).mean, 20 / 0.08, 1e-6);
+  close(exactCollectMean(cfg, sr), 20 / 0.08, 1e-6, '포아송화와도 일치');
+});
+
+test('공시표: 레벨마다 캐릭터 확률 합 100%, 캐릭터 합 = 등급 확률, 픽업 비중', () => {
+  for (const id of Object.keys(TEMPLATES)) {
+    const d = disclosure(tpl(id));
+    for (const lv of d.levels) {
+      close(lv.sum, 1, 1e-12, `${id} Lv${lv.level}`);
+      for (const g of lv.grades) close(g.units.reduce((a, u) => a + u.prob, 0) || 0, g.prob || 0, 1e-12, `${id} ${g.name}`);
+    }
+  }
+  const d = disclosure(tpl('pity'));
+  const ssr = d.levels[0].grades.at(-1);
+  close(ssr.units[0].prob, 0.008 * 0.5, 1e-12);
+  close(ssr.units[1].prob, 0.008 * 0.5 / 11, 1e-12);
+  assert.ok(ssr.units[0].featured && !ssr.units[1].featured);
+  assert.ok(d.notes.some(t => t.includes('66번째')) && d.notes.some(t => t.includes('픽업 확정')));
+});
+
+test('천장 변동표·실효 확률: 확정 천장만이면 평균 = (1 − (1−p)^N) ÷ p, 마지막 줄 100%·누적 100%', () => {
+  const cfg = base({ pity: { enabled: true, hard: 90, softStart: 90, softStep: 0 } });
+  const rows = pitySchedule(cfg, 0);
+  assert.deepEqual([rows[0].from, rows[0].to, rows.at(-1).from, rows.at(-1).prob], [1, 89, 90, 1]);
+  close(rows.at(-1).cum, 1, 1e-12);
+  const e = effectiveRates(cfg, 0);
+  close(e.meanPerTop, (1 - Math.pow(0.95, 90)) / 0.05, 1e-9);
+  close(effectiveRates(base(), 0).topRate, 0.05, 1e-12, '천장 없으면 기본 확률');
+  const pk = effectiveRates({ ...cfg, pickup: { enabled: true, share: 50, guarantee: true } }, 0);
+  close(pk.featuredRate, pk.topRate / 1.5, 1e-12, '보장: 최상위 1.5장당 픽업 1장');
+});
+
+test('캐릭터 1장 기대 뽑기: 고정 확률이면 등급마다 n ÷ p, 캐릭터 이름 기본값', () => {
+  const cfg = base();
+  const u = unitExpectations(cfg);
+  close(u.find(x => x.gi === 0).mean, 10 / 0.95, 1e-6);
+  close(u.find(x => x.gi === 1).mean, 5 / 0.05, 1e-6);
+  assert.deepEqual(unitNames({ ...cfg, grades: cfg.grades.map((g, i) => (i === 1 ? { ...g, names: ['갑', '', '병'] } : g)) }, 1), ['갑', '희귀 2', '병', '희귀 4', '희귀 5']);
 });
