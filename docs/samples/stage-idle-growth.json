@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "tool": "stage",
+  "description": "[더미] 방치형 스테이지 성장 — 챕터 20 × 스테이지 10, 골드 강화 구간 비용, 의도 체류 시간. 수치는 가상의 예시.",
+  "model": [
+    "몬스터 체력 hp(s) = hp0 × hpGrowth^(s−1), 웨이브 골드 g(s) = gold0 × goldGrowth^(s−1)",
+    "공격력 atk(L) = atk0 + atkPerLevel × L,  돌파 조건 atk × waveLimit ≥ monstersPerWave × hp(s)",
+    "레벨 L → L+1 비용 = 구간 initCost + step × (L − lvMin),  누적 비용은 구간별 등차수열 합",
+    "실제 체류(s−1) = max((누적비용(L_req(s)) − 누적비용(L_req(s−1))) ÷ (g(s−1) ÷ waveSeconds), wavesPerStage × waveSeconds)",
+    "정체 = 실제 체류 > stagnationRatio × 의도 체류"
+  ],
+  "state": {
+    "v": 1,
+    "template": "idle",
+    "chapters": 20,
+    "stagesPerChapter": 10,
+    "waveSeconds": 10,
+    "wavesPerStage": 3,
+    "monstersPerWave": 5,
+    "waveLimit": 10,
+    "hp0": 100,
+    "hpGrowth": 1.04,
+    "gold0": 40,
+    "goldGrowth": 1.06,
+    "atk0": 10,
+    "atkPerLevel": 2,
+    "intendedDwell": {
+      "baseSeconds": 30,
+      "perChapterMult": 1.3,
+      "note": "챕터 c의 의도 체류 시간 = 30초 × 1.3^(c−1)"
+    },
+    "stagnationRatio": 2,
+    "costIntervals": [
+      {
+        "lvMin": 0,
+        "lvMax": 200,
+        "initCost": 50,
+        "step": 4.5
+      },
+      {
+        "lvMin": 200,
+        "lvMax": 1000,
+        "initCost": 950,
+        "step": 9
+      },
+      {
+        "lvMin": 1000,
+        "lvMax": 5000,
+        "initCost": 8150,
+        "step": 8
+      },
+      {
+        "lvMin": 5000,
+        "lvMax": 20000,
+        "initCost": 40150,
+        "step": 30
+      },
+      {
+        "lvMin": 20000,
+        "lvMax": 100000,
+        "initCost": 490150,
+        "step": 15
+      },
+      {
+        "lvMin": 100000,
+        "lvMax": null,
+        "initCost": 1690150,
+        "step": 15
+      }
+    ],
+    "csvSource": "stage-cost-intervals.csv"
+  },
+  "expected": {
+    "note": "같은 파일의 generate.mjs가 위 모델을 직접 합산해 구한 정답 (누적 비용 공식은 0~150,000레벨 직접 합산과 일치 확인)",
+    "cumCost": {
+      "L1000": 3735950,
+      "L10000": 675994950,
+      "L100000": 91288744950
+    },
+    "checkpoints": [
+      {
+        "stage": "1-10",
+        "levelReq": 31,
+        "goldNeeded": 185,
+        "dwellSec": 30,
+        "intendedSec": 30,
+        "elapsedSec": 384.4155053876743,
+        "elapsedHours": 0.11
+      },
+      {
+        "stage": "5-10",
+        "levelReq": 166,
+        "goldNeeded": 4688,
+        "dwellSec": 71.5,
+        "intendedSec": 85.7,
+        "elapsedSec": 2652.9788929231063,
+        "elapsedHours": 0.74
+      },
+      {
+        "stage": "10-10",
+        "levelReq": 1210,
+        "goldNeeded": 452986,
+        "dwellSec": 375,
+        "intendedSec": 318.1,
+        "elapsedSec": 12990.308471955293,
+        "elapsedHours": 3.61
+      },
+      {
+        "stage": "15-10",
+        "levelReq": 8623,
+        "goldNeeded": 47617660,
+        "dwellSec": 2140.1,
+        "intendedSec": 1181.2,
+        "elapsedSec": 53347.4742314297,
+        "elapsedHours": 14.82
+      },
+      {
+        "stage": "20-10",
+        "levelReq": 61312,
+        "goldNeeded": 2576334670,
+        "dwellSec": 6286.1,
+        "intendedSec": 4385.8,
+        "elapsedSec": 282272.99925150606,
+        "elapsedHours": 78.41
+      }
+    ],
+    "totalHours": 78.41,
+    "stagnantStages": [
+      "1-3",
+      "16-9",
+      "16-10",
+      "17-6",
+      "17-7",
+      "17-8",
+      "17-9",
+      "17-10"
+    ],
+    "stagnantCount": 8,
+    "finding": "5,000~20,000레벨 구간의 증가폭(30)이 앞뒤 구간(8, 15)보다 가팔라, 그 레벨대가 필요한 16~17챕터에서 실제 체류가 의도의 2배를 넘는다"
+  }
+}

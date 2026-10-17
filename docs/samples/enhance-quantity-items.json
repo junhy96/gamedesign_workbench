@@ -1,0 +1,451 @@
+{
+  "schemaVersion": 3,
+  "tool": "enhance",
+  "description": "[더미] 별자리 초월형 강화 — 실패 시 재료만 소진(단계 유지). 보조 재료 3종을 개수 단위로 투입. 수치는 가상의 예시.",
+  "proposedFields": {
+    "items[].mode": "'toggle'(기존: 1개 쓰거나 안 씀) | 'quantity'(개당 amount %p, 최대 maxUnits개)",
+    "items[].maxUnits": "한 번의 시도에 넣을 수 있는 최대 개수",
+    "usage[stage]": "수량형은 { units: { 아이템 id: 개수 } } (기존 on/off는 id 배열 그대로)",
+    "priceSweep": "가격 곡선 카드 설정: 대상 아이템, 가격 범위(해당 재화 단위), 단계 수, 목표 절감률"
+  },
+  "state": {
+    "v": 3,
+    "template": "blank",
+    "start": 0,
+    "target": 6,
+    "restore": 0,
+    "double": false,
+    "resources": [
+      {
+        "name": "별가루",
+        "value": 0.1
+      },
+      {
+        "name": "같은 세부 별",
+        "value": 3000,
+        "note": "가챠·수집 탭에서 구한 1장 기대 비용(원)을 가치로 사용"
+      },
+      {
+        "name": "다이아",
+        "value": 10
+      }
+    ],
+    "rows": [
+      {
+        "stage": 0,
+        "s": 100,
+        "s2": 0,
+        "k": 0,
+        "d": 0,
+        "b": 0,
+        "costs": [
+          1000,
+          1,
+          0
+        ]
+      },
+      {
+        "stage": 1,
+        "s": 60,
+        "s2": 0,
+        "k": 40,
+        "d": 0,
+        "b": 0,
+        "costs": [
+          2000,
+          1,
+          0
+        ]
+      },
+      {
+        "stage": 2,
+        "s": 45,
+        "s2": 0,
+        "k": 55,
+        "d": 0,
+        "b": 0,
+        "costs": [
+          4000,
+          2,
+          0
+        ]
+      },
+      {
+        "stage": 3,
+        "s": 30,
+        "s2": 0,
+        "k": 70,
+        "d": 0,
+        "b": 0,
+        "costs": [
+          8000,
+          2,
+          0
+        ]
+      },
+      {
+        "stage": 4,
+        "s": 20,
+        "s2": 0,
+        "k": 80,
+        "d": 0,
+        "b": 0,
+        "costs": [
+          15000,
+          3,
+          0
+        ]
+      },
+      {
+        "stage": 5,
+        "s": 12,
+        "s2": 0,
+        "k": 88,
+        "d": 0,
+        "b": 0,
+        "costs": [
+          30000,
+          4,
+          0
+        ]
+      }
+    ],
+    "destroyCosts": [
+      0,
+      0,
+      0
+    ],
+    "items": [
+      {
+        "id": "g_high",
+        "name": "별빛 가호 (상급)",
+        "effect": "boost",
+        "mode": "quantity",
+        "amount": 4,
+        "maxUnits": 8,
+        "costs": [
+          0,
+          0,
+          50
+        ],
+        "from": 1,
+        "to": 5
+      },
+      {
+        "id": "g_mid",
+        "name": "별빛 가호 (중급)",
+        "effect": "boost",
+        "mode": "quantity",
+        "amount": 1,
+        "maxUnits": 15,
+        "costs": [
+          0,
+          0,
+          15
+        ],
+        "from": 1,
+        "to": 5
+      },
+      {
+        "id": "g_low",
+        "name": "별빛 가호 (하급)",
+        "effect": "boost",
+        "mode": "quantity",
+        "amount": 0.1,
+        "maxUnits": 50,
+        "costs": [
+          0,
+          0,
+          2
+        ],
+        "from": 1,
+        "to": 5
+      }
+    ],
+    "usage": {
+      "3": {
+        "units": {
+          "g_high": 2
+        }
+      },
+      "4": {
+        "units": {
+          "g_high": 4,
+          "g_mid": 3
+        }
+      },
+      "5": {
+        "units": {
+          "g_high": 8
+        }
+      }
+    },
+    "streak": {
+      "kind": "none",
+      "bonus": 10,
+      "bonusMode": "rel",
+      "cap": 100,
+      "pity": 0
+    },
+    "event": {
+      "on": false,
+      "successMult": 1.2,
+      "destroyMult": 0.7,
+      "costMult": 0.8
+    },
+    "priceSweep": {
+      "item": "g_high",
+      "resource": 2,
+      "from": 20,
+      "to": 600,
+      "step": 20,
+      "targetSaving": 0.15
+    }
+  },
+  "expected": {
+    "note": "단계 독립 구조라 단계마다 투입량 조합 전수 탐색(상급 0~8 × 중급 0~15 × 하급 0~50)으로 구한 정답. 원 단위.",
+    "noItemsExpCost": 222822.22,
+    "optimal": {
+      "expCost": 98306.28,
+      "saving": 0.5588,
+      "bmSpend": 34709.26,
+      "policy": {
+        "2": {
+          "g_high": 8
+        },
+        "3": {
+          "g_high": 8,
+          "g_mid": 15
+        },
+        "4": {
+          "g_high": 8,
+          "g_mid": 15,
+          "g_low": 50
+        },
+        "5": {
+          "g_high": 8,
+          "g_mid": 15,
+          "g_low": 50
+        }
+      }
+    },
+    "priceSweep": [
+      {
+        "price": 20,
+        "expCost": 84590.46,
+        "bmSpend": 20711.93,
+        "saving": 0.6204,
+        "highUnits": 40
+      },
+      {
+        "price": 40,
+        "expCost": 93867.25,
+        "bmSpend": 30270.22,
+        "saving": 0.5787,
+        "highUnits": 32
+      },
+      {
+        "price": 60,
+        "expCost": 102422.08,
+        "bmSpend": 32914.52,
+        "saving": 0.5403,
+        "highUnits": 24
+      },
+      {
+        "price": 80,
+        "expCost": 109218.27,
+        "bmSpend": 40249.2,
+        "saving": 0.5098,
+        "highUnits": 24
+      },
+      {
+        "price": 100,
+        "expCost": 113979.51,
+        "bmSpend": 39703.13,
+        "saving": 0.4885,
+        "highUnits": 16
+      },
+      {
+        "price": 120,
+        "expCost": 118701.74,
+        "bmSpend": 44425.35,
+        "saving": 0.4673,
+        "highUnits": 16
+      },
+      {
+        "price": 140,
+        "expCost": 123146.18,
+        "bmSpend": 37203.13,
+        "saving": 0.4473,
+        "highUnits": 8
+      },
+      {
+        "price": 160,
+        "expCost": 125646.18,
+        "bmSpend": 39703.13,
+        "saving": 0.4361,
+        "highUnits": 8
+      },
+      {
+        "price": 180,
+        "expCost": 128146.18,
+        "bmSpend": 42203.13,
+        "saving": 0.4249,
+        "highUnits": 8
+      },
+      {
+        "price": 200,
+        "expCost": 130646.18,
+        "bmSpend": 44703.13,
+        "saving": 0.4137,
+        "highUnits": 8
+      },
+      {
+        "price": 220,
+        "expCost": 133146.18,
+        "bmSpend": 47203.13,
+        "saving": 0.4025,
+        "highUnits": 8
+      },
+      {
+        "price": 240,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 260,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 280,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 300,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 320,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 340,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 360,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 380,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 400,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 420,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 440,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 460,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 480,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 500,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 520,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 540,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 560,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 580,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      },
+      {
+        "price": 600,
+        "expCost": 134161.81,
+        "bmSpend": 24781.25,
+        "saving": 0.3979,
+        "highUnits": 0
+      }
+    ],
+    "bmRevenueMaxAt": {
+      "price": 220,
+      "bmSpend": 47203.13
+    },
+    "savingAtOrBelowTargetFrom": null,
+    "finding": "상급 가호 가격만 올려서는 목표 절감률 15%에 닿지 않음 — 240 다이아부터 상급은 안 쓰이고, 중급·하급만으로 39.8% 절감. 중급·하급 가격(%p당 비용)도 함께 올려야 함"
+  }
+}
