@@ -231,30 +231,74 @@ async function renderOffscreen() {
 }
 const fileBase = () => (state.title || '다이어그램').replace(/[\\/:*?"<>|]/g, '_');
 
+/**
+ * 내보내기용 SVG 문자열: 위에 범례(INDEX), 아래에 다이어그램. 범례가 꺼져 있거나 항목이 없으면 다이어그램만.
+ * 다이어그램 SVG는 중첩 <svg>로 넣어 Mermaid가 만든 스타일(#id 범위)을 그대로 유지한다.
+ */
+function composeExport(svg, an) {
+  const W0 = +svg.getAttribute('width'), H0 = +svg.getAttribute('height');
+  const items = state.style.legend ? legendItems(an, state.style, false) : [];
+  const xml = new XMLSerializer();
+  if (!items.length) {
+    return { text: `<svg xmlns="http://www.w3.org/2000/svg" width="${W0}" height="${H0}" viewBox="0 0 ${W0} ${H0}"><rect width="100%" height="100%" fill="#ffffff"/>${xml.serializeToString(svg)}</svg>`, w: W0, h: H0 };
+  }
+  const FONT_CSS = '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif';
+  const g = document.createElement('canvas').getContext('2d');
+  g.font = `13px ${FONT_CSS}`;
+  const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const PAD = 16, ROW = 28, ICON = 32, BADGE = 54;
+  const W = Math.max(W0 + PAD * 2, 420);
+  const parts = [];
+  let x = PAD + BADGE + 14, row = 0;
+  for (const it of items) {
+    const w = ICON + 6 + Math.ceil(g.measureText(it.label).width) + 18;
+    if (x + w > W - PAD && x > PAD + BADGE + 14) { row++; x = PAD + BADGE + 14; }
+    const y = PAD + row * ROW;
+    const icon = it.kind === 'block'
+      ? shapeIcon(it.cat, it.fill, it.stroke)
+      : `<svg viewBox="0 0 32 20" width="32" height="20"><path d="M2 10h24" stroke="${it.stroke}" stroke-width="2.4"/><path d="M24 6l6 4-6 4z" fill="${it.stroke}"/></svg>`;
+    parts.push(icon.replace('<svg ', `<svg x="${x}" y="${y}" `).replace(' aria-hidden="true"', ''));
+    parts.push(`<text x="${x + ICON + 6}" y="${y + 14.5}" font-size="13" fill="#3A3A38">${esc(it.label)}</text>`);
+    x += w;
+  }
+  const legendH = PAD + (row + 1) * ROW + 6;
+  const ox = Math.round((W - W0) / 2), oy = legendH + 12;
+  svg.setAttribute('x', ox); svg.setAttribute('y', oy);
+  const H = oy + H0 + PAD;
+  const text = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family='${FONT_CSS}'>`
+    + `<rect width="100%" height="100%" fill="#ffffff"/>`
+    + `<g><rect x="${PAD}" y="${PAD}" width="${BADGE}" height="20" rx="5" fill="#1B1B1A"/><text x="${PAD + BADGE / 2}" y="${PAD + 14.5}" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.6">INDEX</text>${parts.join('')}</g>`
+    + `<line x1="${PAD}" y1="${legendH}" x2="${W - PAD}" y2="${legendH}" stroke="#D8D7D2"/>`
+    + xml.serializeToString(svg) + '</svg>';
+  return { text, w: W, h: H };
+}
+
 async function exportSvg() {
   try {
-    const { svg, host } = await renderOffscreen();
-    downloadText(`${fileBase()}.svg`, new XMLSerializer().serializeToString(svg), 'image/svg+xml');
+    const { svg, host, an } = await renderOffscreen();
+    const out = composeExport(svg, an);
     host.remove();
+    downloadText(`${fileBase()}.svg`, out.text, 'image/svg+xml');
   } catch (e) { toast(e.message); }
 }
 
 async function exportPng() {
   try {
-    const { svg, host } = await renderOffscreen();
-    const w = +svg.getAttribute('width'), hgt = +svg.getAttribute('height');
+    const { svg, host, an } = await renderOffscreen();
+    const out = composeExport(svg, an);
+    host.remove();
     const scale = 2;
     const img = new Image();
-    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' }));
+    const url = URL.createObjectURL(new Blob([out.text], { type: 'image/svg+xml' }));
     await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error('이미지 변환에 실패했습니다.')); img.src = url; });
-    const canvas = Object.assign(document.createElement('canvas'), { width: Math.ceil(w * scale), height: Math.ceil(hgt * scale) });
+    const canvas = Object.assign(document.createElement('canvas'), { width: Math.ceil(out.w * scale), height: Math.ceil(out.h * scale) });
     const g = canvas.getContext('2d');
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, canvas.width, canvas.height);
     g.drawImage(img, 0, 0, canvas.width, canvas.height);
-    URL.revokeObjectURL(url); host.remove();
+    URL.revokeObjectURL(url);
     canvas.toBlob((blob) => {
-      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${fileBase()}.png` });
-      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      const el = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${fileBase()}.png` });
+      document.body.append(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 1000);
     }, 'image/png');
   } catch (e) { toast(e.message); }
 }
@@ -283,6 +327,8 @@ async function exportPptx() {
 }
 
 /** PPT 상단 범례(INDEX): 블록 종류는 PowerPoint 순서도 기본 도형, 분기 선은 화살표. 폭이 넘치면 다음 줄로 */
+export { composeExport };
+
 export function legendSpecs(items, y) {
   if (!items.length) return { specs: [], h: 0 };
   const specs = [];
