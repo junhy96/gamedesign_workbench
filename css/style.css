@@ -624,3 +624,4 @@ table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .syntax-help li { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center; font-size: 12.5px; }
 .syntax-help li .icon { grid-row: span 2; }
 .syntax-help code { font-size: 11.5px; color: var(--text-3); }
+.econ-tables { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; }

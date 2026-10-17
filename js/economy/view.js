@@ -72,7 +72,7 @@ function build(root) {
           h('div.card-head', {}, h('h2', {}, '성장 루프'), h('div.tool-actions', {}, els.flowPpt = h('button.btn.small', { type: 'button', onclick: exportFlowPpt }, 'PPT 도형으로 저장'))),
           els.flow = h('div.diagram-preview', {}),
         ),
-        els.tables = h('div', { style: 'display:grid;gap:20px' }),
+        els.tables = h('div.econ-tables'),
       ),
     ),
   );
