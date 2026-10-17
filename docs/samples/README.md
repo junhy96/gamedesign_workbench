@@ -12,4 +12,5 @@
 
 - `proposedFields`(강화)·`model`(스테이지)에 새로 생기는 필드와 계산식을 적었습니다.
 - `expected`는 [generate.mjs](generate.mjs)가 도구와 **독립적으로** 구한 정답입니다 (강화: 단계마다 투입량 조합 전수 탐색 / 스테이지: 구간 등차수열 합을 직접 합산과 대조).
+- 스테이지 성장 탭은 구현되었습니다: [tests/stage.test.mjs](../../tests/stage.test.mjs)가 이 JSON·CSV를 불러와 `expected`와 비교하고, 화면의 '불러오기'로 JSON을 그대로 열 수 있습니다.
 - 수치를 바꾸려면 `generate.mjs`를 고치고 `node docs/samples/generate.mjs`로 다시 만듭니다.

@@ -663,3 +663,35 @@ table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .sweep-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sweep-charts { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── 방치형 스테이지 성장 ──────────────────────────────── */
+body:has(#tab-stage:not([hidden])) main { max-width: 1680px; }
+#tab-stage .kpis.econ-kpis { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+#tab-stage .kpi.hero .kpi-value { font-size: 26px; }
+#tab-stage .kpi.bad .kpi-value { color: var(--bad); }
+.iv-table { min-width: 860px; }
+.iv-table input[type="number"] { width: 92px; }
+.iv-table input.cost { width: 104px; }
+.iv-table input.short { width: 64px; }
+.iv-table td.res.left { text-align: left; white-space: normal; min-width: 180px; }
+.iv-table tr.stag-row td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+.iv-min { display: inline-block; min-width: 76px; padding: 5px 7px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.iv-stag { color: var(--bad); font-weight: 700; white-space: nowrap; }
+.csv-import { margin-top: 14px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; display: grid; gap: 10px; background: var(--surface-2); }
+.csv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.csv-text { width: 100%; min-height: 110px; resize: vertical; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
+.csv-text:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.csv-result { display: grid; gap: 10px; }
+.csv-result:empty { display: none; }
+.csv-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-items: end; }
+.csv-map select { width: 100%; padding: 5px 8px; font-size: 13px; }
+.csv-map .check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); padding-bottom: 6px; cursor: pointer; }
+.csv-ok { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--good); }
+#tab-stage table.stages.chapter-table { min-width: 680px; }
+.chapter-table tr.ch-row { cursor: pointer; }
+.chapter-table tr.ch-row:hover td { background: var(--surface-2); }
+.chapter-table tr.ch-row.stag-row td.stage { color: var(--bad); }
+.chapter-table tr.st-row td { font-size: 12.5px; }
+.chapter-table tr.st-row td:first-child { padding-left: 24px; }
+.ch-caret { display: inline-block; width: 16px; color: var(--text-3); }
+#tab-stage .findings li .btn { margin-left: auto; flex: none; }
