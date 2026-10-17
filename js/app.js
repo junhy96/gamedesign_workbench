@@ -7,12 +7,14 @@ import { mount as mountEconomy } from './economy/view.js';
 import { mount as mountSupply } from './supply/view.js';
 import { mount as mountGacha } from './gacha/view.js';
 import { mount as mountStage } from './stage/view.js';
+import { mount as mountBattle } from './battle/view.js';
 
 const TOOLS = {
   enhance: mountEnhance,
   gacha: mountGacha,
   supply: mountSupply,
   stage: mountStage,
+  battle: mountBattle,
   economy: mountEconomy,
   frame: mountFrame,
   diagram: mountDiagram,
