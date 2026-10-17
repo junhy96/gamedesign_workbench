@@ -2,7 +2,8 @@
 import { MODELS, createDiagram, editDiagram, fixDiagram, requestText } from './llm.js';
 import { EXAMPLES } from './examples.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
-import { isDark, parseError, renderSvg, renderOffscreen as offscreen } from '../lib/mermaid.js';
+import { isDark, parseError, renderSvg, renderOffscreen as offscreen, loadMermaid } from '../lib/mermaid.js';
+import { CATS, PALETTES, DEFAULT_STYLE, analyze, styledCode, legendItems, shapeIcon } from './style.js';
 import { h, store, encodeState, decodeState, downloadText, toast, debounce } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -11,8 +12,8 @@ const STORE_KEY = 'diagram:v1';
 let state, els = {}, apiKey = '', busy = false;
 const save = debounce(() => store.set(STORE_KEY, state), 300);
 
-function defaultState() { const ex = EXAMPLES[0]; return { v: SCHEMA, prompt: ex.prompt, kind: ex.kind, code: ex.code, model: MODELS[0][0], title: ex.label }; }
-function hydrate(o) { return o && o.v === SCHEMA && typeof o.code === 'string' ? { ...defaultState(), ...o } : null; }
+function defaultState() { const ex = EXAMPLES[0]; return { v: SCHEMA, prompt: ex.prompt, kind: ex.kind, code: ex.code, model: MODELS[0][0], title: ex.label, style: { ...DEFAULT_STYLE } }; }
+function hydrate(o) { return o && o.v === SCHEMA && typeof o.code === 'string' ? { ...defaultState(), ...o, style: { ...DEFAULT_STYLE, ...(o.style || {}) } } : null; }
 function readHash() { const m = location.hash.match(/^#diagram\?s=([\w-]+)/); return m ? hydrate(decodeState(m[1])) : null; }
 
 // ── 진입점 ──────────────────────────────────────────────
@@ -64,10 +65,12 @@ function build(root) {
           els.editBtn = h('button.btn.block', { type: 'button', onclick: () => run('edit') }, '현재 다이어그램 수정'),
         ),
         els.status = h('p.gen-status', { role: 'status' }),
+        els.styleBox = h('div.option.style-box', {}),
       ),
       h('div.results', {},
         h('div.card', {},
           h('div.card-head', {}, h('h2', {}, '미리보기'), els.previewHint = h('span.hint', {})),
+          els.legend = h('div.dg-legend', { hidden: true }),
           els.preview = h('div.diagram-preview', {}),
           els.previewErr = h('div.errors', { hidden: true }),
         ),
@@ -80,6 +83,7 @@ function build(root) {
     ),
   );
   updateMode();
+  renderStyleBox();
 }
 
 function syncInputs() {
@@ -100,6 +104,58 @@ function loadExample(ex) {
 }
 
 function setStatus(msg, kind = '') { els.status.textContent = msg; els.status.className = `gen-status ${kind}`; }
+
+// ── 스타일 설정 ─────────────────────────────────────────
+function renderStyleBox() {
+  const st = state.style;
+  const set = (k, v, rerender = false) => { st[k] = v; save(); if (rerender) renderStyleBox(); schedulePreview(); };
+  const sel = (label, key, options, hint) => h('label.field', {}, h('span', {}, label),
+    h('select', { onchange: (e) => set(key, isNaN(+e.target.value) || e.target.value === '' ? e.target.value : +e.target.value) },
+      ...options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(st[key]) }, l))), hint ? h('small', {}, hint) : null);
+  const sw = (label, key) => h('label.switch', {}, label, h('input', { type: 'checkbox', checked: !!st[key], onchange: (e) => set(key, e.target.checked, true) }));
+  els.styleBox.replaceChildren(...[
+    h('span.group-title', {}, '스타일 설정'),
+    sel('색상', 'palette', Object.entries(PALETTES).map(([k, p]) => [k, p.label])),
+    h('div.row2', {},
+      sel('방향', 'direction', [['auto', '코드대로'], ['TD', '위 → 아래'], ['LR', '왼쪽 → 오른쪽'], ['BT', '아래 → 위'], ['RL', '오른쪽 → 왼쪽']]),
+      sel('선 모양', 'curve', [['basis', '곡선'], ['linear', '직선'], ['stepAfter', '계단 (직각)']])),
+    h('div.row2', {},
+      sel('간격', 'spacing', [['tight', '좁게'], ['normal', '보통'], ['wide', '넓게']]),
+      sel('글자 크기', 'fontSize', [[12, '12'], [14, '14 (기본)'], [16, '16'], [18, '18']])),
+    sw('아니오 · 없음 분기를 빨간 선으로', 'negRed'),
+    st.negRed ? h('label.field', {}, h('span', {}, '빨간 선으로 칠할 라벨'), h('input', { type: 'text', value: st.negWords, oninput: (e) => set('negWords', e.target.value) }), h('small', {}, '쉼표로 구분 · 라벨이 이 단어로 시작하면 적용 (예: "아니오 (재시도)")')) : null,
+    sw('예 · 있음 분기를 초록 선으로', 'posGreen'),
+    st.posGreen ? h('label.field', {}, h('span', {}, '초록 선으로 칠할 라벨'), h('input', { type: 'text', value: st.posWords, oninput: (e) => set('posWords', e.target.value) })) : null,
+    sw('범례(INDEX) 표시 · PPT 상단에 포함', 'legend'),
+    h('details.syntax-help', {},
+      h('summary', {}, '블록 종류와 Mermaid 모양'),
+      h('ul', {}, ...Object.entries(CATS).filter(([k]) => k !== 'state').map(([k, c]) => {
+        const col = (PALETTES.type.light)[k];
+        return h('li', {}, h('span.icon', { html: shapeIcon(k, col.fill, col.stroke) }), h('b', {}, c.label), h('code', {}, c.syntax));
+      })),
+      h('p.desc', {}, '블록 모양으로 종류를 나눕니다. AI에게 만들게 하면 이 규칙대로 모양을 고르고, 코드를 직접 고칠 때도 모양만 바꾸면 색과 범례가 따라 바뀝니다.'),
+    ),
+  ].filter(Boolean));
+}
+
+const renderOpts = () => ({ curve: state.style.curve, spacing: state.style.spacing, fontSize: state.style.fontSize });
+
+/** 원본 코드 → 분석 결과와 그릴 코드 */
+async function prepare(code, dark) {
+  const m = await loadMermaid();
+  const an = await analyze(m, code).catch(() => ({ kind: 'unknown', nodes: [], edges: [] }));
+  return { an, code: styledCode(code, an, state.style, dark) };
+}
+
+function renderLegend(an, dark) {
+  const items = state.style.legend ? legendItems(an, state.style, dark) : [];
+  els.legend.hidden = !items.length;
+  els.legend.replaceChildren(...(items.length ? [h('span.dg-legend-title', {}, 'INDEX'), ...items.map(it => h('span.dg-legend-item', {},
+    it.kind === 'block'
+      ? h('span.icon', { html: shapeIcon(it.cat, it.fill, it.stroke) })
+      : h('span.icon', { html: `<svg viewBox="0 0 32 20" width="32" height="20" aria-hidden="true"><path d="M2 10h24" stroke="${it.stroke}" stroke-width="2.4"/><path d="M24 6l6 4-6 4z" fill="${it.stroke}"/></svg>` }),
+    it.label))] : []));
+}
 
 // ── 생성·수정 ───────────────────────────────────────────
 async function run(mode) {
@@ -151,9 +207,12 @@ async function renderPreview() {
     return;
   }
   try {
-    const { svg, latest } = await renderSvg(code, isDark());
+    const dark = isDark();
+    const prep = await prepare(code, dark);
+    const { svg, latest } = await renderSvg(prep.code, dark, renderOpts());
     if (!latest()) return; // 더 최신 렌더가 있음
     els.preview.innerHTML = svg; // Mermaid(securityLevel: strict)가 정화한 SVG
+    renderLegend(prep.an, dark);
     els.previewErr.hidden = true;
     els.previewHint.textContent = '코드를 고치면 바로 반영됩니다';
   } catch (e) {
@@ -163,9 +222,12 @@ async function renderPreview() {
 
 // ── 내보내기 ────────────────────────────────────────────
 async function renderOffscreen() {
-  const r = await offscreen(state.code);
+  const err = await parseError(state.code);
+  if (err) throw new Error('문법 오류를 먼저 고쳐 주세요.');
+  const prep = await prepare(state.code, false);
+  const r = await offscreen(prep.code, renderOpts());
   renderPreview(); // 미리보기는 현재 테마로 되돌림
-  return r;
+  return { ...r, an: prep.an };
 }
 const fileBase = () => (state.title || '다이어그램').replace(/[\\/:*?"<>|]/g, '_');
 
@@ -201,13 +263,16 @@ async function exportPptx() {
   const btn = els.pptBtn, label = btn.textContent;
   btn.disabled = true; btn.textContent = '만드는 중…';
   try {
-    const { svg, host } = await renderOffscreen();
-    const specs = fitShapes(collectSvgShapes(svg), { x: 0.45, y: 1.15, w: 12.4, h: 5.95 });
+    const { svg, host, an } = await renderOffscreen();
+    const legend = state.style.legend ? legendSpecs(legendItems(an, state.style, false), 0.98) : { specs: [], h: 0 };
+    const top = 1.15 + (legend.h ? legend.h + 0.2 : 0);
+    const specs = fitShapes(collectSvgShapes(svg), { x: 0.45, y: top, w: 12.4, h: 7.1 - top });
     host.remove();
     if (!specs.length) throw new Error('변환할 도형이 없습니다.');
     const pptx = await createDeck(state.title || '다이어그램');
     const slide = pptx.addSlide();
     slide.addText(state.title || '다이어그램', { x: 0.45, y: 0.3, w: 12.4, h: 0.6, fontFace: FONT, fontSize: 22, bold: true, color: '1B1B1A', margin: 0 });
+    renderSpecs(pptx, slide, legend.specs);
     renderSpecs(pptx, slide, specs);
     slide.addNotes(`Mermaid 원본 코드\n\n${state.code}`);
     await pptx.writeFile({ fileName: `${fileBase()}.pptx` });
@@ -215,6 +280,28 @@ async function exportPptx() {
   } catch (e) {
     toast(e.message || 'PowerPoint 파일을 만들지 못했습니다');
   } finally { btn.disabled = false; btn.textContent = label; }
+}
+
+/** PPT 상단 범례(INDEX): 블록 종류는 PowerPoint 순서도 기본 도형, 분기 선은 화살표. 폭이 넘치면 다음 줄로 */
+export function legendSpecs(items, y) {
+  if (!items.length) return { specs: [], h: 0 };
+  const specs = [];
+  const X0 = 0.45, X1 = 12.85, ROW = 0.36, ICON_W = 0.46, ICON_H = 0.26;
+  const textW = (t) => [...t].reduce((w, c) => w + (/[가-힣]/.test(c) ? 0.122 : 0.068), 0.08);
+  specs.push({ type: 'roundRect', name: '범례 제목', x: X0, y, w: 0.72, h: 0.26, radius: 0.05, fill: '#1B1B1A', text: 'INDEX', fontSize: 9, bold: true, color: '#FFFFFF' });
+  let x = X0 + 0.9, row = 0;
+  for (const it of items) {
+    const w = ICON_W + 0.1 + textW(it.label) + 0.24;
+    if (x + w > X1) { row++; x = X0 + 0.9; }
+    const yy = y + row * ROW;
+    if (it.kind === 'block') specs.push({ type: 'preset', preset: CATS[it.cat].preset, name: `범례 ${it.label}`, x, y: yy, w: ICON_W, h: ICON_H, fill: it.fill, line: it.stroke, lineWidth: 1 });
+    else specs.push({ type: 'line', name: `범례 ${it.label}`, x, y: yy + ICON_H / 2, w: ICON_W, h: 0, line: it.stroke, lineWidth: 2, arrowEnd: true });
+    specs.push({ type: 'text', name: `범례 ${it.label} 글자`, text: it.label, x: x + ICON_W + 0.1, y: yy - 0.02, w: textW(it.label), h: 0.3, fontSize: 10.5, color: '#3A3A38' });
+    x += w;
+  }
+  const h = (row + 1) * ROW;
+  specs.push({ type: 'line', name: '범례 구분선', x: X0, y: y + h + 0.04, w: X1 - X0, h: 0, line: '#D8D7D2', lineWidth: 0.75 });
+  return { specs, h: h + 0.05 };
 }
 
 async function copyShareLink() {

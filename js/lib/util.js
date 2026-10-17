@@ -108,6 +108,7 @@ export function h(tag, attrs = {}, ...children) {
     if (v == null || v === false) continue;
     if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'dataset') Object.assign(el.dataset, v);
+    else if (k === 'html') el.innerHTML = v; // 코드 안에서 만든 고정 SVG 아이콘 전용 (외부 입력 금지)
     else if (k === 'value' || (k in el && typeof v !== 'string')) el[k] = v; // textarea는 value 속성이 아니라 프로퍼티로만 반영됨
     else el.setAttribute(k, v === true ? '' : v);
   }

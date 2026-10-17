@@ -3,21 +3,26 @@
 export const EXAMPLES = [
   {
     id: 'ui', label: 'UI 플로우', kind: 'flowchart',
-    prompt: '타이틀 화면에서 계정이 있으면 로비로, 없으면 계정 생성 후 로비로 간다. 로비에서는 상점, 인벤토리, 전투 준비로 갈 수 있고 상점과 인벤토리는 로비로 돌아온다. 전투 준비 후 매칭 대기, 전투, 결과 화면을 거쳐 보상을 받고 로비로 돌아온다.',
+    prompt: '게임을 실행하면 타이틀 화면이 뜬다. 계정이 있으면 계정 데이터를 불러와 로비로, 없으면 닉네임을 입력해 계정을 만들고 DB에 저장한 뒤 로비로 간다. 로비에서는 상점, 인벤토리, 전투 준비로 갈 수 있고 상점과 인벤토리는 로비로 돌아온다. 전투 준비 후 매칭 대기, 전투, 결과 화면을 거쳐 보상을 받고 로비로 돌아온다.',
     code: `flowchart LR
-  title["타이틀 화면"] --> login{"계정 있음?"}
-  login -- "예" --> lobby["로비"]
-  login -- "아니오" --> signup["계정 생성"]
-  signup --> lobby
-  lobby --> shop["상점"]
-  lobby --> inven["인벤토리"]
-  lobby --> ready["전투 준비"]
+  start(["게임 실행"]) --> title("타이틀 화면")
+  title --> login{"계정 있음?"}
+  login -- "예" --> load[("계정 데이터 불러오기")]
+  login -- "아니오" --> nick[/"닉네임 입력"/]
+  nick --> signup["계정 생성"]
+  signup --> save[("계정 DB 저장")]
+  save --> lobby("로비")
+  load --> lobby
+  lobby --> shop("상점")
+  lobby --> inven("인벤토리")
+  lobby --> ready("전투 준비")
   shop --> lobby
   inven --> lobby
   ready --> match["매칭 대기"]
-  match --> battle["전투"]
-  battle --> result["결과 화면"]
-  result -- "보상 수령" --> lobby`,
+  match --> battle[["전투 진행"]]
+  battle --> result("결과 화면")
+  result --> reward[/"보상 지급"/]
+  reward --> lobby`,
   },
   {
     id: 'state', label: '상태 머신', kind: 'state',
@@ -42,14 +47,14 @@ export const EXAMPLES = [
     id: 'quest', label: '퀘스트 분기', kind: 'flowchart',
     prompt: '촌장의 의뢰를 받아 숲의 늑대를 조사한다. 늑대 무리의 정체를 알게 된 뒤 토벌하면 보스 늑대와 싸우고 엔딩 A(마을의 영웅). 대화를 시도하면 늑대 정령을 만나고, 정령의 부탁을 들어주면 엔딩 B(숲의 수호자), 거절하면 엔딩 C(쫓겨난 이방인).',
     code: `flowchart TD
-  start["촌장의 의뢰 수락"] --> forest["숲의 늑대 조사"]
+  start(["촌장의 의뢰 수락"]) --> forest["숲의 늑대 조사"]
   forest --> choice{"늑대 무리의 정체"}
-  choice -- "토벌한다" --> fight["보스 늑대 전투"]
-  choice -- "대화를 시도한다" --> talk["늑대 정령과 대화"]
-  fight --> endA["엔딩 A: 마을의 영웅"]
+  choice -- "토벌한다" --> fight[["보스 늑대 전투"]]
+  choice -- "대화를 시도한다" --> talk("늑대 정령과 대화")
+  fight --> endA(["엔딩 A: 마을의 영웅"])
   talk --> deal{"정령의 부탁을 들어준다?"}
-  deal -- "예" --> endB["엔딩 B: 숲의 수호자"]
-  deal -- "아니오" --> endC["엔딩 C: 쫓겨난 이방인"]`,
+  deal -- "예" --> endB(["엔딩 B: 숲의 수호자"])
+  deal -- "아니오" --> endC(["엔딩 C: 쫓겨난 이방인"])`,
   },
   {
     id: 'seq', label: '시퀀스', kind: 'sequence',

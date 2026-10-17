@@ -32,7 +32,7 @@ const hex = (c) => (c || '000000').replace('#', '').toUpperCase();
 
 /**
  * 도형 사양 배열을 슬라이드에 그린다.
- * spec: { type:'rect'|'roundRect'|'ellipse'|'diamond'|'text'|'path'|'line'|'table', x,y,w,h, fill?, line?, lineWidth?, dash?, text?, fontSize?, fontFace?, color?, bold?, align?, valign?, charSpacing?, points?, arrowEnd?, arrowStart?, name? }
+ * spec: { type:'rect'|'roundRect'|'ellipse'|'diamond'|'preset'|'text'|'path'|'line'|'table', preset?, x,y,w,h, fill?, line?, lineWidth?, dash?, text?, fontSize?, fontFace?, color?, bold?, align?, valign?, charSpacing?, points?, arrowEnd?, arrowStart?, name? }
  *   dash: true(파선) 또는 PowerPoint 선 종류 이름('sysDot' 등)
  *   text: 문자열('
 '은 줄바꿈) 또는 [{ text, options }] 런 배열
@@ -73,7 +73,8 @@ export function renderSpecs(pptx, slide, specs) {
     } else if (s.type === 'path') {
       slide.addShape(pptx.ShapeType.custGeom, { ...common, points: s.points, fill, line });
     } else {
-      const shape = { rect: pptx.ShapeType.rect, roundRect: pptx.ShapeType.roundRect, ellipse: pptx.ShapeType.ellipse, diamond: pptx.ShapeType.diamond }[s.type] ?? pptx.ShapeType.rect;
+      // preset: PowerPoint 기본 도형 이름 그대로 (flowChartDecision, flowChartInputOutput 등)
+      const shape = s.type === 'preset' ? s.preset : { rect: pptx.ShapeType.rect, roundRect: pptx.ShapeType.roundRect, ellipse: pptx.ShapeType.ellipse, diamond: pptx.ShapeType.diamond }[s.type] ?? pptx.ShapeType.rect;
       const opts = { ...common, fill, line };
       if (s.type === 'roundRect') opts.rectRadius = s.radius ?? 0.06;
       if (s.text != null) Object.assign(opts, textOpts(s, '#FFFFFF'), { align: s.align ?? 'center', valign: 'middle', margin: s.margin ?? 0 });

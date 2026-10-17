@@ -18,12 +18,19 @@ export const isDark = () => {
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
 };
 
-function configure(m, dark) {
+const SPACING = { tight: [30, 35], normal: [50, 50], wide: [80, 80] };
+
+/** opts: { curve: 'basis'|'linear'|'stepAfter', spacing: 'tight'|'normal'|'wide', fontSize: px } */
+function configure(m, dark, opts = {}) {
+  const [nodeSpacing, rankSpacing] = SPACING[opts.spacing] ?? SPACING.normal;
   m.initialize({
     startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default',
     fontFamily: '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif',
+    themeVariables: { fontSize: `${opts.fontSize ?? 14}px` },
     // HTML 라벨 대신 SVG 텍스트 → PNG 변환과 PPT 도형 변환이 정확해짐
-    htmlLabels: false, flowchart: { htmlLabels: false }, sequence: { useMaxWidth: false }, state: { useMaxWidth: false },
+    htmlLabels: false,
+    flowchart: { htmlLabels: false, curve: opts.curve ?? 'basis', nodeSpacing, rankSpacing },
+    sequence: { useMaxWidth: false }, state: { useMaxWidth: false, nodeSpacing, rankSpacing },
   });
 }
 
@@ -34,19 +41,19 @@ export async function parseError(code) {
 }
 
 /** SVG 문자열. 렌더 번호를 함께 돌려줘 호출 측이 오래된 결과를 버릴 수 있게 한다. */
-export async function renderSvg(code, dark = isDark()) {
+export async function renderSvg(code, dark = isDark(), opts = {}) {
   const m = await loadMermaid();
-  configure(m, dark);
+  configure(m, dark, opts);
   const id = ++seq;
   const { svg } = await m.render(`mmd-${id}`, code);
   return { svg, id, latest: () => id === seq };
 }
 
 /** 내보내기용: 라이트 테마로 화면 밖에 렌더한 SVG 요소 (사용 후 host.remove()) */
-export async function renderOffscreen(code) {
+export async function renderOffscreen(code, opts = {}) {
   const err = await parseError(code);
   if (err) throw new Error('문법 오류를 먼저 고쳐 주세요.');
-  const { svg: text } = await renderSvg(code, false);
+  const { svg: text } = await renderSvg(code, false, opts);
   const host = document.createElement('div');
   host.className = 'offscreen-render';
   host.innerHTML = text; // securityLevel: strict로 정화된 SVG
