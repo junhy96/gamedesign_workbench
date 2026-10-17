@@ -898,3 +898,36 @@ table.mx-table { border-collapse: separate; border-spacing: 2px; font-size: 13px
 h3.sub { font-size: 14px; margin: 14px 0 8px; }
 .stages.rank-table { min-width: 0; margin-bottom: 12px; }
 .rank-table td.left { display: flex; align-items: center; }
+
+/* 특성 편집·전투 로그·구간 리포트 */
+.mini-btn.on { border-color: var(--role-tool); color: var(--role-tool); background: var(--role-tool-soft); font-weight: 600; }
+.trait-panel { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.trait-editor { display: grid; gap: 8px; }
+.trait-title { font-size: 13px; }
+.trait-box { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface); display: grid; gap: 6px; }
+.trait-head, .effect-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.trait-head select, .effect-row select, .trait-editor .tool-actions select { width: auto; padding: 3px 6px; font-size: 12.5px; }
+.trait-editor input.short, .trait-editor input[type="number"] { width: 72px !important; padding: 3px 6px; font-size: 12.5px; text-align: right; border: 1px solid var(--line); background: var(--surface); }
+.trait-editor input.ent-name { width: 120px; border-color: var(--line); }
+.effect-row { padding-left: 14px; border-left: 2px solid var(--line-strong); }
+.log-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.log-head select { width: auto; padding: 4px 8px; font-size: 13px; }
+.battle-log { max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.log-line { display: grid; grid-template-columns: 64px 90px minmax(0, 1fr) auto; gap: 8px; padding: 3px 10px; border-bottom: 1px solid var(--line); }
+.log-line:last-child { border-bottom: none; }
+.log-t { color: var(--text-3); }
+.log-who { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-hp { color: var(--text-3); white-space: nowrap; }
+.log-line.crit .log-text { font-weight: 700; }
+.log-line.miss .log-text { color: var(--text-3); }
+.log-line.heal .log-text { color: var(--good); }
+.log-line.buff .log-text, .log-line.expire .log-text, .log-line.trait .log-text { color: var(--role-tool); }
+.log-line.die, .log-line.end { background: var(--surface); font-weight: 600; }
+.stages.phase-table { min-width: 0; margin-top: 12px; }
+.phase-table td.left { display: flex; align-items: center; }
+.phase-table td.phase-best { font-weight: 700; }
+.phase-table td.phase-dom { background: var(--bad-soft); color: var(--bad); }
+@media (max-width: 640px) {
+  .log-line { grid-template-columns: 52px minmax(0, 1fr); }
+  .log-line .log-hp { grid-column: 1 / -1; }
+}

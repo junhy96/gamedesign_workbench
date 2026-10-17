@@ -278,5 +278,227 @@
         "avgTurns": 8.71268
       }
     }
-  ]
+  ],
+  "traitCases": [
+    {
+      "id": "T1",
+      "note": "Guard(B)에 흡혈: 적중 시 50% 확률로 준 데미지의 60% 회복",
+      "lv": 1,
+      "A": {
+        "name": "Duelist",
+        "stats": {
+          "hp": {
+            "b": 300,
+            "g": 0
+          },
+          "atk": {
+            "b": 40,
+            "g": 0
+          },
+          "def": {
+            "b": 10,
+            "g": 0
+          },
+          "acc": {
+            "b": 90,
+            "g": 0
+          },
+          "eva": {
+            "b": 15,
+            "g": 0
+          },
+          "cric": {
+            "b": 25,
+            "g": 0
+          },
+          "crid": {
+            "b": 1.8,
+            "g": 0
+          },
+          "aspd": {
+            "b": 1.2,
+            "g": 0
+          }
+        }
+      },
+      "B": {
+        "name": "Guard",
+        "stats": {
+          "hp": {
+            "b": 420,
+            "g": 0
+          },
+          "atk": {
+            "b": 30,
+            "g": 0
+          },
+          "def": {
+            "b": 20,
+            "g": 0
+          },
+          "acc": {
+            "b": 85,
+            "g": 0
+          },
+          "eva": {
+            "b": 10,
+            "g": 0
+          },
+          "cric": {
+            "b": 10,
+            "g": 0
+          },
+          "crid": {
+            "b": 1.5,
+            "g": 0
+          },
+          "aspd": {
+            "b": 0.8,
+            "g": 0
+          }
+        }
+      },
+      "kalivraTraits": [
+        {
+          "name": "Lifesteal",
+          "triggers": [
+            {
+              "type": "OnAttackHit",
+              "conditions": [
+                {
+                  "type": "Chance",
+                  "value": 50
+                }
+              ],
+              "effects": [
+                {
+                  "type": "Heal",
+                  "target": "Self",
+                  "valueType": "PercentOfDamage",
+                  "value": 60
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "kalivra": {
+        "runs": 600000,
+        "winA": 0.46342333333333335,
+        "winB": 0.5365766666666667,
+        "draw": 0,
+        "avgTurns": 14.560658333333333
+      }
+    },
+    {
+      "id": "T2",
+      "note": "Guard(B)에 분노: 공격 직전 25% 확률로 이번 데미지 ×1.8",
+      "lv": 1,
+      "A": {
+        "name": "Duelist",
+        "stats": {
+          "hp": {
+            "b": 300,
+            "g": 0
+          },
+          "atk": {
+            "b": 40,
+            "g": 0
+          },
+          "def": {
+            "b": 10,
+            "g": 0
+          },
+          "acc": {
+            "b": 90,
+            "g": 0
+          },
+          "eva": {
+            "b": 15,
+            "g": 0
+          },
+          "cric": {
+            "b": 25,
+            "g": 0
+          },
+          "crid": {
+            "b": 1.8,
+            "g": 0
+          },
+          "aspd": {
+            "b": 1.2,
+            "g": 0
+          }
+        }
+      },
+      "B": {
+        "name": "Guard",
+        "stats": {
+          "hp": {
+            "b": 420,
+            "g": 0
+          },
+          "atk": {
+            "b": 30,
+            "g": 0
+          },
+          "def": {
+            "b": 20,
+            "g": 0
+          },
+          "acc": {
+            "b": 85,
+            "g": 0
+          },
+          "eva": {
+            "b": 10,
+            "g": 0
+          },
+          "cric": {
+            "b": 10,
+            "g": 0
+          },
+          "crid": {
+            "b": 1.5,
+            "g": 0
+          },
+          "aspd": {
+            "b": 0.8,
+            "g": 0
+          }
+        }
+      },
+      "kalivraTraits": [
+        {
+          "name": "Fury",
+          "triggers": [
+            {
+              "type": "OnBeforeAttack",
+              "conditions": [
+                {
+                  "type": "Chance",
+                  "value": 25
+                }
+              ],
+              "effects": [
+                {
+                  "type": "ModifyDamage",
+                  "op": "multiply",
+                  "value": 1.8
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "kalivra": {
+        "runs": 600000,
+        "winA": 0.4161166666666667,
+        "winB": 0.5838833333333333,
+        "draw": 0,
+        "avgTurns": 12.20677
+      }
+    }
+  ],
+  "traitNote": "Kalivra에 버그가 없는 특성만 (적중 시 회복, 공격 직전 데미지 배율). 회복량은 Kalivra처럼 내림. 피격 스탯 버프는 Kalivra가 두 번 적용하므로 기준값으로 쓰지 않음."
 }

@@ -16,7 +16,7 @@
 //   시간 기반: n번째 공격 시각 = (n − 1) ÷ 공격 속도. 공격 속도가 2배면 같은 시간에 2배 공격한다.
 //              A가 이기는 확률 = Σ_n P(N_A = n) · P(B가 그 시각 전에 못 쓰러뜨림). 두 결정타가 같은 시각이면 동전(반반) 또는 무승부
 //   턴 교대 (Kalivra 방식): 공격 속도 비율로 선공을 정하고 한 번씩 번갈아 공격, 최대 턴 수. 공격 속도는 선공 확률에만 쓰인다
-//   N_A와 N_B는 서로 독립(트리거·버프 없음)이라 두 방식 모두 정확히 계산된다. 데미지 변동이 있으면 시뮬레이션.
+//   N_A와 N_B는 서로 독립(특성·버프 없음)이라 두 방식 모두 정확히 계산된다. 데미지 변동이나 특성이 있으면 시뮬레이션(battleOnce).
 
 import { compile } from './formula.js';
 import { mulberry32 } from '../enhance/simulate.js';
@@ -194,11 +194,12 @@ export function prepare(cfg, f, A, B, lv) {
 const maxAttacks = (cfg, speed) => (cfg.rules.mode === 'turn' ? cfg.rules.maxTurns : Math.floor(cfg.rules.maxTime * speed + 1e-9) + 1);
 
 /**
- * 1:1 정확해. 데미지 변동이 있거나 계산량이 너무 크면 null.
+ * 1:1 정확해. 데미지 변동·특성이 있거나 계산량이 너무 크면 null.
  * 반환 { winA, winB, draw, killA (A가 B를 쓰러뜨리는 공격 횟수 분포), killB, firstA (턴 방식의 A 선공 확률) }
  */
 export function duelExact(cfg, f, A, B, lv, prep = prepare(cfg, f, A, B, lv)) {
   if ((A.variance || 0) > 0 || (B.variance || 0) > 0) return null;
+  if (traitsOf(cfg, A).length || traitsOf(cfg, B).length) return null; // 특성이 있으면 공격 횟수가 서로 독립이 아님
   const { pa, pb } = prep;
   const r = cfg.rules;
   const mA = r.mode === 'turn' ? r.maxTurns : (pa.speed > 0 ? maxAttacks(cfg, pa.speed) : 0);
@@ -247,63 +248,225 @@ export function killStats(dist, speed, mode) {
   return { attacks, time: mode === 'turn' ? attacks : (speed > 0 ? (attacks - 1) / speed : Infinity), never: dist.never, q };
 }
 
-// ── 시뮬레이션 (데미지 변동 포함, 정확해 검증) ─────────────
-export function duelSim(cfg, f, A, B, lv, runs = 20000, seed = 20261018, prep = prepare(cfg, f, A, B, lv)) {
-  const rnd = mulberry32(seed);
-  const r = cfg.rules, round = rounder(r.round);
-  const { pa, pb } = prep;
-  const strike = (pr, v) => { // 한 번 공격의 데미지 (빗나감 0)
-    if (!(rnd() < pr.hit)) return { dmg: 0, hit: false, crit: false };
-    let raw = pr.raw;
-    if (v > 0) raw *= 1 + (rnd() * 2 - 1) * v;
-    const crit = rnd() < pr.crit;
-    return { dmg: Math.max(0, round(crit ? raw * pr.mult : raw)), hit: true, crit };
+// ── 특성(트리거) ────────────────────────────────────────
+// 특성 = { name, on: 발동 시점, chance: %, cond: null | { who: 'self'|'enemy', below: 체력 % }, max: 최대 발동(0 = 무제한),
+//          effects: [{ type, who: 'self'|'enemy', value, base, stat, dur }] }
+// 효과: 회복·추가 데미지(고정 / 이번 공격 데미지의 % / 대상 최대 체력의 %, 데미지 반올림 규칙을 그대로 적용 — Kalivra는 내림), 이번 공격 데미지 × 또는 +(공격 직전·피격 때만),
+//       스탯 버프(고정 / 기본값의 %, 지속 = 시간 기반은 초, 턴 교대는 자기 공격 수, 0 = 끝까지)
+// Kalivra와 다른 점: 효과는 발동 한 번에 한 번만 적용(Kalivra는 피격 스탯 버프를 두 번 적용), 확률은 발동마다 한 번만 굴림,
+//                     쓰러뜨리는 공격 뒤에는 맞은 쪽 피격 효과가 나오지 않음(Kalivra는 피격 회복이 먼저 적용돼 버틸 수 있음)
+export const TRIGGERS = {
+  battleStart: '전투 시작', turn: '매 턴 (시간 기반은 매 1초)', beforeAttack: '공격 직전', attackHit: '공격 적중',
+  critical: '치명타', miss: '공격 빗나감', evaded: '회피 성공', hitTaken: '피격',
+};
+export const EFFECTS = { heal: '회복', damage: '추가 데미지', dmgMult: '이번 공격 데미지 ×', dmgAdd: '이번 공격 데미지 +', buff: '스탯 버프' };
+export const EFFECT_BASES = { fixed: '고정값', dmg: '이번 공격 데미지의 %', maxHp: '대상 최대 체력의 %', stat: '대상 기본 스탯의 %' };
+const MOD_EFFECTS = new Set(['dmgMult', 'dmgAdd']);
+
+/** 엔티티에 걸린 특성: 자기 특성 + 켜진 아이템 중 대상인 것의 특성 */
+export function traitsOf(cfg, ent) {
+  return [...(ent.traits || []), ...(cfg.items || []).filter(it => targets(it, ent)).flatMap(it => it.traits || [])].filter(t => t && t.on && t.effects?.length);
+}
+
+/** 특성 설정 확인 (경고 문장 배열) */
+export function traitWarnings(cfg) {
+  const out = [];
+  const statIds = new Set(cfg.stats.map(s => s.id));
+  const check = (owner, t) => {
+    for (const e of t.effects || []) {
+      if (MOD_EFFECTS.has(e.type) && t.on !== 'beforeAttack' && t.on !== 'hitTaken') out.push(`${owner} '${t.name}': '${EFFECTS[e.type]}'는 공격 직전·피격 때만 효과가 있습니다.`);
+      if (e.type === 'buff' && !statIds.has(e.stat)) out.push(`${owner} '${t.name}': 버프할 스탯 '${e.stat ?? ''}'가 없습니다.`);
+      if (e.base === 'dmg' && !['attackHit', 'critical', 'hitTaken'].includes(t.on)) out.push(`${owner} '${t.name}': '이번 공격 데미지의 %'는 공격 적중·치명타·피격 때만 값이 있습니다.`);
+    }
   };
+  for (const e of cfg.entities) for (const t of e.traits || []) check(e.name, t);
+  for (const it of cfg.items || []) for (const t of it.traits || []) check(`아이템 ${it.name}`, t);
+  return out;
+}
+
+// ── 전투 한 번 (특성·버프·데미지 변동 포함) ──────────────
+function fighter(cfg, f, ent, lv) {
+  const base = statsAt(cfg, ent, lv);
+  const stats = { ...base };
+  const hp = f.hp(stats, lv);
+  return { ent, base, stats, hp, maxHp: hp, buffs: [], traits: traitsOf(cfg, ent), procs: new Map(), v: ent.variance || 0, n: 0, ver: 0, anchor: 0, k: 0, spd: null, next: 0, attacks: 0, hits: 0, crits: 0 };
+}
+
+/**
+ * 전투 한 번. 반환 { w: 1 A 승 | 2 B 승 | 3 무승부, t: 길이(초 또는 턴), hpA, hpB(남은 비율), A, B(전투원), ev(로그) }
+ * 같은 규칙으로 정확해와 맞춰 둔다: 특성·변동이 없으면 시간 기반 결정타 순서·동시 처리·턴 교대 순서가 duelExact와 같다.
+ */
+export function battleOnce(cfg, f, A0, B0, lv, rnd, log = false) {
+  const r = cfg.rules, round = rounder(r.round), turn = r.mode === 'turn';
+  const A = fighter(cfg, f, A0, lv), B = fighter(cfg, f, B0, lv);
+  const other = (X) => (X === A ? B : A);
+  const ev = log ? [] : null;
+  let t = 0;
+  const say = (type, X, text, val) => ev?.push({ t, who: X === A ? 'A' : X === B ? 'B' : '', type, text, val, hpA: Math.max(0, A.hp), hpB: Math.max(0, B.hp) });
+  // 공격 결과 분포: 두 전투원의 스탯이 바뀌었을 때만 다시 계산
+  const cache = new Map();
+  const prof = (X, Y) => {
+    const key = `${X === A ? 'A' : 'B'}${X.ver}:${Y.ver}`;
+    let p = cache.get(key);
+    if (!p) { p = attackProfile(cfg, f, X.stats, Y.stats, lv); cache.set(key, p); }
+    return p;
+  };
+  const passes = (X, tr) => {
+    const used = X.procs.get(tr) || 0;
+    if (tr.max > 0 && used >= tr.max) return false;
+    if (tr.cond?.below != null) { const T = tr.cond.who === 'enemy' ? other(X) : X; if (!(T.hp / T.maxHp * 100 <= tr.cond.below)) return false; }
+    const ch = tr.chance ?? 100;
+    if (ch < 100 && !(rnd() * 100 < ch)) return false;
+    X.procs.set(tr, used + 1);
+    return true;
+  };
+  const apply = (X, tr, e, ctx) => {
+    const T = e.who === 'enemy' ? other(X) : X, v = Number(e.value) || 0;
+    const amount = (target) => (e.base === 'dmg' ? (ctx?.dmg || 0) * v / 100 : e.base === 'maxHp' ? target.maxHp * v / 100 : v);
+    switch (e.type) {
+      case 'heal': { const a = Math.max(0, round(amount(T))); const before = T.hp; T.hp = Math.min(T.maxHp, T.hp + a); if (T.hp !== before) say('heal', T, `[${tr.name}] 체력 +${fmt(T.hp - before)}`, T.hp - before); break; }
+      case 'damage': { const a = Math.max(0, round(amount(T))); if (a) { T.hp -= a; say('trait', X, `[${tr.name}] 추가 데미지 ${fmt(a)}`, a); } break; }
+      case 'dmgMult': if (ctx?.mod) ctx.mult *= v; break;
+      case 'dmgAdd': if (ctx?.mod) ctx.add += v; break;
+      case 'buff': {
+        if (!(e.stat in T.stats)) break;
+        const delta = e.base === 'stat' ? T.base[e.stat] * v / 100 : v;
+        T.stats[e.stat] += delta; T.ver++;
+        const mh = f.hp(T.stats, lv); if (mh !== T.maxHp) { T.maxHp = mh; T.hp = Math.min(T.hp, mh); }
+        if (e.dur > 0) T.buffs.push({ stat: e.stat, delta, until: turn ? T.n + e.dur : t + e.dur, name: tr.name });
+        say('buff', T, `[${tr.name}] ${e.stat} ${delta >= 0 ? '+' : ''}${fmt(delta)}${e.dur > 0 ? ` (${e.dur}${turn ? '턴' : '초'})` : ''}`, delta);
+        break;
+      }
+    }
+  };
+  const fire = (X, on, ctx, only) => {
+    for (const tr of X.traits) {
+      if (tr.on !== on || !passes(X, tr)) continue;
+      for (const e of tr.effects) if (!only || only(e)) apply(X, tr, e, ctx);
+    }
+  };
+  const expire = (X, now) => {
+    if (!X.buffs.length) return;
+    X.buffs = X.buffs.filter(b => {
+      if (b.until > now + 1e-9) return true;
+      X.stats[b.stat] -= b.delta; X.ver++;
+      const mh = f.hp(X.stats, lv); if (mh !== X.maxHp) { X.maxHp = mh; X.hp = Math.min(X.hp, mh); }
+      say('expire', X, `[${b.name}] 버프 끝 (${b.stat})`, 0);
+      return false;
+    });
+  };
+  const dead = () => A.hp <= 0 || B.hp <= 0;
+  const attack = (X, Y) => {
+    X.n++; X.attacks++;
+    const ctx = { mult: 1, add: 0, dmg: 0, mod: true };
+    fire(X, 'beforeAttack', ctx);
+    const p = prof(X, Y);
+    if (!(rnd() < p.hit)) { say('miss', X, '빗나감', 0); ctx.mod = false; fire(X, 'miss', ctx); fire(Y, 'evaded', ctx); return; }
+    X.hits++;
+    let raw = p.raw;
+    if (X.v > 0) raw *= 1 + (rnd() * 2 - 1) * X.v;
+    const crit = rnd() < p.crit;
+    if (crit) X.crits++;
+    // 피격 특성: 확률은 한 번만, 데미지 증감은 맞기 전에, 나머지는 맞은 뒤(살아 있으면)
+    const taken = Y.traits.filter(tr => tr.on === 'hitTaken' && passes(Y, tr));
+    for (const tr of taken) for (const e of tr.effects) if (MOD_EFFECTS.has(e.type)) apply(Y, tr, e, ctx);
+    const dmg = Math.max(0, round(raw * (crit ? p.mult : 1) * ctx.mult + ctx.add));
+    ctx.dmg = dmg; ctx.mod = false;
+    Y.hp -= dmg;
+    say(crit ? 'crit' : 'hit', X, crit ? `치명타 ${fmt(dmg)}` : `${fmt(dmg)}`, dmg);
+    if (Y.hp <= 0) return;
+    for (const tr of taken) for (const e of tr.effects) if (!MOD_EFFECTS.has(e.type)) apply(Y, tr, e, ctx);
+    fire(X, 'attackHit', ctx);
+    if (crit) fire(X, 'critical', ctx);
+  };
+  const result = (w) => ({ w, t, hpA: Math.max(0, A.hp) / A.maxHp, hpB: Math.max(0, B.hp) / B.maxHp, A, B, ev });
+  const judge = () => {
+    const da = A.hp <= 0, db = B.hp <= 0;
+    if (da && db) { const w = r.tie === 'coin' || turn ? (rnd() < 0.5 ? 1 : 2) : 3; say('die', null, w === 3 ? '동시에 쓰러짐 — 무승부' : '동시에 쓰러짐 — 동전', 0); return result(w); }
+    if (db) { say('die', B, '쓰러짐', 0); return result(1); }
+    if (da) { say('die', A, '쓰러짐', 0); return result(2); }
+    return null;
+  };
+
+  // 선공 확률(턴 교대)은 전투 시작 특성 전의 공격 속도로 (Kalivra와 같음)
+  const sA0 = prof(A, B).speed, sB0 = prof(B, A).speed;
+  fire(A, 'battleStart', null); fire(B, 'battleStart', null);
+  if (dead()) return judge();
+  const ticks = A.traits.some(x => x.on === 'turn') || B.traits.some(x => x.on === 'turn');
+
+  if (turn) {
+    const tot = sA0 + sB0;
+    const aFirst = rnd() < (tot > 0 ? sA0 / tot : 0.5);
+    const [P, Q] = aFirst ? [A, B] : [B, A];
+    for (t = 1; t <= r.maxTurns; t++) {
+      fire(P, 'turn', null); fire(Q, 'turn', null);
+      if (dead()) return judge();
+      attack(P, Q); expire(P, P.n);
+      if (dead()) return judge();
+      attack(Q, P); expire(Q, Q.n);
+      if (dead()) return judge();
+    }
+    t = r.maxTurns;
+    say('end', null, `${r.maxTurns}턴 — 무승부`, 0);
+    return result(3);
+  }
+
+  // 시간 기반: X의 다음 공격 = 기준 시각 + k ÷ 공격 속도 (속도가 바뀌면 그 시각부터 다시 셈 — 일정하면 정확해와 같은 시각)
+  const schedule = (X, Y) => {
+    const s = prof(X, Y).speed;
+    if (X.spd == null) { X.spd = s; X.anchor = 0; X.k = 0; }
+    else if (s !== X.spd) { X.anchor = t; X.k = 1; X.spd = s; X.next = s > 0 ? t + 1 / s : Infinity; return; }
+    else X.k++;
+    X.next = X.spd > 0 ? X.anchor + X.k / X.spd : Infinity;
+  };
+  schedule(A, B); schedule(B, A);
+  let nextTick = ticks ? 1 : Infinity;
+  for (let guard = 0; guard < 1e6; guard++) {
+    t = Math.min(A.next, B.next, nextTick);
+    if (!(t <= r.maxTime + 1e-9)) break;
+    expire(A, t); expire(B, t);
+    if (Math.abs(t - nextTick) < 1e-9 * Math.max(1, t)) {
+      fire(A, 'turn', null); fire(B, 'turn', null); nextTick += 1;
+      if (dead()) return judge();
+    }
+    const ta = Math.abs(A.next - t) < 1e-9 * Math.max(1, t), tb = Math.abs(B.next - t) < 1e-9 * Math.max(1, t);
+    // 같은 시각이면 둘 다 공격한 뒤 판정 (동시 결정타 = 동전 또는 무승부)
+    if (ta) attack(A, B);
+    if (tb) attack(B, A);
+    if (ta) schedule(A, B);
+    if (tb) schedule(B, A);
+    if (dead()) return judge();
+  }
+  t = r.maxTime;
+  say('end', null, `${r.maxTime}초 — 무승부`, 0);
+  return result(3);
+}
+const fmt = (x) => (Number.isInteger(x) ? String(x) : (+x.toFixed(1)).toString());
+
+// ── 시뮬레이션 (데미지 변동·특성 포함, 정확해 검증) ─────────
+/** logs = 로그를 남길 전투 수 (앞에서부터) */
+export function duelSim(cfg, f, A, B, lv, runs = 20000, seed = 20261018, prep = prepare(cfg, f, A, B, lv), { logs = 0 } = {}) {
+  const rnd = mulberry32(seed);
   let wa = 0, wb = 0, dr = 0;
   const dur = new Float64Array(runs), hpLeft = [];
   const cnt = { attacks: 0, hits: 0, crits: 0 };
-  const va = A.variance || 0, vb = B.variance || 0;
+  const procs = { A: new Map(), B: new Map() };
+  const logList = [];
   for (let i = 0; i < runs; i++) {
-    let ha = prep.hpA, hb = prep.hpB, w = 0, t = 0;
-    if (r.mode === 'turn') {
-      const tot = pa.speed + pb.speed;
-      const aFirst = rnd() < (tot > 0 ? pa.speed / tot : 0.5);
-      for (t = 1; t <= r.maxTurns; t++) {
-        const order = aFirst ? ['a', 'b'] : ['b', 'a'];
-        for (const who of order) {
-          const s = who === 'a' ? strike(pa, va) : strike(pb, vb);
-          if (who === 'a') { cnt.attacks++; if (s.hit) cnt.hits++; if (s.crit) cnt.crits++; hb -= s.dmg; if (hb <= 0) { w = 1; break; } }
-          else { ha -= s.dmg; if (ha <= 0) { w = 2; break; } }
-        }
-        if (w) break;
-      }
-      dur[i] = Math.min(t, r.maxTurns);
-    } else {
-      let na = 0, nb = 0; // 지금까지 한 공격 수
-      const ta = () => (pa.speed > 0 ? na / pa.speed : Infinity), tb = () => (pb.speed > 0 ? nb / pb.speed : Infinity);
-      while (true) {
-        const tA = ta(), tB = tb();
-        t = Math.min(tA, tB);
-        if (!(t <= r.maxTime + 1e-9)) break;
-        const both = Math.abs(tA - tB) < 1e-9 * Math.max(1, t);
-        let ka = false, kb = false;
-        if (tA <= tB || both) { const s = strike(pa, va); na++; cnt.attacks++; if (s.hit) cnt.hits++; if (s.crit) cnt.crits++; if (hb - s.dmg <= 0) kb = true; hb -= s.dmg; }
-        if (tB < tA || both) { const s = strike(pb, vb); nb++; if (ha - s.dmg <= 0) ka = true; ha -= s.dmg; }
-        if (kb && ka) { w = r.tie === 'coin' ? (rnd() < 0.5 ? 1 : 2) : 3; break; }
-        if (kb) { w = 1; break; }
-        if (ka) { w = 2; break; }
-      }
-      dur[i] = Math.min(t, r.maxTime);
-    }
-    if (w === 1) { wa++; hpLeft.push(Math.max(0, ha) / prep.hpA); }
-    else if (w === 2) wb++;
-    else dr++;
+    const res = battleOnce(cfg, f, A, B, lv, rnd, i < logs);
+    if (res.w === 1) { wa++; hpLeft.push(res.hpA); } else if (res.w === 2) wb++; else dr++;
+    dur[i] = res.t;
+    cnt.attacks += res.A.attacks; cnt.hits += res.A.hits; cnt.crits += res.A.crits;
+    for (const [side, X] of [['A', res.A], ['B', res.B]]) for (const [tr, c] of X.procs) procs[side].set(tr.name, (procs[side].get(tr.name) || 0) + c);
+    if (res.ev) logList.push({ w: res.w, t: res.t, ev: res.ev });
   }
   dur.sort();
+  const per = (m) => [...m].map(([name, c]) => ({ name, perBattle: c / runs }));
   return {
     runs, winA: wa / runs, winB: wb / runs, draw: dr / runs,
     ciA: wilson(wa, runs), duration: dur, hpLeftA: Float64Array.from(hpLeft).sort(),
     realized: { hit: cnt.attacks ? cnt.hits / cnt.attacks : NaN, crit: cnt.hits ? cnt.crits / cnt.hits : NaN },
+    procs: { A: per(procs.A), B: per(procs.B) }, logs: logList,
   };
 }
 
@@ -321,7 +484,8 @@ export function duel(cfg, f, A, B, lv, { runs = cfg.sim?.runs ?? 4000, seed } = 
   const ex = duelExact(cfg, f, A, B, lv, prep);
   if (ex) return { exact: true, winA: ex.winA, winB: ex.winB, draw: ex.draw, ci: null, ex, prep };
   const sm = duelSim(cfg, f, A, B, lv, runs, seed, prep);
-  return { exact: false, winA: sm.winA, winB: sm.winB, draw: sm.draw, ci: sm.ciA, sim: sm, prep, reason: (A.variance || B.variance) ? '데미지 변동' : '계산량' };
+  const reason = traitsOf(cfg, A).length || traitsOf(cfg, B).length ? '특성' : (A.variance || B.variance) ? '데미지 변동' : '계산량';
+  return { exact: false, winA: sm.winA, winB: sm.winB, draw: sm.draw, ci: sm.ciA, sim: sm, prep, reason };
 }
 
 // ── 레벨 곡선 ───────────────────────────────────────────
@@ -443,9 +607,99 @@ export function findings(cfg, f, mx, cv, cross) {
     const ex = c.d.ex;
     if (ex) for (const [x, y, dist] of [[E[i], E[j], ex.killA], [E[j], E[i], ex.killB]]) if (dist.p[1] >= 0.5) out.push({ level: 'warn', kind: 'oneShot', text: `Lv${mx.lv}: ${josa(x.name, '이', '가')} ${josa(y.name, '을', '를')} 첫 공격에 쓰러뜨릴 확률이 ${pct(dist.p[1])}입니다.` });
   }
+  for (const c of cycles(cfg, mx).slice(0, 3)) out.push({ level: 'info', kind: 'cycle', text: `Lv${mx.lv}: 상성 순환 ${c.names.map((x, m) => `${x} > ${c.names[(m + 1) % 3]} ${(c.wins[m] * 100).toFixed(0)}%`).join(', ')} — 의도한 가위바위보 구조인지 확인하세요.` });
   if (cross.length) out.push({ level: 'info', kind: 'cross', text: `역전 레벨 ${cross.length}곳: ${cross.slice(0, 6).map(c => `Lv${c.lv} ${c.upName} > ${c.downName}`).join(', ')}${cross.length > 6 ? ' …' : ''}` });
   const order = { serious: 0, warn: 1, info: 2 };
   return out.sort((a, b) => order[a.level] - order[b.level]);
+}
+
+
+// ── 구간 리포트 (레벨 구간별 평균 승률) ────────────────────
+/** 구간 경계 → [{ from, to }]. 경계를 안 정하면 최대 레벨의 1/3, 2/3 */
+export function phaseRanges(cfg) {
+  const L = cfg.maxLevel;
+  const raw = cfg.phases?.length ? cfg.phases : [Math.round(L / 3), Math.round(2 * L / 3)];
+  const cuts = [...new Set(raw.map(Math.round).filter(x => x >= 1 && x < L))].sort((a, b) => a - b);
+  const out = [];
+  let from = 1;
+  for (const c of cuts) { out.push({ from, to: c }); from = c + 1; }
+  out.push({ from, to: L });
+  return out.filter(p => p.from <= p.to);
+}
+
+/** 레벨 훑기 계획: 시뮬레이션이 필요한 쌍은 예산(전투 수) 안에서 반복 수를 줄이고, 그래도 넘으면 레벨을 건너뛴다 */
+export function sweepPlan(cfg, { budget = 6e4 } = {}) {
+  const E = cfg.entities, n = E.length, L = cfg.maxLevel;
+  const needsSim = (a, b) => (a.variance || 0) > 0 || (b.variance || 0) > 0 || traitsOf(cfg, a).length > 0 || traitsOf(cfg, b).length > 0;
+  let simPairs = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (needsSim(E[i], E[j])) simPairs++;
+  const maxRuns = cfg.sim?.runs ?? 4000;
+  const runs = simPairs ? Math.min(maxRuns, Math.max(100, Math.floor(budget / (L * simPairs)))) : 0;
+  const stride = simPairs ? Math.max(1, Math.ceil(L * simPairs * runs / budget)) : 1;
+  const levels = [];
+  for (let lv = 1; lv <= L; lv += stride) levels.push(lv);
+  if (levels.at(-1) !== L) levels.push(L);
+  return { levels, runs, stride, exact: simPairs === 0 };
+}
+
+/** 한 레벨의 승률·무승부 행렬과 엔티티 점수 */
+export function sweepAt(cfg, f, lv, runs) {
+  const E = cfg.entities, n = E.length;
+  const W = Array.from({ length: n }, () => new Array(n).fill(null)), D = Array.from({ length: n }, () => new Array(n).fill(null));
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const d = duel(cfg, f, E[i], E[j], lv, { runs, seed: 4242 + lv * 131 + i * 7 + j });
+    W[i][j] = d.winA; W[j][i] = d.winB; D[i][j] = D[j][i] = d.draw;
+  }
+  const score = E.map((_, i) => { let s = 0, c = 0; for (let j = 0; j < n; j++) if (j !== i) { s += W[i][j] + D[i][j] / 2; c++; } return c ? s / c : NaN; });
+  return { win: W, draw: D, score };
+}
+
+/** 레벨마다 승률 행렬 (한 번에). 화면은 sweepPlan + sweepAt을 레벨마다 나눠 돌린다 */
+export function levelSweep(cfg, f, opts) {
+  const plan = sweepPlan(cfg, opts);
+  const win = [], draw = [], score = [];
+  for (const lv of plan.levels) { const r = sweepAt(cfg, f, lv, plan.runs); win.push(r.win); draw.push(r.draw); score.push(r.score); }
+  return { ...plan, win, draw, score };
+}
+
+/** 구간별 평균 점수·평균 승률, 1위, 지배(구간 평균으로 모든 상대에게 55% 이상) + 검증 문장 */
+export function phaseReport(cfg, sweep) {
+  const E = cfg.entities, n = E.length;
+  const phases = phaseRanges(cfg).map(p => {
+    const idx = sweep.levels.map((lv, k) => [lv, k]).filter(([lv]) => lv >= p.from && lv <= p.to).map(([, k]) => k);
+    const avg = (get) => (idx.length ? idx.reduce((a, k) => a + get(k), 0) / idx.length : NaN);
+    const score = E.map((_, i) => avg(k => sweep.score[k][i]));
+    const win = E.map((_, i) => E.map((_, j) => (i === j ? null : avg(k => sweep.win[k][i][j]))));
+    const best = score.reduce((b, s, i) => (s > score[b] ? i : b), 0);
+    const dominant = n >= 2 ? E.map((_, i) => i).filter(i => win[i].every((w, j) => j === i || w >= 0.55)) : [];
+    return { ...p, levels: idx.length, score, win, best, dominant };
+  });
+  const findings = [];
+  for (const p of phases) for (const i of p.dominant) {
+    const lows = p.win[i].filter((w, j) => j !== i);
+    findings.push({ level: 'serious', kind: 'phaseDominant', text: `Lv${p.from}~${p.to}: ${josa(E[i].name, '이', '가')} 구간 평균으로 모든 상대에게 55% 이상 이깁니다 (최저 ${(Math.min(...lows) * 100).toFixed(1)}%).` });
+  }
+  // 1위가 2위보다 5%p 이상 앞설 때만 '같은 1위'로 본다 (동률이면 1위가 없음)
+  const clearLead = (p) => { const s = [...p.score].sort((a, b) => b - a); return s[0] - (s[1] ?? -Infinity) >= 0.05; };
+  if (phases.length >= 2 && n >= 2 && phases.every(p => p.best === phases[0].best && clearLead(p))) findings.push({ level: 'warn', kind: 'sameLeader', text: `모든 구간에서 ${josa(E[phases[0].best].name, '이', '가')} 1위입니다 — 레벨 구간에 따라 강자가 바뀌는 구조가 없습니다.` });
+  E.forEach((e, i) => {
+    const s = phases.map(p => p.score[i]);
+    const span = Math.max(...s) - Math.min(...s);
+    if (phases.length >= 2 && span >= 0.25) findings.push({ level: 'info', kind: 'swing', text: `${e.name}: 구간 평균 승률이 ${phases.map(p => `${(p.score[i] * 100).toFixed(0)}%`).join(' → ')}로 ${(span * 100).toFixed(0)}%p 바뀝니다 (의도한 초반형·후반형인지 확인).` });
+  });
+  const order = { serious: 0, warn: 1, info: 2 };
+  return { phases, findings: findings.sort((a, b) => order[a.level] - order[b.level]) };
+}
+
+/** 상성 순환: A가 B를, B가 C를, C가 A를 55% 이상 이기는 세 엔티티 (시뮬레이션이면 구간이 50%를 넘을 때만) */
+export function cycles(cfg, mx) {
+  const E = cfg.entities, n = E.length, out = [];
+  const beats = (i, j) => { const c = mx.cell[i][j]; return c && c.win >= 0.55 && (c.exact || c.ci[0] > 0.5); };
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    if (i >= j || i >= k || j === k) continue; // i가 가장 작은 번호인 순환만 (중복 제거)
+    if (beats(i, j) && beats(j, k) && beats(k, i)) out.push([i, j, k]);
+  }
+  return out.map(c => ({ ids: c, names: c.map(x => E[x].name), wins: c.map((x, m) => mx.cell[x][c[(m + 1) % 3]].win) }));
 }
 
 /** 전체 분석 */
@@ -460,10 +714,56 @@ export function analyze(cfg) {
   const cross = crossovers(series);
   const mx = matrix(cfg, f, lv, { runs: cfg.sim?.runs });
   const cv = cpVsWin(cfg, f, mx);
-  return { ok: true, f, lv, series, cross, mx, cv, findings: findings(cfg, f, mx, cv, cross), formulaErrors: {} };
+  const tw = traitWarnings(cfg).map(text => ({ level: 'warn', kind: 'trait', text }));
+  return { ok: true, f, lv, series, cross, mx, cv, findings: [...tw, ...findings(cfg, f, mx, cv, cross)], formulaErrors: {} };
 }
 
 // ── Kalivra 프로젝트(.kal / JSON) 가져오기 ──────────────────
+// Kalivra 트리거 이름 → 발동 시점 (Kalivra의 normalizeString과 같은 규칙: 소문자·공백 제거 후 포함 여부)
+function kalOn(type) {
+  const s = String(type || '').toLowerCase().replace(/\s+/g, '');
+  if (s.includes('onhittaken') || s.includes('ondamagetaken') || s.includes('피격')) return 'hitTaken';
+  if (s.includes('onattackhit') || s.includes('적중')) return 'attackHit';
+  if (s.includes('onbeforeattack') || s.includes('공격전')) return 'beforeAttack';
+  if (s.includes('onmiss') || s.includes('빗나감')) return 'miss';
+  if (s.includes('onevasion') || s.includes('회피')) return 'evaded';
+  if (s.includes('oncritical') || s.includes('치명타')) return 'critical';
+  if (s.includes('onturnstart') || s.includes('onturnend')) return 'turn';
+  if (s.includes('onbattlestart')) return 'battleStart';
+  return null;
+}
+/** Kalivra 특성 하나(트리거 여러 개) → 이 탭의 특성 배열 */
+function kalTraits(t, notes) {
+  const out = [];
+  for (const trig of t?.triggers || []) {
+    let on = kalOn(trig.type);
+    if (!on) { notes.add(`'${t.name}'의 트리거 '${trig.type}'는 알 수 없어 뺐습니다.`); continue; }
+    if (/onturnend/i.test(String(trig.type).replace(/\s+/g, ''))) notes.add(`'${t.name}': 턴 끝(OnTurnEnd)은 '매 턴'(턴 시작)으로 가져왔습니다.`);
+    let chance = 100, cond = null;
+    for (const c of trig.conditions || []) {
+      const ty = String(c.type || '').toLowerCase().replace(/\s+/g, '');
+      if (ty.includes('chance')) chance = chance * (Number(c.value) || 0) / 100;
+      else if (ty.includes('hp') && ty.includes('less')) cond = { who: c.target === 'Self' ? 'self' : 'enemy', below: Number(c.value) || 0 };
+      else if (ty.includes('iscritical')) { if (on === 'attackHit') on = 'critical'; else notes.add(`'${t.name}': 치명타 조건은 공격 적중 트리거에서만 가져옵니다.`); }
+    }
+    const effects = [];
+    for (const e of trig.effects || []) {
+      const ty = String(e.type || '').toLowerCase().replace(/\s+/g, '');
+      const who = e.target === 'Self' ? 'self' : 'enemy';
+      const pctDmg = /percent|%/i.test(String(e.valueType || ''));
+      const v = Number(e.value) || 0;
+      if (ty.includes('heal')) effects.push({ type: 'heal', who, value: v, base: pctDmg ? 'dmg' : 'fixed' });
+      else if (ty.includes('dealdamage')) effects.push({ type: 'damage', who, value: v, base: pctDmg ? 'dmg' : 'fixed' });
+      else if (ty.includes('modifydamage')) effects.push(e.op === 'add' ? { type: 'dmgAdd', who: 'self', value: v } : { type: 'dmgMult', who: 'self', value: v });
+      else if (ty.includes('buff')) effects.push({ type: 'buff', who, stat: e.stat, value: v, base: 'fixed', dur: Number(e.duration) || 0 });
+      else notes.add(`'${t.name}'의 효과 '${e.type}'는 알 수 없어 뺐습니다.`);
+    }
+    if (effects.some(e => e.type === 'buff' && e.dur > 0) && on !== 'beforeAttack' && on !== 'attackHit' && on !== 'critical') notes.add(`'${t.name}': 버프 지속은 자기 공격 수로 셉니다 — 상대 행동에서 걸린 버프는 Kalivra보다 1회 짧습니다.`);
+    if (effects.length) out.push({ name: String(t.name || '특성'), on, chance: +chance.toFixed(6), cond, max: 0, effects });
+  }
+  return out;
+}
+
 const KAL_NAMES = { hp: '체력', atk: '공격력', def: '방어력', acc: '명중', eva: '회피', cric: '치명 확률(%)', crid: '치명 배율', aspd: '공격 속도' };
 
 /**
@@ -480,26 +780,29 @@ export function fromKalivra(doc, base) {
   const entities = cur.entities.map((e, i) => {
     const id = `e${i + 1}`;
     idMap.set(e.id, id);
+    const traits = (e.traits || []).flatMap(t => kalTraits(t, tnotes));
     return {
-      id, name: String(e.name ?? `엔티티 ${i + 1}`), color: typeof e.color === 'string' ? e.color : null,
+      id, name: String(e.name ?? `엔티티 ${i + 1}`), traits, color: typeof e.color === 'string' ? e.color : null,
       variance: Math.max(0, Math.min(0.99, Number(e.variance) || 0)),
       stats: Object.fromEntries(statIds.map(s => [s, { b: Number(e.stats?.[s]?.b) || 0, g: Number(e.stats?.[s]?.g) || 0 }])),
     };
   });
   const items = [];
-  let traits = 0, orderDependent = new Set();
+  const tnotes = new Set();
+  let orderDependent = new Set();
   (cur.items || []).forEach((it, i) => {
-    traits += (it.traits || []).length;
     const mods = (it.modifiers || []).filter(m => statIds.includes(m.stat)).map(m => (m.op === 'mult' ? { stat: m.stat, mult: Number(m.val) } : { stat: m.stat, flat: Number(m.val) || 0 }));
     const tg = (it.targets || []).map(t => idMap.get(t)).filter(Boolean);
-    items.push({ id: `i${i + 1}`, name: String(it.name ?? `아이템 ${i + 1}`), active: it.active !== false, targets: tg, mods });
+    items.push({ id: `i${i + 1}`, name: String(it.name ?? `아이템 ${i + 1}`), active: it.active !== false, targets: tg, mods, traits: (it.traits || []).flatMap(t => kalTraits(t, tnotes)) });
   });
   // 같은 엔티티·스탯에 고정(add)과 배율(mult)이 함께 걸리면 Kalivra는 아이템 순서대로 계산 → 결과가 다를 수 있음
   for (const e of entities) for (const s of statIds) {
     const ms = items.filter(it => it.active && it.targets.includes(e.id)).flatMap(it => it.mods.filter(m => m.stat === s));
     if (ms.some(m => m.flat) && ms.some(m => m.mult != null)) orderDependent.add(`${e.name}.${s}`);
   }
-  if (traits) notes.push(`특성(트리거) ${traits}개는 아직 지원하지 않아 뺐습니다 (3단계 예정). 결과는 특성 없는 전투입니다.`);
+  const nTraits = entities.reduce((a, e) => a + e.traits.length, 0) + items.reduce((a, it) => a + it.traits.length, 0);
+  if (nTraits) notes.push(`특성 ${nTraits}개를 가져왔습니다. 효과는 발동 한 번에 한 번만 적용합니다 (Kalivra는 피격 스탯 버프를 두 번 적용).`);
+  notes.push(...tnotes);
   if (orderDependent.size) notes.push(`고정+와 배율이 함께 걸린 스탯(${[...orderDependent].slice(0, 4).join(', ')}${orderDependent.size > 4 ? ' …' : ''})은 여기서는 (값 + 고정) × 배율로 계산합니다. Kalivra는 아이템 순서대로 계산해 값이 다를 수 있습니다.`);
   const has = (s) => statIds.includes(s);
   const dmg = String(rules.dmgFormula || 'a.atk');

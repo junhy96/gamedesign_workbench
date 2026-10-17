@@ -32,6 +32,18 @@ export const FORMULA_PRESETS = {
   ],
 };
 
+/** 특성 프리셋: 특성 편집에서 고르면 그대로 추가된다 */
+export const TRAIT_PRESETS = {
+  lifesteal: { label: '흡혈 — 적중 시 준 데미지의 30% 회복', make: () => ({ name: '흡혈', on: 'attackHit', chance: 100, cond: null, max: 0, effects: [{ type: 'heal', who: 'self', value: 30, base: 'dmg' }] }) },
+  thorns: { label: '가시 — 피격 시 받은 데미지의 30% 반사', make: () => ({ name: '가시', on: 'hitTaken', chance: 100, cond: null, max: 0, effects: [{ type: 'damage', who: 'enemy', value: 30, base: 'dmg' }] }) },
+  berserk: { label: '광폭화 — 체력 30% 이하로 맞으면 공격력 +50% (1회)', make: () => ({ name: '광폭화', on: 'hitTaken', chance: 100, cond: { who: 'self', below: 30 }, max: 1, effects: [{ type: 'buff', who: 'self', stat: 'atk', value: 50, base: 'stat', dur: 0 }] }) },
+  guard: { label: '선제 방어 — 전투 시작 시 방어 +40 (5초·5턴)', make: () => ({ name: '선제 방어', on: 'battleStart', chance: 100, cond: null, max: 0, effects: [{ type: 'buff', who: 'self', stat: 'def', value: 40, base: 'fixed', dur: 5 }] }) },
+  fury: { label: '분노 일격 — 공격 직전 25% 확률로 데미지 ×1.8', make: () => ({ name: '분노 일격', on: 'beforeAttack', chance: 25, cond: null, max: 0, effects: [{ type: 'dmgMult', who: 'self', value: 1.8 }] }) },
+  execute: { label: '처형 — 상대 체력 20% 이하면 데미지 ×2', make: () => ({ name: '처형', on: 'beforeAttack', chance: 100, cond: { who: 'enemy', below: 20 }, max: 0, effects: [{ type: 'dmgMult', who: 'self', value: 2 }] }) },
+  regen: { label: '재생 — 매 턴(1초) 최대 체력의 2% 회복', make: () => ({ name: '재생', on: 'turn', chance: 100, cond: null, max: 0, effects: [{ type: 'heal', who: 'self', value: 2, base: 'maxHp' }] }) },
+  counter: { label: '반격 — 회피하면 고정 30 데미지', make: () => ({ name: '반격', on: 'evaded', chance: 100, cond: null, max: 0, effects: [{ type: 'damage', who: 'enemy', value: 30, base: 'fixed' }] }) },
+};
+
 export const TEMPLATES = {
   classes: {
     label: '4직업 — 전사·궁수·암살자·탱커 (시간 기반)',
@@ -53,7 +65,7 @@ export const TEMPLATES = {
   },
   kalivra: {
     label: 'Kalivra 기본 샘플 — Chicken 대 Godzilla (턴 교대)',
-    note: 'Kalivra가 처음 열 때 만드는 프로젝트. 원본 데미지 수식(atk * (100 / (100 + def)))은 a./b. 접두어가 없어 Kalivra에서 데미지 0 → 1만 회 모두 200턴 무승부가 됩니다(실행해서 확인). 여기서는 a.atk, b.def로 고쳤고, Bawky 아이템의 특성(Golden Egg)은 아직 지원하지 않아 뺐습니다. 데미지 변동(±10%, ±20%)이 있어 시뮬레이션으로 계산합니다. 규칙에서 "시간 기반"으로 바꾸면 공격 속도가 공격 횟수에 반영됩니다.',
+    note: 'Kalivra가 처음 열 때 만드는 프로젝트. 원본 데미지 수식(atk * (100 / (100 + def)))은 a./b. 접두어가 없어 Kalivra에서 데미지 0 → 1만 회 모두 200턴 무승부가 됩니다(실행해서 확인). 여기서는 a.atk, b.def로 고쳤습니다. Bawky 아이템의 특성 Golden Egg(피격 시 30% 확률로 체력 20 회복)도 그대로 넣었고, 데미지 변동(±10%, ±20%)과 특성 때문에 시뮬레이션으로 계산합니다. 규칙에서 "시간 기반"으로 바꾸면 공격 속도가 공격 횟수에 반영됩니다.',
     make: () => ({
       maxLevel: 20, level: 10, metric: 'cp', ref: 'e1', sim: { runs: 4000 },
       stats: STATS(),
@@ -61,9 +73,28 @@ export const TEMPLATES = {
         { id: 'e1', name: 'Chicken', variance: 0.1, stats: st({ hp: [150, 15], atk: [25, 5], def: [2, 0.5], acc: 100, eva: [30, 2], cric: 20, crid: 2, aspd: [1.5, 0.1] }) },
         { id: 'e2', name: 'Godzilla', variance: 0.2, stats: st({ hp: [500, 100], atk: [50, 10], def: [20, 5], acc: 80, eva: 5, cric: 10, crid: 1.5, aspd: [0.5, 0.02] }) },
       ],
-      items: [{ id: 'i1', name: 'Bawky', active: true, targets: ['e1'], mods: [{ stat: 'atk', mult: 1.5 }, { stat: 'aspd', flat: 0.5 }] }],
+      items: [{ id: 'i1', name: 'Bawky', active: true, targets: ['e1'], mods: [{ stat: 'atk', mult: 1.5 }, { stat: 'aspd', flat: 0.5 }], traits: [{ name: 'Golden Egg', on: 'hitTaken', chance: 30, cond: null, max: 0, effects: [{ type: 'heal', who: 'self', value: 20, base: 'fixed' }] }] }],
       rules: RULES({ mode: 'turn', cp: 'hp * 0.5 + atk * 2 + def + acc + eva + aspd * 5' }),
     }),
+  },
+  traits: {
+    label: '특성 예시 — 흡혈·가시·광폭화·선제 방어 (시간 기반)',
+    note: '같은 기본 스탯에 특성만 다르게 붙인 네 엔티티. 특성이 있으면 승률은 시뮬레이션(95% 구간)으로 계산하고, 1:1 상세에서 전투 로그와 특성별 평균 발동 횟수를 볼 수 있습니다.',
+    make: () => {
+      const same = () => st({ hp: [500, 40], atk: [40, 4], def: [20, 1.5], acc: 95, eva: 10, cric: 15, crid: 1.6, aspd: 1 });
+      return {
+        maxLevel: 20, level: 10, metric: 'cp', ref: 'e1', sim: { runs: 3000 },
+        stats: STATS(),
+        entities: [
+          { id: 'e1', name: '흡혈귀', variance: 0, stats: same(), traits: [TRAIT_PRESETS.lifesteal.make()] },
+          { id: 'e2', name: '가시 기사', variance: 0, stats: same(), traits: [TRAIT_PRESETS.thorns.make()] },
+          { id: 'e3', name: '광전사', variance: 0, stats: same(), traits: [TRAIT_PRESETS.berserk.make()] },
+          { id: 'e4', name: '수호자', variance: 0, stats: same(), traits: [TRAIT_PRESETS.guard.make()] },
+        ],
+        items: [],
+        rules: RULES(),
+      };
+    },
   },
   blank: {
     label: '빈 설계 (직접 입력)',

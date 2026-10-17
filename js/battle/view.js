@@ -1,9 +1,9 @@
 // 스탯·전투 밸런스 — 화면: 왼쪽 규칙(템플릿·전투 방식·수식), 오른쪽 엔티티·아이템 표 → 레벨 곡선 → 승률 행렬 → 1:1 상세 → 검증
 import {
   analyze, compileRules, curves, matrix, duel, duelSim, prepare, killStats, statsAt, fromKalivra,
-  MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa,
+  MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt,
 } from './model.js';
-import { TEMPLATES, FORMULA_PRESETS } from './presets.js';
+import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -35,7 +35,7 @@ export function mount(root) {
   if (location.hash.startsWith('#battle?')) history.replaceState(null, '', '#battle');
   build(root);
   rebuild();
-  document.addEventListener('themechange', () => last && (drawCurves(last), renderPair(last)));
+  document.addEventListener('themechange', () => last && (drawCurves(last), renderPair(last), startPhase(last)));
   window.addEventListener('hashchange', () => { const st = readHash(); if (st) { state = st; history.replaceState(null, '', '#battle'); rebuild(); } });
 }
 
@@ -65,6 +65,7 @@ function build(root) {
         ),
         els.mxCard = h('div.card.role-out'),
         els.pairCard = h('div.card.role-out'),
+        els.phaseCard = h('div.card.role-out'),
         els.checkCard = h('div.card.role-check'),
       ),
     ),
@@ -134,6 +135,10 @@ function renderSide() {
       h('div.row2', {},
         field('최대 레벨', numIn(s, 'maxLevel', { int: true, min: 1, max: 1000, label: '최대 레벨' })),
         field('기준 레벨 (행렬)', numIn(s, 'level', { int: true, min: 1, label: '기준 레벨' }))),
+      field('구간 경계 (레벨, 쉼표)', h('input', {
+        type: 'text', value: (s.phases || []).join(', '), placeholder: `비우면 ${Math.round(s.maxLevel / 3)}, ${Math.round(2 * s.maxLevel / 3)}`, 'aria-label': '구간 경계',
+        oninput: (e) => { const xs = e.target.value.split(/[\s,]+/).filter(Boolean).map(Number); if (xs.every(Number.isFinite)) { s.phases = xs; schedule(300); } },
+      }), '예: 10, 20 → Lv1~10 · 11~20 · 21~끝 (구간 리포트)'),
     ),
     section('mode', '전투 방식', MODES[r.mode].split(' (')[0],
       field('진행', select(Object.entries(MODES), r.mode, (v) => { r.mode = v; renderSide(); schedule(0); }, '전투 진행 방식'),
@@ -192,15 +197,17 @@ function renderEntities() {
   put(els.entCard, 
     h('div.card-head', {}, h('h2', {}, '엔티티와 스탯'), h('span.hint', {}, '칸마다 위 = 기본값(Lv1), 아래 = 레벨당 증가(등비면 %) · "표"로 레벨별 값을 직접 넣을 수 있음 (사이는 직선)')),
     h('div.table-wrap', {}, h('table.stages.ent-table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th.left', {}, '엔티티'), h('th', { title: '데미지 ±비율 (0.1 = ±10%). 0이 아니면 시뮬레이션' }, '변동'), ...S.map(statHead), h('th', {}, ''))),
-      h('tbody', {}, ...E.map((e, i) => h('tr', {},
+      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th.left', {}, '엔티티'), h('th', { title: '데미지 ±비율 (0.1 = ±10%). 0이 아니면 시뮬레이션' }, '변동'), h('th', { title: '발동 시점 × 조건 × 효과. 있으면 시뮬레이션' }, '특성'), ...S.map(statHead), h('th', {}, ''))),
+      h('tbody', {}, ...E.flatMap((e, i) => [h('tr', {},
         h('td', {}, h('input', { type: 'checkbox', checked: sel.has(e.id), 'aria-label': `${e.name} 선택 (일괄 편집)`, onchange: (ev) => { if (ev.target.checked) sel.add(e.id); else sel.delete(e.id); state.selected = [...sel]; save(); } })),
         h('td.left', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), h('input.ent-name', { type: 'text', value: e.name, 'aria-label': '엔티티 이름', oninput: (ev) => { e.name = ev.target.value; schedule(300); } })),
         h('td', {}, numIn(e, 'variance', { min: 0, max: 0.99, step: 0.05, label: `${e.name} 데미지 변동`, cls: 'short' })),
+        h('td', {}, traitButton(`e:${e.id}`, e)),
         ...S.map(s => cell(e, s)),
         h('td.x', {}, h('button.icon-x', { type: 'button', title: '엔티티 삭제', disabled: E.length <= 1, onclick: () => { E.splice(i, 1); state.pairA = 0; state.pairB = Math.min(1, E.length - 1); rebuild(); } }, '×')),
-      ))),
+      )])),
     )),
+    ...E.filter(e => openTraits.has(`e:${e.id}`)).map(e => h('div.trait-panel', {}, traitEditor(e, `${e.name}의 특성`, renderEntities))),
     h('div.table-foot', {},
       h('div.tool-actions', {},
         h('button.btn.small', { type: 'button', onclick: addEntity }, '+ 엔티티'),
@@ -319,6 +326,57 @@ function applyCSV(text, out) {
   toast(`엔티티 ${ents.length}개를 불러왔습니다`);
 }
 
+// ── 특성 편집 (엔티티·아이템 공용) ──────────────────────
+const openTraits = new Set(); // 펼친 특성 편집 ('e:엔티티id' / 'i:아이템id')
+function traitButton(key, owner, rerender = renderEntities) {
+  const n = owner.traits?.length || 0;
+  return h(`button.mini-btn${n ? '.on' : ''}`, { type: 'button', 'aria-expanded': String(openTraits.has(key)), title: '특성 편집', onclick: () => { if (openTraits.has(key)) openTraits.delete(key); else openTraits.add(key); rerender(); } }, n ? `특성 ${n}` : '+ 특성');
+}
+function traitEditor(owner, title, rerender) {
+  owner.traits ??= [];
+  const T = owner.traits, S = state.stats;
+  const turnUnit = state.rules.mode === 'turn' ? '턴(자기 공격)' : '초';
+  const changed = (re = false) => { if (re) rerender(); schedule(); };
+  const effectRow = (tr, e, ei) => {
+    const bases = e.type === 'heal' || e.type === 'damage' ? ['fixed', 'dmg', 'maxHp'] : e.type === 'buff' ? ['fixed', 'stat'] : [];
+    if (bases.length && !bases.includes(e.base)) e.base = bases[0];
+    return h('div.effect-row', {},
+      select(Object.entries(EFFECTS), e.type, (v) => { e.type = v; if (v === 'buff') { e.stat ??= S[0]?.id; e.dur ??= 0; } changed(true); }, '효과'),
+      e.type === 'dmgMult' || e.type === 'dmgAdd' ? h('span.muted.small', {}, e.type === 'dmgMult' ? '× (공격 직전 = 주는 데미지, 피격 = 받는 데미지)' : '+ (음수면 감소)')
+        : select([['self', '자신'], ['enemy', '상대']], e.who ?? 'self', (v) => { e.who = v; changed(); }, '대상'),
+      e.type === 'buff' ? select(S.map(s => [s.id, s.id]), e.stat, (v) => { e.stat = v; changed(); }, '버프 스탯') : null,
+      numIn(e, 'value', { label: '효과 값', cls: 'short' }),
+      bases.length ? select(bases.map(b => [b, EFFECT_BASES[b]]), e.base, (v) => { e.base = v; changed(); }, '값 기준') : null,
+      e.type === 'buff' ? h('label.inline-sel', {}, h('span.muted.small', {}, `지속(${turnUnit}, 0 = 끝까지)`), numIn(e, 'dur', { min: 0, label: '버프 지속', cls: 'short' })) : null,
+      h('button.icon-x', { type: 'button', title: '효과 삭제', disabled: tr.effects.length <= 1, onclick: () => { tr.effects.splice(ei, 1); changed(true); } }, '×'),
+    );
+  };
+  const traitBox = (tr, ti) => {
+    const condV = tr.cond ? tr.cond.who : 'none';
+    return h('div.trait-box', {},
+      h('div.trait-head', {},
+        h('input.ent-name', { type: 'text', value: tr.name, 'aria-label': '특성 이름', oninput: (e) => { tr.name = e.target.value; save(); } }),
+        select(Object.entries(TRIGGERS), tr.on, (v) => { tr.on = v; changed(true); }, '발동 시점'),
+        h('label.inline-sel', {}, h('span.muted.small', {}, '확률 %'), numIn(tr, 'chance', { min: 0, max: 100, label: '발동 확률', cls: 'short' })),
+        select([['none', '조건 없음'], ['self', '내 체력 ≤'], ['enemy', '상대 체력 ≤']], condV, (v) => { tr.cond = v === 'none' ? null : { who: v, below: tr.cond?.below ?? 30 }; changed(true); }, '체력 조건'),
+        tr.cond ? h('label.inline-sel', {}, numIn(tr.cond, 'below', { min: 0, max: 100, label: '체력 조건 %', cls: 'short' }), h('span.muted.small', {}, '%')) : null,
+        h('label.inline-sel', {}, h('span.muted.small', {}, '최대 발동 (0 = 무제한)'), numIn(tr, 'max', { int: true, min: 0, label: '최대 발동', cls: 'short' })),
+        h('button.mini-btn', { type: 'button', title: '특성 삭제', onclick: () => { T.splice(ti, 1); changed(true); } }, '삭제'),
+      ),
+      ...tr.effects.map((e, ei) => effectRow(tr, e, ei)),
+      h('button.mini-btn', { type: 'button', onclick: () => { tr.effects.push({ type: 'heal', who: 'self', value: 10, base: 'fixed' }); changed(true); } }, '+ 효과'),
+    );
+  };
+  return h('div.trait-editor', {},
+    h('div.trait-title', {}, h('b', {}, title), h('span.muted.small', {}, ' · 효과는 발동 한 번에 한 번, 확률은 한 번만 판정 · 쓰러뜨린 공격 뒤에는 피격 효과 없음')),
+    ...T.map(traitBox),
+    h('div.tool-actions', {},
+      select([['', '프리셋으로 추가…'], ...Object.entries(TRAIT_PRESETS).map(([k, p]) => [k, p.label])], '', (v) => { if (v) { T.push(TRAIT_PRESETS[v].make()); changed(true); } }, '특성 프리셋'),
+      h('button.btn.small', { type: 'button', onclick: () => { T.push({ name: `특성 ${T.length + 1}`, on: 'attackHit', chance: 100, cond: null, max: 0, effects: [{ type: 'heal', who: 'self', value: 10, base: 'fixed' }] }); changed(true); } }, '+ 빈 특성'),
+    ),
+  );
+}
+
 // ── 아이템 ──────────────────────────────────────────────
 function renderItems() {
   const I = state.items, E = state.entities, S = state.stats;
@@ -330,13 +388,14 @@ function renderItems() {
   put(els.itemCard, 
     h('div.card-head', {}, h('h2', {}, '아이템 (스탯 수정자)'), h('span.hint', {}, '스탯 = (값 + Σ고정) × (1 + Σ% ÷ 100) × Π배율 — 아이템 순서와 무관')),
     I.length ? h('div.table-wrap', {}, h('table.stages.item-table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, '켜기'), h('th.left', {}, '아이템'), h('th.left', {}, '대상'), h('th.left', {}, '스탯'), h('th', {}, '고정 +'), h('th', {}, '% +'), h('th', {}, '× 배율'), h('th', {}, ''))),
+      h('thead', {}, h('tr', {}, h('th', {}, '켜기'), h('th.left', {}, '아이템'), h('th.left', {}, '대상'), h('th', {}, '특성'), h('th.left', {}, '스탯'), h('th', {}, '고정 +'), h('th', {}, '% +'), h('th', {}, '× 배율'), h('th', {}, ''))),
       h('tbody', {}, ...I.flatMap((it, ii) => {
         const mods = it.mods.length ? it.mods : [null];
-        return mods.map((m, mi) => h(`tr${mi ? '.sub' : ''}`, {},
+        const rows = mods.map((m, mi) => h(`tr${mi ? '.sub' : ''}`, {},
           h('td', {}, mi ? '' : h('input', { type: 'checkbox', checked: it.active !== false, 'aria-label': `${it.name} 켜기`, onchange: (e) => { it.active = e.target.checked; schedule(0); } })),
           h('td.left', {}, mi ? '' : h('input.ent-name', { type: 'text', value: it.name, 'aria-label': '아이템 이름', oninput: (e) => { it.name = e.target.value; save(); } })),
           h('td.left', {}, mi ? '' : targetSel(it)),
+          h('td', {}, mi ? '' : traitButton(`i:${it.id}`, it, renderItems)),
           h('td.left', {}, m ? select(S.map(s => [s.id, s.id]), m.stat, (v) => { m.stat = v; schedule(0); }, '수정할 스탯') : h('span.muted', {}, '—')),
           h('td', {}, m ? numIn(m, 'flat', { allowEmpty: true, placeholder: '0', label: '고정 증가' }) : ''),
           h('td', {}, m ? numIn(m, 'pct', { allowEmpty: true, placeholder: '0', label: '% 증가' }) : ''),
@@ -346,8 +405,10 @@ function renderItems() {
             m ? h('button.icon-x', { type: 'button', title: '수정자 삭제', onclick: () => { it.mods.splice(mi, 1); renderItems(); schedule(0); } }, '×') : null,
             mi === 0 ? h('button.mini-btn', { type: 'button', title: '아이템 삭제', onclick: () => { I.splice(ii, 1); renderItems(); schedule(0); } }, '삭제') : null),
         ));
+        return rows;
       })),
     )) : h('p.muted', {}, '아이템이 없습니다.'),
+    ...I.filter(it => openTraits.has(`i:${it.id}`)).map(it => h('div.trait-panel', {}, traitEditor(it, `아이템 ${it.name}의 특성 (대상 엔티티에 붙음)`, renderItems))),
     h('div.table-foot', {}, h('button.btn.small', { type: 'button', onclick: () => { I.push({ id: uid('i', I), name: `아이템 ${I.length + 1}`, active: true, targets: 'all', mods: [{ stat: S[0].id, flat: 0 }] }); renderItems(); } }, '+ 아이템')),
   );
 }
@@ -374,6 +435,7 @@ function recompute() {
   renderMatrix(res);
   renderPair(res);
   renderCheck(res);
+  startPhase(res);
 }
 
 // 기준안: 저장한 설정으로 같은 지표 곡선·같은 레벨 행렬을 다시 계산
@@ -505,6 +567,7 @@ function renderPair(res) {
   const mode = state.rules.mode;
   // 검증: 정확해면 시뮬레이션과 비교, 아니면 시뮬레이션 결과 그대로
   const sim = d.exact ? duelSim(state, f, A, B, lv, state.sim.runs, 777, prep) : d.sim;
+  const logRun = duelSim(state, f, A, B, lv, LOG_BATTLES, 555, prep, { logs: LOG_BATTLES });
   const prof = (p, hpT) => [
     ['명중', pct(p.hit)], ['치명 (적중 중)', pct(p.crit)], ['1회 데미지', `${num(p.normal, 1)} / 치명 ${num(p.critical, 1)}`],
     ['공격 속도', mode === 'time' ? `${num(p.speed, 2)}회/초` : `${num(p.speed, 2)} (선공 확률에만)`], ['상대 체력', num(hpT, 0)],
@@ -533,6 +596,8 @@ function renderPair(res) {
       h('span', {}, `${A.name} 실현 명중·치명`), h('span', {}, `${pct(prep.pa.hit)} · ${pct(prep.pa.crit)}`), h('span', {}, `${pct(sim.realized.hit)} · ${pct(sim.realized.crit)}`),
       h('span', {}, '평균 전투 길이'), h('span', {}, '—'), h('span', {}, mode === 'time' ? sec(mean(sim.duration)) : `${num(mean(sim.duration), 1)}턴`)),
     d.exact ? h('p', {}, h('span', { class: `status ${(sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? 'good' : 'warn'}` }, (sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? '정확해가 시뮬레이션 95% 구간 안' : '정확해가 시뮬레이션 95% 구간 밖 — 반복 수를 늘려 다시 확인')) : null,
+    procBlock(sim, A, B),
+    logBlock(logRun, A, B),
     h('h3.sub', {}, '레벨별 승률'),
     h('div.chart-box', {}, els.pairCanvas = h('canvas', { role: 'img', 'aria-label': `${A.name} 대 ${B.name} 레벨별 승률` })),
   );
@@ -543,7 +608,7 @@ const mean = (arr) => { let s = 0; for (const v of arr) s += v; return arr.lengt
 function drawPairCurve(res, A, B) {
   if (typeof Chart === 'undefined') return;
   const L = state.maxLevel, f = res.f;
-  const runs = Math.max(200, Math.round(state.sim.runs / 4));
+  const runs = Math.max(200, Math.round(state.sim.runs / 8));
   const pts = [], lo = [], hi = [];
   let exactAll = true;
   for (let lv = 1; lv <= L; lv++) {
@@ -580,6 +645,94 @@ function color(hex, a) {
 }
 
 // ── 검증 ────────────────────────────────────────────────
+const LOG_BATTLES = 20;
+let logPick = 0;
+function procBlock(sim, A, B) {
+  const rows = [...sim.procs.A.map(p => [A.name, p]), ...sim.procs.B.map(p => [B.name, p])];
+  if (!rows.length) return null;
+  return h('div', {},
+    h('h3.sub', {}, '특성 발동 (전투 한 번 평균)'),
+    h('dl.pct-list.proc-list', {}, ...rows.map(([who, p]) => h('div', {}, h('dt', {}, `${who} · ${p.name}`), h('dd', {}, `${num(p.perBattle, 2)}회`)))));
+}
+function logBlock(run, A, B) {
+  const mode = state.rules.mode;
+  const box = h('div.battle-log', {});
+  const show = () => {
+    const L = run.logs[logPick] ?? run.logs[0];
+    if (!L) { put(box); return; }
+    const name = (w) => (w === 'A' ? A.name : w === 'B' ? B.name : '');
+    const tFmt = (t) => (mode === 'turn' ? `${t}턴` : `${(+t.toFixed(2)).toLocaleString('ko-KR')}초`);
+    const lines = L.ev.slice(0, 400).map(e => h(`div.log-line.${e.type}`, {},
+      h('span.log-t', {}, tFmt(e.t)),
+      h('span.log-who', {}, name(e.who)),
+      h('span.log-text', {}, e.type === 'hit' ? `→ ${e.text}` : e.text),
+      h('span.log-hp', {}, `${A.name} ${num(e.hpA, 0)} · ${B.name} ${num(e.hpB, 0)}`)));
+    put(box, ...lines, L.ev.length > 400 ? h('p.muted.small', {}, `… ${L.ev.length - 400}줄 더`) : null);
+  };
+  const res = (w) => (w === 1 ? `${A.name} 승` : w === 2 ? `${B.name} 승` : '무승부');
+  const pick = select(run.logs.map((L, i) => [i, `전투 ${i + 1} — ${res(L.w)} (${mode === 'turn' ? `${L.t}턴` : `${(+L.t.toFixed(1))}초`})`]), logPick, (v) => { logPick = +v; show(); }, '전투 로그 고르기');
+  show();
+  return h('div', {}, h('div.log-head', {}, h('h3.sub', {}, '전투 로그'), pick, h('span.muted.small', {}, `같은 규칙의 시뮬레이션 ${run.logs.length}전투`)), box);
+}
+
+// ── 구간 리포트 (레벨마다 행렬 → 구간 평균) — 레벨을 나눠 비동기로 계산 ─────
+let phaseToken = 0, chartPhase;
+function startPhase(res) {
+  const token = ++phaseToken;
+  const plan = sweepPlan(state);
+  const ranges = phaseRanges(state);
+  const acc = { ...plan, win: [], draw: [], score: [] };
+  put(els.phaseCard, h('div.card-head', {}, h('h2', {}, '구간 리포트'), h('span.hint', {}, '계산 중…')));
+  let k = 0;
+  const step = () => {
+    if (token !== phaseToken) return; // 설정이 바뀌어 새 계산이 시작됨
+    const t0 = performance.now();
+    while (k < plan.levels.length && performance.now() - t0 < 30) {
+      const r = sweepAt(state, res.f, plan.levels[k], plan.runs);
+      acc.win.push(r.win); acc.draw.push(r.draw); acc.score.push(r.score); k++;
+    }
+    if (k < plan.levels.length) { els.phaseCard.querySelector('.hint').textContent = `계산 중… ${k}/${plan.levels.length} 레벨`; setTimeout(step, 0); return; }
+    renderPhase(acc, phaseReport(state, acc), ranges);
+  };
+  setTimeout(step, 0);
+}
+function renderPhase(sw, rep, ranges) {
+  const E = state.entities, LV = { serious: '불가', warn: '주의', info: '참고' };
+  put(els.phaseCard,
+    h('div.card-head', {}, h('h2', {}, '구간 리포트'), h('span.hint', {}, `${ranges.map(r => `Lv${r.from}~${r.to}`).join(' · ')} · ${sw.exact ? '정확해' : `시뮬레이션 쌍마다 ${comma(sw.runs)}회${sw.stride > 1 ? ` · ${sw.stride}레벨마다` : ''}`} · 경계는 왼쪽 '템플릿 · 레벨'에서`)),
+    h('div.chart-box', {}, els.phaseCanvas = h('canvas', { role: 'img', 'aria-label': '레벨별 엔티티 평균 승률' })),
+    h('div.table-wrap', {}, h('table.stages.phase-table', {},
+      h('thead', {}, h('tr', {}, h('th.left', {}, '엔티티'), ...rep.phases.map(p => h('th', {}, `Lv${p.from}~${p.to}`)))),
+      h('tbody', {}, ...E.map((e, i) => h('tr', {},
+        h('td.left', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), e.name),
+        ...rep.phases.map(p => h(`td${p.best === i ? '.phase-best' : ''}${p.dominant.includes(i) ? '.phase-dom' : ''}`, { title: p.dominant.includes(i) ? '이 구간에서 모든 상대에게 평균 55% 이상' : '' }, pct(p.score[i]))))),
+      ))),
+    rep.findings.length ? h('ul.findings', {}, ...rep.findings.map(w => h(`li.${w.level === 'info' ? 'info' : w.level}`, {}, h('span.lv', {}, LV[w.level]), h('span', {}, w.text)))) : h('p.muted', {}, '구간마다 지배하는 엔티티가 없습니다.'),
+  );
+  if (typeof Chart === 'undefined') return;
+  const grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
+  const bands = { id: 'bands', beforeDatasetsDraw(c) {
+    const { ctx: g, chartArea: a, scales: { x } } = c;
+    g.save(); g.fillStyle = cssVar('--surface-2');
+    ranges.forEach((r, m) => { if (m % 2) { const x0 = x.getPixelForValue(r.from - 0.5), x1 = x.getPixelForValue(r.to + 0.5); g.fillRect(Math.max(a.left, x0), a.top, Math.min(a.right, x1) - Math.max(a.left, x0), a.bottom - a.top); } });
+    g.restore();
+  } };
+  chartPhase?.destroy();
+  chartPhase = new Chart(els.phaseCanvas, {
+    type: 'line', plugins: [bands],
+    data: { datasets: E.map((e, i) => ({ label: e.name, data: sw.levels.map((lv, k) => ({ x: lv, y: sw.score[k][i] * 100 })), borderColor: colorOf(i), backgroundColor: colorOf(i), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 })) },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      scales: {
+        x: { type: 'linear', min: 1, max: state.maxLevel, grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: '레벨 (회색 띠 = 구간)', color: tick } },
+        y: { min: 0, max: 100, grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` }, title: { display: true, text: '상대 평균 승률', color: tick } },
+      },
+      plugins: { legend: { labels: { color: ink, boxWidth: 14, boxHeight: 2 } }, tooltip: { callbacks: { title: (it) => `Lv${it[0].raw.x}`, label: (it) => `${it.dataset.label}: ${it.raw.y.toFixed(1)}%` } } },
+    },
+  });
+}
+
 function renderCheck(res) {
   const LV = { serious: '불가', warn: '주의', info: '참고' };
   const cv = res.cv, E = state.entities;

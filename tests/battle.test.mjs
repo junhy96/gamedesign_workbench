@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parse, compile } from '../js/battle/formula.js';
 import {
   analyze, validate, compileRules, statsAt, tableAt, killDist, duelExact, duelSim, prepare, matrix, wilson, spearman,
-  crossovers, cpVsWin, fromKalivra, josa,
+  crossovers, cpVsWin, fromKalivra, josa, battleOnce, duel, traitWarnings, phaseRanges, levelSweep, sweepPlan, phaseReport, cycles,
 } from '../js/battle/model.js';
 import { TEMPLATES } from '../js/battle/presets.js';
 import { mulberry32 } from '../js/enhance/simulate.js';
@@ -269,7 +269,8 @@ test('Kalivra 프로젝트 가져오기: 기본 샘플(접두어 없는 데미�
   assert.deepEqual(cfg.items[0].mods, [{ stat: 'atk', mult: 1.5 }, { stat: 'atk', flat: 5 }]);
   assert.equal(cfg.entities[1].stats.def.b, 0);
   assert.equal(cfg.rules.mode, 'turn');
-  assert.ok(notes.some(n => /특성\(트리거\) 1개/.test(n)));
+  assert.ok(notes.some(n => /특성 1개를 가져왔습니다/.test(n)));
+  assert.deepEqual(cfg.items[0].traits, [{ name: 'Golden Egg', on: 'hitTaken', chance: 30, cond: null, max: 0, effects: [{ type: 'heal', who: 'self', value: 20, base: 'fixed' }] }]);
   assert.ok(notes.some(n => /a\.\/b\. 접두어가 없습니다/.test(n)));
   assert.ok(notes.some(n => /Chicken\.atk/.test(n)));
   const res = analyze(cfg);
@@ -293,4 +294,115 @@ test('prepare: 레벨·아이템이 반영된 스탯과 체력', () => {
   const p = prepare(cfg, f, cfg.entities[1], cfg.entities[0], 10);
   close(p.sa.atk, (32 + 3.5 * 9) * 1.15, 1e-9); // 전설 활 +15%
   assert.equal(p.hpA, 380 + 22 * 9);
+});
+
+// ── 특성(트리거) ────────────────────────────────────────
+const conv = {
+  T1: [{ name: 'Lifesteal', on: 'attackHit', chance: 50, cond: null, max: 0, effects: [{ type: 'heal', who: 'self', base: 'dmg', value: 60 }] }],
+  T2: [{ name: 'Fury', on: 'beforeAttack', chance: 25, cond: null, max: 0, effects: [{ type: 'dmgMult', who: 'self', value: 1.8 }] }],
+};
+test('특성 시뮬레이션 = Kalivra v1.0.1 엔진 (흡혈·공격 직전 배율, 4σ 안)', () => {
+  for (const c of ref.traitCases) {
+    const cfg = fromRef(c, 'turn');
+    cfg.entities[1].traits = conv[c.id];
+    const { f } = compileRules(cfg);
+    const [A, B] = cfg.entities;
+    assert.equal(duelExact(cfg, f, A, B, 1), null, '특성이 있으면 정확해 없음');
+    const sm = duelSim(cfg, f, A, B, 1, 100000, 31);
+    const k = c.kalivra, se = Math.sqrt(k.winA * (1 - k.winA) / k.runs + sm.winA * (1 - sm.winA) / sm.runs);
+    assert.ok(Math.abs(sm.winA - k.winA) <= 4 * se, `${c.id}: ${sm.winA} vs ${k.winA}`);
+  }
+});
+
+const traitCfg = (traitsB, extraB = {}, rules = {}) => cfgOf([
+  ent('A', { hp: 1000, atk: 30, acc: 100, crid: 1.5, aspd: 1 }),
+  { ...ent('B', { hp: 1000, atk: 30, acc: 100, crid: 1.5, aspd: 1, ...extraB }), traits: traitsB },
+], rules);
+const logOf = (cfg, seed = 1) => { const { f } = compileRules(cfg); return battleOnce(cfg, f, cfg.entities[0], cfg.entities[1], 1, mulberry32(seed), true); };
+
+test('피격 스탯 버프는 적중 한 번에 한 번 (Kalivra는 두 번)', () => {
+  const cfg = traitCfg([{ name: '단단해짐', on: 'hitTaken', chance: 100, max: 0, effects: [{ type: 'buff', who: 'self', stat: 'def', value: 10, base: 'fixed', dur: 0 }] }]);
+  const r = logOf(cfg);
+  const hitsOnB = r.ev.filter(e => e.who === 'A' && (e.type === 'hit' || e.type === 'crit')).length;
+  const buffs = r.ev.filter(e => e.type === 'buff' && e.who === 'B').length;
+  const lethal = r.w === 1 ? 1 : 0; // 쓰러뜨린 공격 뒤에는 피격 효과 없음
+  assert.equal(buffs, hitsOnB - lethal);
+  assert.equal(r.B.stats.def, 10 * buffs);
+});
+
+test('최대 발동·체력 조건·쓰러뜨린 뒤 피격 효과 없음', () => {
+  // 광폭화: 체력 30% 이하로 맞으면 한 번만
+  const cfg = traitCfg([{ name: '광폭화', on: 'hitTaken', chance: 100, cond: { who: 'self', below: 30 }, max: 1, effects: [{ type: 'buff', who: 'self', stat: 'atk', value: 50, base: 'stat', dur: 0 }] }]);
+  for (let s = 1; s <= 20; s++) {
+    const r = logOf(cfg, s);
+    const procs = r.ev.filter(e => e.type === 'buff');
+    assert.ok(procs.length <= 1);
+    if (procs.length) assert.ok(procs[0].hpB / 1000 <= 0.3 + 1e-12, `${procs[0].hpB}`);
+  }
+  // 한 방에 쓰러지면 피격 회복이 나오지 않음
+  const one = cfgOf([ent('A', { hp: 100, atk: 1000, acc: 100, crid: 1.5, aspd: 2 }), { ...ent('B', { hp: 100, atk: 1, acc: 100, crid: 1.5, aspd: 1 }), traits: [{ name: '불사', on: 'hitTaken', chance: 100, max: 0, effects: [{ type: 'heal', who: 'self', value: 10000, base: 'fixed' }] }] }], { tie: 'simul' });
+  const { f } = compileRules(one);
+  const sm = duelSim(one, f, one.entities[0], one.entities[1], 1, 500, 3);
+  assert.equal(sm.winA + sm.draw, 1); // 0초에 둘 다 공격 — A는 B를 한 방, B는 A를 못 쓰러뜨림
+  assert.equal(sm.winA, 1);
+});
+
+test('시간 기반 버프 지속·공격 속도 버프는 다음 공격부터, 매 1초 트리거', () => {
+  const cfg = traitCfg([
+    { name: '가속', on: 'battleStart', chance: 100, max: 0, effects: [{ type: 'buff', who: 'self', stat: 'aspd', value: 1, base: 'fixed', dur: 3 }] },
+    { name: '재생', on: 'turn', chance: 100, max: 0, effects: [{ type: 'heal', who: 'self', value: 1, base: 'maxHp' }] },
+  ]);
+  const r = logOf(cfg);
+  const bAttacks = r.ev.filter(e => e.who === 'B' && ['hit', 'crit', 'miss'].includes(e.type)).map(e => +e.t.toFixed(6));
+  // 0초부터 2회/초 → 0, 0.5, … 3초에 버프 끝 → 이후 1회/초
+  assert.deepEqual(bAttacks.slice(0, 7), [0, 0.5, 1, 1.5, 2, 2.5, 3]);
+  assert.ok(r.ev.some(e => e.type === 'expire' && Math.abs(e.t - 3) < 1e-9));
+  assert.ok(r.ev.filter(e => e.type === 'heal').length >= 1);
+  assert.equal(r.ev.find(e => e.type === 'heal').t, 1);
+});
+
+test('특성 경고·특성이 있으면 이유 = 특성', () => {
+  const cfg = traitCfg([{ name: '엉뚱', on: 'miss', chance: 100, max: 0, effects: [{ type: 'dmgMult', who: 'self', value: 2 }, { type: 'buff', who: 'self', stat: 'nope', value: 1 }] }]);
+  const w = traitWarnings(cfg);
+  assert.equal(w.length, 2);
+  const { f } = compileRules(cfg);
+  assert.equal(duel(cfg, f, cfg.entities[0], cfg.entities[1], 1, { runs: 200 }).reason, '특성');
+});
+
+// ── 구간 리포트·상성 순환 ─────────────────────────────────
+test('구간: 기본은 1/3·2/3, 직접 정한 경계, 정확해 템플릿은 모든 레벨', () => {
+  assert.deepEqual(phaseRanges({ maxLevel: 30 }), [{ from: 1, to: 10 }, { from: 11, to: 20 }, { from: 21, to: 30 }]);
+  assert.deepEqual(phaseRanges({ maxLevel: 30, phases: [25, 5, 5, 40] }), [{ from: 1, to: 5 }, { from: 6, to: 25 }, { from: 26, to: 30 }]);
+  const cfg = TEMPLATES.classes.make();
+  const { f } = compileRules(cfg);
+  const sw = levelSweep(cfg, f);
+  assert.equal(sw.exact, true);
+  assert.equal(sw.levels.length, 30);
+  const mx10 = matrix(cfg, f, 10);
+  close(sw.win[9][2][0], mx10.cell[2][0].win, 1e-12);
+  const pr = phaseReport(cfg, sw);
+  assert.equal(pr.phases.length, 3);
+  assert.ok(pr.findings.some(x => x.kind === 'phaseDominant' && /암살자/.test(x.text)));
+  // 시뮬레이션이 필요하면 예산 안에서 반복 수를 줄임
+  const plan = sweepPlan(TEMPLATES.traits.make(), { budget: 6e4 });
+  assert.ok(plan.runs >= 100 && plan.runs * 6 * plan.levels.length <= 6e4 * 1.2);
+});
+
+test('상성 순환: A > B > C > A', () => {
+  const E = ['A', 'B', 'C'].map(id => ({ id, name: id }));
+  const c = (w) => ({ win: w, lose: 1 - w, draw: 0, exact: true });
+  const mx = { lv: 1, cell: [[null, c(0.7), c(0.3)], [c(0.3), null, c(0.8)], [c(0.7), c(0.2), null]] };
+  const cy = cycles({ entities: E }, mx);
+  assert.equal(cy.length, 1);
+  assert.deepEqual(cy[0].names, ['A', 'B', 'C']);
+  mx.cell[2][0] = c(0.5); mx.cell[0][2] = c(0.5);
+  assert.equal(cycles({ entities: E }, mx).length, 0);
+});
+
+test('특성 템플릿·Kalivra 샘플(Golden Egg 포함) 계산', () => {
+  for (const id of ['traits', 'kalivra']) {
+    const res = analyze(TEMPLATES[id].make());
+    assert.equal(res.ok, true, id);
+    assert.equal(res.mx.allExact, false);
+  }
 });
