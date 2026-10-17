@@ -148,3 +148,28 @@ test('잔존율 검증: D1 ≥ D7 ≥ D30', () => {
   cfg.segments[0].d7 = 50;
   assert.ok(validate(cfg).some(e => e.includes('D1 ≥ D7 ≥ D30')));
 });
+
+test('성장 루프 배치: 같은 열 노드가 겹치지 않고, 상점은 두 재화 사이, 모바일 템플릿 교차 ≤ 2', async () => {
+  const { buildLoop } = await import('../js/economy/loop.js');
+  for (const id of Object.keys(TEMPLATES)) {
+    const L = buildLoop(TEMPLATES[id].make());
+    for (const col of L.cols) for (let i = 1; i < col.length; i++) assert.ok(col[i].y >= col[i - 1].y + col[i - 1].h, `${id} 겹침`);
+    for (const e of L.edges) for (const k of ['x1', 'y1', 'x2', 'y2']) assert.ok(Number.isFinite(e[k]), `${id} ${e.from}→${e.to} ${k}`);
+    assert.ok(L.nodes.every(n => n.x + n.w <= L.width && n.y + n.h <= L.height));
+  }
+  const L = buildLoop(TEMPLATES.mobile.make());
+  const col = L.cols[1].map(n => n.id);
+  const shop = col.indexOf('X_shop');
+  assert.deepEqual([col[shop - 1], col[shop + 1]], ['R_gold', 'R_stone']);
+  assert.ok(L.crossings <= 2, `교차 ${L.crossings}`);
+});
+
+test('성장 루프 SVG: 재화를 나르는 선은 그 재화 색, 이름은 이스케이프', async () => {
+  const { loopSvg, LOOP_COLORS } = await import('../js/economy/loop.js');
+  const cfg = TEMPLATES.mobile.make();
+  cfg.contents[0].name = '<던전 & "보스">';
+  const svg = loopSvg(cfg);
+  assert.ok(svg.includes('&lt;던전 &amp; &quot;보스&quot;&gt;') && !svg.includes('<던전'));
+  for (const [i, c] of cfg.currencies.entries()) assert.ok(svg.includes(`stroke="${LOOP_COLORS.light.currency[i].stroke}"`), c.name);
+  assert.ok(loopSvg(cfg, { dark: true }).includes(LOOP_COLORS.dark.content.stroke));
+});

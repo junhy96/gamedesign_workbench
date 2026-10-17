@@ -695,3 +695,7 @@ body:has(#tab-stage:not([hidden])) main { max-width: 1680px; }
 .chapter-table tr.st-row td:first-child { padding-left: 24px; }
 .ch-caret { display: inline-block; width: 16px; color: var(--text-3); }
 #tab-stage .findings li .btn { margin-left: auto; flex: none; }
+
+/* 재화 흐름: 성장 루프 — 좁은 화면에서는 글자가 읽히는 크기를 지키고 카드 안에서만 가로 스크롤 */
+#tab-economy .diagram-preview { justify-content: flex-start; }
+#tab-economy .diagram-preview svg { min-width: 760px; margin: 0 auto; }

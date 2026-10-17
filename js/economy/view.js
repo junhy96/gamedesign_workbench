@@ -1,7 +1,8 @@
 // 재화 흐름 시뮬레이터 v2 — 화면: 성장 루프(콘텐츠 → 재화 → 성장 → 전투력 → 콘텐츠)
-import { simulate, toMermaid, applyGrowthTable, hasRetention } from './model.js';
+import { simulate, applyGrowthTable, hasRetention } from './model.js';
+import { loopSvg } from './loop.js';
 import { TEMPLATES } from './presets.js';
-import { renderSvg, renderOffscreen, isDark } from '../lib/mermaid.js';
+import { isDark } from '../lib/mermaid.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
 import { h, store, encodeState, decodeState, toast, debounce, fmtMoney, fmtNum } from '../lib/util.js';
 
@@ -357,21 +358,22 @@ function renderFlowTable(res) {
   );
 }
 
-async function drawFlow() {
-  try {
-    const { svg, latest } = await renderSvg(toMermaid(state), isDark());
-    if (latest()) els.flow.innerHTML = svg; // Mermaid(strict)가 정화한 SVG
-  } catch (e) { els.flow.replaceChildren(h('p.muted', {}, `루프 다이어그램을 그리지 못했습니다: ${e.message}`)); }
+// 성장 루프: 열 배치를 직접 계산한 SVG (loop.js). 이름은 loopSvg 안에서 XML 이스케이프된다.
+function drawFlow() {
+  try { els.flow.innerHTML = loopSvg(state, { dark: isDark() }); }
+  catch (e) { els.flow.replaceChildren(h('p.muted', {}, `루프 다이어그램을 그리지 못했습니다: ${e.message}`)); }
 }
 
 async function exportFlowPpt() {
   const btn = els.flowPpt, label = btn.textContent;
   btn.disabled = true; btn.textContent = '만드는 중…';
   try {
-    const { svg, host } = await renderOffscreen(toMermaid(state));
-    const specs = fitShapes(collectSvgShapes(svg), { x: 0.45, y: 1.15, w: 12.4, h: 5.95 });
+    // 내보내기는 항상 라이트 색으로: 화면 밖에 붙여 계산된 스타일을 읽은 뒤 제거
+    const host = h('div.offscreen-render', {});
+    host.innerHTML = loopSvg(state, { dark: false });
+    document.body.append(host);
+    const specs = fitShapes(collectSvgShapes(host.querySelector('svg')), { x: 0.45, y: 1.15, w: 12.4, h: 5.95 });
     host.remove();
-    drawFlow();
     const pptx = await createDeck('성장 루프');
     const slide = pptx.addSlide();
     slide.addText(`성장 루프 — ${TEMPLATES[state.template].label}`, { x: 0.45, y: 0.3, w: 12.4, h: 0.6, fontFace: FONT, fontSize: 22, bold: true, color: '1B1B1A', margin: 0 });
