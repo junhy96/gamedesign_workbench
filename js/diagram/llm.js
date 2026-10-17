@@ -25,6 +25,7 @@ const SYSTEM = `당신은 게임 기획 문서에 들어갈 Mermaid 다이어그
   - 서브 프로세스(다른 문서에서 정의한 절차): id[["전투 진행"]]
   - 준비·설정(초기화·설정값): id{{"매칭 조건 설정"}}
   - 이벤트·신호(푸시, 알림, 트리거): id>"푸시 알림"]
+- sequenceDiagram의 참여자는 종류에 맞게 선언합니다. 사람(유저·운영자)은 actor U as 유저, DB·저장소는 participant D@{ "type" : "database" } as DB, 메시지 큐는 participant Q@{ "type" : "queue" } as 큐, 나머지 시스템은 participant S as 게임 서버. 요청은 ->>, 응답은 -->> 로 구분합니다.
 - style, classDef, linkStyle, click, HTML 태그, %%{init}%% 지시문은 쓰지 않습니다. 색은 자동으로 입혀집니다.
 - 수정 요청을 받으면 기존 코드를 바탕으로 요청한 부분만 바꾸고 나머지 구조와 이름은 그대로 둡니다.`;
 

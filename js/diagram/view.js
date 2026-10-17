@@ -3,7 +3,7 @@ import { MODELS, createDiagram, editDiagram, fixDiagram, requestText } from './l
 import { EXAMPLES } from './examples.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
 import { isDark, parseError, renderSvg, renderOffscreen as offscreen, loadMermaid } from '../lib/mermaid.js';
-import { CATS, PALETTES, DEFAULT_STYLE, analyze, styledCode, legendItems, shapeIcon } from './style.js';
+import { CATS, PALETTES, DEFAULT_STYLE, analyze, styledCode, legendItems, shapeIcon, edgeIcon, decorateSequence } from './style.js';
 import { h, store, encodeState, decodeState, downloadText, toast, debounce } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -130,7 +130,7 @@ function renderStyleBox() {
     h('details.syntax-help', {},
       h('summary', {}, '블록 종류와 Mermaid 모양'),
       h('ul', {}, ...Object.entries(CATS).filter(([k]) => k !== 'state').map(([k, c]) => {
-        const col = (PALETTES.type.light)[k];
+        const col = PALETTES.type.light[k] ?? PALETTES.type.light[{ seqUser: 'terminal', seqClient: 'screen', seqSystem: 'process', seqData: 'data', seqQueue: 'event' }[k]];
         return h('li', {}, h('span.icon', { html: shapeIcon(k, col.fill, col.stroke) }), h('b', {}, c.label), h('code', {}, c.syntax));
       })),
       h('p.desc', {}, '블록 모양으로 종류를 나눕니다. AI에게 만들게 하면 이 규칙대로 모양을 고르고, 코드를 직접 고칠 때도 모양만 바꾸면 색과 범례가 따라 바뀝니다.'),
@@ -153,7 +153,7 @@ function renderLegend(an, dark) {
   els.legend.replaceChildren(...(items.length ? [h('span.dg-legend-title', {}, 'INDEX'), ...items.map(it => h('span.dg-legend-item', {},
     it.kind === 'block'
       ? h('span.icon', { html: shapeIcon(it.cat, it.fill, it.stroke) })
-      : h('span.icon', { html: `<svg viewBox="0 0 32 20" width="32" height="20" aria-hidden="true"><path d="M2 10h24" stroke="${it.stroke}" stroke-width="2.4"/><path d="M24 6l6 4-6 4z" fill="${it.stroke}"/></svg>` }),
+      : h('span.icon', { html: edgeIcon(it.stroke, it.dash) }),
     it.label))] : []));
 }
 
@@ -212,6 +212,8 @@ async function renderPreview() {
     const { svg, latest } = await renderSvg(prep.code, dark, renderOpts());
     if (!latest()) return; // 더 최신 렌더가 있음
     els.preview.innerHTML = svg; // Mermaid(securityLevel: strict)가 정화한 SVG
+    const el = els.preview.querySelector('svg');
+    if (el) decorateSequence(el, prep.an, state.style, dark);
     renderLegend(prep.an, dark);
     els.previewErr.hidden = true;
     els.previewHint.textContent = '코드를 고치면 바로 반영됩니다';
@@ -226,6 +228,7 @@ async function renderOffscreen() {
   if (err) throw new Error('문법 오류를 먼저 고쳐 주세요.');
   const prep = await prepare(state.code, false);
   const r = await offscreen(prep.code, renderOpts());
+  decorateSequence(r.svg, prep.an, state.style, false);
   renderPreview(); // 미리보기는 현재 테마로 되돌림
   return { ...r, an: prep.an };
 }
@@ -256,7 +259,7 @@ function composeExport(svg, an) {
     const y = PAD + row * ROW;
     const icon = it.kind === 'block'
       ? shapeIcon(it.cat, it.fill, it.stroke)
-      : `<svg viewBox="0 0 32 20" width="32" height="20"><path d="M2 10h24" stroke="${it.stroke}" stroke-width="2.4"/><path d="M24 6l6 4-6 4z" fill="${it.stroke}"/></svg>`;
+      : edgeIcon(it.stroke, it.dash);
     parts.push(icon.replace('<svg ', `<svg x="${x}" y="${y}" `).replace(' aria-hidden="true"', ''));
     parts.push(`<text x="${x + ICON + 6}" y="${y + 14.5}" font-size="13" fill="#3A3A38">${esc(it.label)}</text>`);
     x += w;
@@ -341,7 +344,7 @@ export function legendSpecs(items, y) {
     if (x + w > X1) { row++; x = X0 + 0.9; }
     const yy = y + row * ROW;
     if (it.kind === 'block') specs.push({ type: 'preset', preset: CATS[it.cat].preset, name: `범례 ${it.label}`, x, y: yy, w: ICON_W, h: ICON_H, fill: it.fill, line: it.stroke, lineWidth: 1 });
-    else specs.push({ type: 'line', name: `범례 ${it.label}`, x, y: yy + ICON_H / 2, w: ICON_W, h: 0, line: it.stroke, lineWidth: 2, arrowEnd: true });
+    else specs.push({ type: 'line', name: `범례 ${it.label}`, x, y: yy + ICON_H / 2, w: ICON_W, h: 0, line: it.stroke, lineWidth: 2, arrowEnd: true, dash: it.dash ? 'dash' : undefined });
     specs.push({ type: 'text', name: `범례 ${it.label} 글자`, text: it.label, x: x + ICON_W + 0.1, y: yy - 0.02, w: textW(it.label), h: 0.3, fontSize: 10.5, color: '#3A3A38' });
     x += w;
   }

@@ -50,3 +50,26 @@ test('범례: 쓰인 블록 종류만 정해진 순서로, 분기 선 항목 포
   assert.deepEqual(items.filter(i => i.kind === 'block').map(i => i.cat), ['terminal', 'process', 'decision', 'io', 'data']);
   assert.deepEqual(items.filter(i => i.kind === 'edge').map(i => i.label), ['아니오 · 없음 분기', '예 · 있음 분기']);
 });
+
+test('시퀀스: 참여자 종류 분류(액터·DB·큐·이름 추정)와 요청/응답 범례', async () => {
+  const { analyzeSequence, legendItems: li } = await import('../js/diagram/style.js');
+  const actors = new Map([
+    ['U', { name: 'U', description: '유저', type: 'actor' }],
+    ['C', { name: 'C', description: '클라이언트', type: 'participant' }],
+    ['S', { name: 'S', description: '게임 서버', type: 'participant' }],
+    ['D', { name: 'D', description: '계정 DB', type: 'participant' }],
+    ['Q', { name: 'Q', description: '로그', type: 'queue' }],
+  ]);
+  const messages = [
+    { from: 'U', to: 'C', message: '버튼', type: 0 },
+    { from: 'S', to: 'S', message: '노트', type: 2 },
+    { message: '재화 부족', type: 12 },
+    { from: 'S', to: 'C', message: '실패 (재화 부족)', type: 1 },
+    { message: '', type: 14 },
+  ];
+  const an = analyzeSequence({ getActors: () => actors, getMessages: () => messages });
+  assert.deepEqual(an.nodes.map(n => n.cat), ['seqUser', 'seqClient', 'seqSystem', 'seqData', 'seqQueue']);
+  assert.deepEqual(an.edges.map(e => [e.i, e.dotted]), [[0, false], [1, true]]); // 노트·제어 블록 제외, 렌더 순서 번호
+  const items = li(an, style());
+  assert.deepEqual(items.filter(i => i.kind === 'edge').map(i => i.label), ['요청 · 호출 (실선)', '응답 · 반환 (점선)', '실패 · 아니오 메시지']);
+});
