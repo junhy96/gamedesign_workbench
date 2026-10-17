@@ -30,7 +30,7 @@ export function mount(root) {
 
 // ── 골격 ────────────────────────────────────────────────
 function build(root) {
-  const card = (title, hint, ...body) => h('div.card', {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
+  const card = (role, title, hint, ...body) => h(`div.card.role-${role}`, {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
   root.replaceChildren(
     h('div.tool-head', {},
       h('div', {},
@@ -47,15 +47,15 @@ function build(root) {
       h('div.enh-main', {},
         els.errors = h('ul.errors', { hidden: true }),
         els.kpis = h('div.kpis.econ-kpis'),
-        els.sources = h('div.card'),
-        els.sinks = h('div.card'),
-        card('레벨 도달 곡선', '같은 필요량 표로 세그먼트마다 언제 몇 레벨인지 · 점 = 마일스톤',
+        els.sources = h('div.card.role-in'),
+        els.sinks = h('div.card.role-in'),
+        card('out', '레벨 도달 곡선', '같은 필요량 표로 세그먼트마다 언제 몇 레벨인지 · 점 = 마일스톤',
           els.sinkTabs = h('div.seg-tabs', {}),
           h('div.chart-box.tall', {}, els.canvas = h('canvas', { role: 'img', 'aria-label': '세그먼트별 레벨 도달 곡선' })),
         ),
         h('div.two-col.supply-out', {},
-          els.levelCard = h('div.card'),
-          els.warnCard = h('div.card'),
+          els.levelCard = h('div.card.role-out'),
+          els.warnCard = h('div.card.role-check'),
         ),
       ),
     ),

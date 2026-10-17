@@ -60,7 +60,7 @@ export function buildDist(ctx, els) {
     type: 'number', min: 0, step: 'any', inputmode: 'decimal', 'aria-label': '예산',
     oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { ctx.state.budget = fromDisplay(v); ctx.save(); renderBudget(ctx, els); } },
   });
-  return h('div.card', {},
+  return h('div.card.role-out', {},
     h('div.card-head', {}, h('h2', {}, '총비용 분포와 예산'), els.distHint = h('span.hint', {})),
     h('div.dist', {},
       h('div.chart-box', {}, els.canvas = h('canvas', { role: 'img', 'aria-label': '총비용 분포 히스토그램' })),

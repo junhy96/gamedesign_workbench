@@ -71,8 +71,9 @@ export function mount(root) {
 // 화면 구성: 왼쪽 = 설정 메뉴(고정, 따로 스크롤), 오른쪽 = 핵심 지표 → 단계 표(입력 + 같은 줄 결과) → 결과 분석 → 밸런스 도구
 // 지표 카드가 위로 사라지면 오른쪽 위 고정 띠에 같은 지표가 나타나 입력하면서도 결과를 본다.
 function build(root) {
-  const card = (title, hint, ...body) => h('div.card', {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
-  const section = (id, title, sub) => h(`div.enh-section#${id}`, {}, h('h2', {}, title), h('span', {}, sub));
+  const card = (role, title, hint, ...body) => h(`div.card.role-${role}`, {}, h('div.card-head', {}, h('h2', {}, title), hint ? h('span.hint', {}, hint) : null), ...body);
+  // h()는 태그 문자열의 '.'만 해석하므로 id는 속성으로 넘긴다 (예전 'div.x#id' 표기는 id가 붙지 않아 바로가기가 동작하지 않았음)
+  const section = (id, title, sub, role) => h(`div.enh-section${role ? `.role-${role}` : ''}`, { id }, h('h2', {}, title), h('span', {}, sub));
   const kpis = buildKPIs(els);
   root.replaceChildren(
     h('div.tool-head', {},
@@ -91,8 +92,8 @@ function build(root) {
         ),
         els.errors = h('ul.errors', { hidden: true }),
         kpis,
-        h('div#enh-stages.anchor', {}),
-        card('단계별 확률과 비용', '왼쪽 칸을 고치면 같은 줄 오른쪽 결과가 바로 바뀝니다 · 머리글에 마우스를 올리면 설명',
+        h('div.anchor', { id: 'enh-stages' }),
+        card('in', '단계별 확률과 비용', '왼쪽 칸을 고치면 같은 줄 오른쪽 결과가 바로 바뀝니다 · 머리글에 마우스를 올리면 설명',
           h('div.table-wrap', {}, els.table = h('table.stages', {})),
           h('div.table-foot', {},
             h('label.switch.inline', {},
@@ -103,13 +104,13 @@ function build(root) {
           ),
         ),
 
-        section('enh-analysis', '결과 분석', '총비용 분포 · 재화별 소모 · 계산 검증'),
+        section('enh-analysis', '결과 분석', '총비용 분포 · 재화별 소모 · 계산 검증', 'out'),
         buildDist(ctx, els),
-        h('div.two-col', {}, els.resources = h('div.card'), els.verify = h('div.card')),
+        h('div.two-col', {}, els.resources = h('div.card.role-out'), els.verify = h('div.card.role-check')),
 
-        section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책 · 아이템 가격 곡선'),
-        h('div.two-col', {}, els.inverse = h('div.card.tool-card'), els.optCard = h('div.card.tool-card')),
-        els.sweepCard = h('div.card.tool-card'),
+        section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책 · 아이템 가격 곡선', 'tool'),
+        h('div.two-col', {}, els.inverse = h('div.card.tool-card.role-tool'), els.optCard = h('div.card.tool-card.role-tool')),
+        els.sweepCard = h('div.card.tool-card.role-tool'),
       ),
     ),
   );
