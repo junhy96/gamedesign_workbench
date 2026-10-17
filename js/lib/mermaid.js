@@ -26,7 +26,9 @@ function configure(m, dark, opts = {}) {
   m.initialize({
     startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default',
     fontFamily: '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif',
-    themeVariables: { fontSize: `${opts.fontSize ?? 14}px` },
+    themeVariables: { fontSize: `${opts.fontSize ?? 14}px`, edgeLabelBackground: dark ? '#232321' : '#ffffff' },
+    // 선 라벨 배경을 불투명하게 (기본은 반투명이라 지나가는 선이 글자와 겹쳐 보임) — 미리보기·PNG·SVG·PPT 모두 적용
+    themeCSS: `.edgeLabel rect, .edgeLabel .background, .labelBkg { opacity: 1 !important; fill: ${dark ? '#232321' : '#ffffff'} !important; background-color: ${dark ? '#232321' : '#ffffff'} !important; }`,
     // HTML 라벨 대신 SVG 텍스트 → PNG 변환과 PPT 도형 변환이 정확해짐
     htmlLabels: false,
     flowchart: { htmlLabels: false, curve: opts.curve ?? 'basis', nodeSpacing, rankSpacing },
