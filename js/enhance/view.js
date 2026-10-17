@@ -9,6 +9,7 @@ import {
   buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
   renderOptCard, renderInverse, drawChart,
 } from './results.js';
+import { importGrowthTable } from '../economy/view.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
 
 const SCHEMA = 2;
@@ -123,6 +124,7 @@ function renderHead() {
     b ? h('button.btn', { type: 'button', onclick: () => { ctx.state.baseline = null; renderHead(); ctx.lastRes && renderKPIs(ctx, els, ctx.lastRes); ctx.save(); } }, '기준안 해제') : null,
     h('button.btn', { type: 'button', onclick: copyShareLink }, '공유 링크'),
     h('button.btn', { type: 'button', onclick: exportCSV, title: '실효 확률표(공시 검토용) CSV' }, '확률표 CSV'),
+    h('button.btn', { type: 'button', onclick: sendToEconomy, title: '단계별 재화 기대 소모를 재화 흐름 시뮬레이터의 성장 항목 비용으로 보내고 이동' }, '재화 흐름으로 보내기'),
     h('button.btn', { type: 'button', onclick: exportJSON }, 'JSON 저장'),
     h('button.btn', { type: 'button', onclick: importJSON }, '불러오기'),
   ].filter(Boolean));
@@ -173,6 +175,26 @@ function runMC(cfg, res) {
   } catch {
     done(simulate(cfg, Math.min(trials, 5000))); // Worker 미지원 환경
   }
+}
+
+// ── 재화 흐름 시뮬레이터로 보내기 ───────────────────────
+// 단계별 재화 기대 소모(하락 후 재도전·파괴 복구·보조 아이템 포함)를 '강화' 성장 항목의 레벨별 비용 표로 넣는다.
+// 재화 흐름은 레벨마다 비용을 한 번에 내고 오르므로, 강화의 확률적 비용을 기대값으로 바꿔 경제 루프에 얹는 셈이다.
+function sendToEconomy() {
+  const res = ctx.lastRes, st = ctx.state;
+  if (!res) { toast('먼저 오류를 고쳐 주세요'); return; }
+  const stages = res.stages.filter(o => o.stage >= st.start && o.stage < st.target).sort((a, b) => a.stage - b.stage);
+  const name = `강화 +${st.start}→+${st.target}`;
+  const sent = [];
+  st.resources.forEach((r, ri) => {
+    const costs = stages.map(o => Math.round(o.units[ri]));
+    if (!costs.some(v => v > 0)) return;
+    importGrowthTable({ currency: r.name.trim() || `재화${ri + 1}`, name, max: st.target, start: st.start, costs });
+    sent.push(r.name);
+  });
+  if (!sent.length) { toast('보낼 재화 소모가 없습니다'); return; }
+  location.hash = '#economy';
+  toast(`재화 흐름에 '${name}' 성장 항목을 넣었습니다 (${sent.join('·')} · 단계별 기대 소모)`);
 }
 
 // ── 공유·저장 ───────────────────────────────────────────

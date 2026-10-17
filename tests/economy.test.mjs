@@ -109,3 +109,42 @@ test('수급 설계 필요량 표: 표가 있는 재화는 레벨별 값, 같은
   assert.equal(r2.created, true); assert.equal(r2.currencyCreated, true);
   assert.equal(simulate(cfg).ok, true);
 });
+
+test('잔존율: 앵커(D1·D7·D30)를 정확히 지나고 단조 감소, 비우면 이탈 없음', async () => {
+  const { retentionAt } = await import('../js/economy/model.js');
+  const seg = { d1: 40, d7: 15, d30: 5 };
+  assert.equal(retentionAt(seg, 0), 1);
+  for (const [d, v] of [[1, 0.4], [7, 0.15], [30, 0.05]]) assert.ok(Math.abs(retentionAt(seg, d) - v) < 1e-12, `D${d}`);
+  let prev = 1;
+  for (let d = 1; d <= 120; d++) { const r = retentionAt(seg, d); assert.ok(r <= prev + 1e-12 && r >= 0, `${d}일`); prev = r; }
+  assert.equal(retentionAt({}, 50), 1);
+});
+
+test('LTV = Σ 잔존(d) × 월 과금 ÷ 30, 이탈 없으면 기간 × 월 과금 ÷ 30', () => {
+  const cfg = TEMPLATES.mobile.make();
+  cfg.variance.enabled = false;
+  const r = simulate(cfg);
+  const heavy = r.bySeg.find(s => s.segment.id === 'heavy');
+  const expect = heavy.retention.slice(1).reduce((a, p) => a + p, 0) * 100000 / 30;
+  assert.ok(Math.abs(heavy.ltv - expect) < 1e-6);
+  cfg.segments.forEach(s => { delete s.d1; delete s.d7; delete s.d30; });
+  const r2 = simulate(cfg);
+  assert.ok(Math.abs(r2.bySeg.find(s => s.segment.id === 'heavy').ltv - cfg.days * 100000 / 30) < 1e-6);
+});
+
+test('편차 띠: 하위 10% ≤ 중앙값 ≤ 상위 10%, 편차 0이면 띠가 기준 유저와 같다', () => {
+  const cfg = TEMPLATES.mobile.make();
+  const r = simulate(cfg);
+  for (const s of r.bySeg) for (let d = 0; d <= cfg.days; d++) assert.ok(s.band.p10[d] <= s.band.p50[d] && s.band.p50[d] <= s.band.p90[d]);
+  cfg.variance = { enabled: true, users: 20, sd: 0, daily: 0 };
+  const r0 = simulate(cfg);
+  for (const s of r0.bySeg) assert.deepEqual(s.band.p90, s.series.power);
+  cfg.variance.enabled = false;
+  assert.equal(simulate(cfg).bySeg[0].band, undefined);
+});
+
+test('잔존율 검증: D1 ≥ D7 ≥ D30', () => {
+  const cfg = TEMPLATES.mobile.make();
+  cfg.segments[0].d7 = 50;
+  assert.ok(validate(cfg).some(e => e.includes('D1 ≥ D7 ≥ D30')));
+});

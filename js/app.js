@@ -5,11 +5,13 @@ import { mount as mountFrame } from './frame/view.js';
 import { mount as mountDiagram } from './diagram/view.js';
 import { mount as mountEconomy } from './economy/view.js';
 import { mount as mountSupply } from './supply/view.js';
+import { mount as mountGacha } from './gacha/view.js';
 
 const TOOLS = {
   enhance: mountEnhance,
-  economy: mountEconomy,
+  gacha: mountGacha,
   supply: mountSupply,
+  economy: mountEconomy,
   frame: mountFrame,
   diagram: mountDiagram,
 };

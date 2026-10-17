@@ -17,6 +17,18 @@
 //   4. 상점(교환): 보유량이 기준 이상이면 정해진 양씩 하루 최대 n회
 //   5. 성장: 표 순서대로, 비용을 낼 수 있으면 레벨업 반복. 못 내면 가장 부족한 재화를 '병목'으로 기록
 //            비용(레벨 L) = 기본 비용 × 증가율^L, 전투력 = Σ 레벨 × 레벨당 전투력
+//
+// ■ 편차 (선택)
+//   같은 세그먼트 안에서도 유저마다 플레이 시간이 다르다: 유저별 고정 배수(로그정규, 평균 1) × 일별 변동(로그정규, 평균 1).
+//   세그먼트마다 N명을 돌려 날짜별 전투력의 하위 10%·상위 10%를 띠로 표시.
+//   (매일 독립적으로만 흔들면 평균으로 수렴해 띠가 비현실적으로 좁아지므로 유저별 고정 배수가 핵심)
+//
+// ■ 이탈 (선택)
+//   세그먼트마다 D1·D7·D30 잔존율. 앵커 사이는 log(일차)–log(잔존) 직선(구간별 멱법칙), D30 이후는 D7→D30 기울기로 연장.
+//   잔존 곡선은 '평균 유저가 그날까지 남아 있을 확률'이라 성장 시뮬레이션 자체는 바꾸지 않고,
+//   콘텐츠 해금 시점의 잔존율과 설치당 기대 매출(LTV = Σ 잔존(d) × 월 과금 ÷ 30)을 계산한다.
+
+import { mulberry32 } from '../enhance/simulate.js';
 
 export function validate(cfg) {
   const errors = [];
@@ -40,6 +52,11 @@ export function validate(cfg) {
   cfg.exchanges.forEach((x, i) => {
     if (!ids.has(x.from) || !ids.has(x.to) || x.from === x.to) errors.push(`상점 ${i + 1}번 '${x.name}': 내는 재화와 받는 재화를 다르게 선택하세요.`);
   });
+  cfg.segments.forEach((sg, i) => {
+    if ([sg.d1, sg.d7, sg.d30].some(v => typeof v === 'number' && !(v >= 0 && v <= 100))) errors.push(`세그먼트 ${i + 1}번 '${sg.name}': 잔존율은 0~100%여야 합니다.`);
+    else if (hasRetention(sg) && !(sg.d1 >= sg.d7 && sg.d7 >= sg.d30)) errors.push(`세그먼트 ${i + 1}번 '${sg.name}': 잔존율은 D1 ≥ D7 ≥ D30이어야 합니다.`);
+  });
+  if (cfg.variance?.enabled && !(cfg.variance.users >= 10 && cfg.variance.users <= 2000)) errors.push('편차 계산 인원은 세그먼트당 10~2000명이어야 합니다.');
   const cycle = findCycle(cfg.exchanges);
   if (cycle) errors.push(`상점 교환이 순환합니다 (${cycle.map(id => cfg.currencies.find(c => c.id === id)?.name ?? id).join(' → ')}).`);
   return errors;
@@ -74,13 +91,15 @@ export const growthCost = (g, level, cur) => {
  * 성장 재화 수급 설계의 레벨별 필요량 표를 성장 항목에 넣는다 (같은 이름이면 갱신, 없으면 추가).
  * 재화는 이름으로 찾고 없으면 추가. cfg를 직접 바꾸고 무엇을 만들었는지 돌려준다.
  */
+const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); // 한 번에 여러 재화를 넣어도 겹치지 않게
+
 export function applyGrowthTable(cfg, { currency, name, max, start = 0, costs }) {
   let cur = cfg.currencies.find(c => c.name === currency);
   const currencyCreated = !cur;
-  if (!cur) { cur = { id: 'c' + Date.now().toString(36), name: currency, start: 0 }; cfg.currencies.push(cur); }
+  if (!cur) { cur = { id: uid('c'), name: currency, start: 0 }; cfg.currencies.push(cur); }
   let g = cfg.growth.find(x => x.name === name);
   const created = !g;
-  if (!g) { g = { id: 'g' + Date.now().toString(36), name, max, start, rate: 1, power: 10, cost: {} }; cfg.growth.push(g); }
+  if (!g) { g = { id: uid('g'), name, max, start, rate: 1, power: 10, cost: {} }; cfg.growth.push(g); }
   g.max = max;
   g.tableStart = start;
   g.table = { ...(g.table || {}), [cur.id]: costs.slice() };
@@ -89,8 +108,28 @@ export function applyGrowthTable(cfg, { currency, name, max, start = 0, costs })
 }
 export const effectiveRegen = (stamina, seg) => Math.min(stamina.regenPerDay, stamina.cap * Math.max(1, seg.logins));
 
-/** 세그먼트 1개 시뮬레이션 */
-function simulateSegment(cfg, seg) {
+/** D1·D7·D30이 모두 있으면 이탈을 계산한다 (비어 있으면 이탈 없음) */
+export const hasRetention = (seg) => [seg.d1, seg.d7, seg.d30].every(v => typeof v === 'number' && Number.isFinite(v));
+
+/** d일차 잔존율 (0~1). 0일 = 1, 앵커 사이는 log–log 직선, D30 이후는 D7→D30 기울기로 연장 */
+export function retentionAt(seg, d) {
+  if (!hasRetention(seg) || d <= 0) return 1;
+  const pts = [[1, seg.d1 / 100], [7, seg.d7 / 100], [30, seg.d30 / 100]];
+  if (d < 1) return 1 + (pts[0][1] - 1) * d;
+  const seg2 = (a, b, x) => {
+    if (a[1] <= 0 || b[1] <= 0) return Math.max(0, a[1] + (b[1] - a[1]) * (Math.log(x / a[0]) / Math.log(b[0] / a[0])));
+    return a[1] * Math.pow(x / a[0], Math.log(b[1] / a[1]) / Math.log(b[0] / a[0]));
+  };
+  return Math.max(0, Math.min(1, d <= 7 ? seg2(pts[0], pts[1], d) : seg2(pts[1], pts[2], d)));
+}
+
+// 표준정규 (Box–Muller)
+function gauss(rnd) { let u = 0; while (u === 0) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); }
+
+/**
+ * 세그먼트 1개 시뮬레이션. noise = { mult, dailySd, rnd } 이면 그 유저의 하루 플레이 시간 = 기본 × 유저 배수 × 일별 변동
+ */
+function simulateSegment(cfg, seg, noise = null) {
   const D = cfg.days, curIds = cfg.currencies.map(c => c.id);
   const hold = Object.fromEntries(cfg.currencies.map(c => [c.id, c.start || 0]));
   const levels = Object.fromEntries(cfg.growth.map(g => [g.id, g.start || 0]));
@@ -126,29 +165,35 @@ function simulateSegment(cfg, seg) {
       }
     }
     // 3. 콘텐츠
-    let time = seg.minutes;
+    const dayMinutes = noise ? seg.minutes * noise.mult * Math.exp(noise.dailySd * gauss(noise.rnd) - noise.dailySd ** 2 / 2) : seg.minutes;
+    let time = dayMinutes;
     for (const c of cfg.contents) {
       if (power() < (c.unlock || 0)) continue;
       unlockDay[c.id] ??= day;
       const cap = c.limit === 0 ? Infinity : c.limit;
       const used = c.period === 'week' ? (weekRuns[c.id] || 0) : 0;
+      // 콘텐츠 단계에서는 전투력이 변하지 않으므로(성장은 5단계) 횟수를 한 번에 계산: min(남은 횟수, 시간 ÷ 분, 스태미나 ÷ 소모)
       let n = 0;
-      while (used + n < cap && time >= (c.minutes || 0) && (!st.enabled || stamina >= (c.stamina || 0))) {
-        if (c.limit === 0 && !(c.minutes > 0) && !(c.stamina > 0)) break;
-        time -= c.minutes || 0;
-        if (st.enabled) stamina -= c.stamina || 0;
-        const mult = 1 + ((c.powerBonus || 0) / 100) * (power() / 100);
-        for (const id of curIds) {
-          const v = (c.reward?.[id] || 0) * mult;
-          if (v) { hold[id] += v; addFlow('in', `content:${c.id}`, id, v); }
+      if (!(c.limit === 0 && !(c.minutes > 0) && !(c.stamina > 0))) {
+        const mins = c.minutes || 0, stc = st.enabled ? (c.stamina || 0) : 0;
+        n = cap - used;
+        if (mins > 0) n = Math.min(n, Math.floor(time / mins + 1e-9));
+        if (stc > 0) n = Math.min(n, Math.floor(stamina / stc + 1e-9));
+        n = Math.max(0, Math.min(n, 100001));
+        if (n > 0) {
+          time -= n * mins;
+          stamina -= n * stc;
+          const mult = 1 + ((c.powerBonus || 0) / 100) * (power() / 100);
+          for (const id of curIds) {
+            const v = (c.reward?.[id] || 0) * mult * n;
+            if (v) { hold[id] += v; addFlow('in', `content:${c.id}`, id, v); }
+          }
         }
-        n++;
-        if (n > 100000) break;
       }
       if (c.period === 'week') weekRuns[c.id] = used + n;
       runs[c.id] = (runs[c.id] || 0) + n;
     }
-    daily.minutesUsed += seg.minutes - time;
+    daily.minutesUsed += dayMinutes - time;
     // 4. 상점
     for (const x of cfg.exchanges) {
       let n = 0;
@@ -197,7 +242,36 @@ export function simulate(cfg) {
   const errors = validate(cfg);
   if (errors.length) return { ok: false, errors };
   const bySeg = cfg.segments.map(s => simulateSegment(cfg, s));
-  return { ok: true, days: cfg.days, bySeg, warnings: warnings(cfg, bySeg) };
+  bySeg.forEach((r, i) => {
+    const seg = r.segment;
+    r.retention = Array.from({ length: cfg.days + 1 }, (_, d) => retentionAt(seg, d));
+    // 설치당 기대 매출: 그날 남아 있으면 월 과금 ÷ 30을 쓴다
+    r.ltv = r.retention.slice(1).reduce((a, p) => a + p * (seg.spendWon || 0) / 30, 0);
+    if (cfg.variance?.enabled) r.band = powerBand(cfg, seg, i);
+  });
+  const ltv = bySeg.reduce((a, r) => a + (r.segment.share / 100) * r.ltv, 0);
+  return { ok: true, days: cfg.days, bySeg, ltv, warnings: warnings(cfg, bySeg) };
+}
+
+/** 같은 세그먼트 유저 N명의 날짜별 전투력 분위수 (하위 10%·중앙값·상위 10%)와 하위 10% 유저의 콘텐츠 해금일 */
+function powerBand(cfg, seg, segIndex) {
+  const v = cfg.variance, rnd = mulberry32(20261017 + segIndex * 101);
+  const sd = (v.sd ?? 30) / 100, dailySd = (v.daily ?? 10) / 100, N = v.users ?? 100, D = cfg.days;
+  const series = [], unlock = {};
+  for (let u = 0; u < N; u++) {
+    const mult = Math.exp(sd * gauss(rnd) - sd * sd / 2);
+    const r = simulateSegment(cfg, seg, { mult, dailySd, rnd });
+    series.push(r.series.power);
+    for (const c of cfg.contents) (unlock[c.id] ??= []).push(r.unlockDay[c.id] ?? Infinity);
+  }
+  const q = (arr, p) => arr[Math.min(arr.length - 1, Math.max(0, Math.ceil(p * arr.length) - 1))];
+  const p10 = [], p50 = [], p90 = [];
+  for (let d = 0; d <= D; d++) {
+    const col = series.map(s => s[d]).sort((a, b) => a - b);
+    p10.push(q(col, 0.1)); p50.push(q(col, 0.5)); p90.push(q(col, 0.9));
+  }
+  const unlockLate = Object.fromEntries(Object.entries(unlock).map(([id, a]) => [id, q(a.sort((x, y) => x - y), 0.9)]));
+  return { users: N, p10, p50, p90, unlockLate };
 }
 
 /** 첫 도달일 (없으면 null) */
@@ -236,6 +310,21 @@ function warnings(cfg, bySeg) {
       if (r.runs[c.id]) continue;
       if (r.unlockDay[c.id] != null) out.push({ level: 'warn', text: `${seg}: '${c.name}'이(가) ${r.unlockDay[c.id]}일차에 열렸지만 시간·스태미나가 남지 않아 한 번도 못 했습니다 (플레이 ${r.segment.minutes}분 · 우선순위·소요 시간 확인).` });
       else out.push({ level: 'info', text: `${seg}: '${c.name}'을(를) 기간 내 해금하지 못했습니다 (필요 전투력 ${c.unlock}, 최종 ${Math.round(r.finalPower)}).` });
+    }
+  }
+  // 이탈: 콘텐츠가 열리는 날 남아 있는 비율 / 편차: 플레이 시간이 적은 하위 10%가 늦게 여는 콘텐츠
+  for (const r of bySeg) {
+    const seg = r.segment;
+    for (const c of cfg.contents) {
+      const d = r.unlockDay[c.id];
+      if (hasRetention(seg) && d != null && d > 1) {
+        const ret = retentionAt(seg, d);
+        if (ret < 0.3) out.push({ level: 'warn', text: `${seg.name}: '${c.name}'이(가) ${d}일차에 열리는데 그때 남은 ${seg.name} 유저는 ${(ret * 100).toFixed(0)}%입니다 — 대부분이 보지 못하고 떠납니다.` });
+      }
+      const late = r.band?.unlockLate[c.id];
+      if (r.band && d != null && (late === Infinity || late - d >= 7)) {
+        out.push({ level: 'info', text: `${seg.name}: 플레이 시간이 적은 하위 10%는 '${c.name}'을(를) ${late === Infinity ? '기간 안에 열지 못합니다' : `${late}일차에 엽니다`} (평균 유저 ${d}일차).` });
+      }
     }
   }
   // 세그먼트 격차

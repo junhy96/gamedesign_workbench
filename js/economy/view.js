@@ -1,5 +1,5 @@
 // 재화 흐름 시뮬레이터 v2 — 화면: 성장 루프(콘텐츠 → 재화 → 성장 → 전투력 → 콘텐츠)
-import { simulate, toMermaid, applyGrowthTable } from './model.js';
+import { simulate, toMermaid, applyGrowthTable, hasRetention } from './model.js';
 import { TEMPLATES } from './presets.js';
 import { renderSvg, renderOffscreen, isDark } from '../lib/mermaid.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
@@ -59,6 +59,11 @@ function build(root) {
           h('div.card-head', {}, h('h2', {}, '성장 곡선 (전투력)'), h('span.hint', {}, '세그먼트별 · 루프가 얼마나 빨리 도는지')),
           h('div.chart-box.tall', {}, els.powerCanvas = h('canvas', { role: 'img', 'aria-label': '세그먼트별 전투력 추이' })),
         ),
+        els.retCard = h('div.card', {},
+          h('div.card-head', {}, h('h2', {}, '잔존과 설치당 매출'), els.retHint = h('span.hint', {}, '')),
+          h('div.chart-box', {}, els.retCanvas = h('canvas', { role: 'img', 'aria-label': '세그먼트별 잔존율 추이' })),
+          els.retBody = h('div', {}),
+        ),
         h('div.card', {},
           h('div.card-head', {}, h('h2', {}, '재화 보유량'), h('div.chart-ctrl', {}, h('span.muted.small', {}, '재화'), els.curSel = h('select', { onchange: (e) => { state.view.currency = e.target.value; save(); last && drawCharts(last); } }))),
           h('div.chart-box.tall', {}, els.holdCanvas = h('canvas', { role: 'img', 'aria-label': '세그먼트별 재화 보유량 추이' })),
@@ -107,6 +112,14 @@ function renderSettings() {
         h('p.desc', {}, '실제 회복량 = min(하루 회복량, 최대치 × 접속 횟수). 접속이 드물면 최대치에 막혀 회복분을 버립니다.'),
       ) : h('p.desc', {}, '켜면 던전 같은 콘텐츠가 스태미나를 소모하고, 과금으로 충전할 수 있습니다.'),
     ),
+    (() => {
+      const v = (state.variance ??= { enabled: false, users: 100, sd: 30, daily: 10 });
+      return h('div.option', {},
+        h('label.switch', {}, '유저 편차 띠', h('input', { type: 'checkbox', checked: v.enabled, onchange: (e) => { v.enabled = e.target.checked; rebuild(); } })),
+        v.enabled ? h('div.row3', {}, field('인원/세그먼트', numIn(v, 'users', { int: true, min: 10 })), field('활동 편차 %', numIn(v, 'sd', { min: 0 })), field('일별 변동 %', numIn(v, 'daily', { min: 0 }))) : null,
+        h('p.desc', {}, '같은 세그먼트 안에서도 플레이 시간은 유저마다 다릅니다 (유저별 고정 배수 × 일별 변동, 평균 1). 성장 곡선에 하위 10%~상위 10% 띠를 그리고, 하위 10%가 늦게 여는 콘텐츠를 알려줍니다.'),
+      );
+    })(),
     h('div.option', {},
       h('span.group-title', {}, '경고 기준'),
       h('div.row3', {}, field('웜업 (일)', numIn(state, 'warmup', { int: true, min: 0 })), field('소모율 < %', numIn(state, 'sinkRatioWarn', { min: 0 })), field('격차 ≥ 배', numIn(state, 'gapWarn', { min: 1, step: 0.5 }))),
@@ -122,6 +135,7 @@ function editTable(title, hint, rows, cols, makeRow) {
   const cell = (row, c) => {
     const v = getK(row, c.key);
     if (c.type === 'text') return h('input.name', { type: 'text', value: v ?? '', style: c.width ? `width:${c.width}px` : null, oninput: (e) => { setK(row, c.key, e.target.value); schedule(400); } });
+    if (c.type === 'opt') return h('input', { type: 'number', value: v ?? '', placeholder: '—', step: 'any', style: c.width ? `width:${c.width}px` : null, oninput: (e) => { const n = parseFloat(e.target.value); setK(row, c.key, Number.isFinite(n) ? n : undefined); schedule(); } });
     if (c.type === 'select') return h('select.cell-select', { onchange: (e) => { setK(row, c.key, e.target.value); schedule(0); } }, ...c.options.map(([ov, l]) => h('option', { value: ov, selected: ov === v }, l)));
     return h('input', { type: 'number', value: v ?? 0, step: 'any', style: c.width ? `width:${c.width}px` : null, oninput: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) { setK(row, c.key, n); schedule(); } } });
   };
@@ -149,8 +163,11 @@ function rebuildTables() {
         { key: 'minutes', label: '플레이 (분/일)', type: 'num', width: 70, tip: '하루 동안 콘텐츠에 쓰는 시간' },
         { key: 'logins', label: '접속 (회/일)', type: 'num', width: 60, tip: '스태미나 실제 회복량에 영향' },
         { key: 'spendWon', label: '월 과금 (원)', type: 'num', width: 90 },
-        { key: 'refills', label: '충전 (회/일)', type: 'num', width: 60, tip: '유료 재화로 스태미나를 충전하는 횟수' }],
-      () => ({ id: newId(), name: '새 세그먼트', share: 0, minutes: 60, logins: 3, spendWon: 0, refills: 0 })),
+        { key: 'refills', label: '충전 (회/일)', type: 'num', width: 60, tip: '유료 재화로 스태미나를 충전하는 횟수' },
+        { key: 'd1', label: 'D1 %', type: 'opt', width: 56, tip: '설치 다음 날 남아 있는 비율 (셋 다 비우면 이탈 없음)' },
+        { key: 'd7', label: 'D7 %', type: 'opt', width: 56, tip: '7일차 잔존율' },
+        { key: 'd30', label: 'D30 %', type: 'opt', width: 56, tip: '30일차 잔존율 (이후는 D7→D30 추세로 연장)' }],
+      () => ({ id: newId(), name: '새 세그먼트', share: 0, minutes: 60, logins: 3, spendWon: 0, refills: 0, d1: 50, d7: 20, d30: 8 })),
     editTable('생산 · 콘텐츠', '위에서부터 우선순위 · 횟수 0 = 무제한(남은 시간·스태미나로 반복) · 성장 보너스 = 전투력 100당 보상 증가 %', state.contents,
       [{ key: 'name', label: '이름', type: 'text', width: 120 }, { key: 'minutes', label: '분/회', type: 'num', width: 55 }, { key: 'stamina', label: '스태미나/회', type: 'num', width: 60 },
         { key: 'limit', label: '횟수', type: 'num', width: 50 }, { key: 'period', label: '주기', type: 'select', options: [['day', '매일'], ['week', '매주']] },
@@ -218,6 +235,8 @@ function renderKPIs(res) {
       h('div.kpi-value', {}, fmtNum(r.finalPower, 0)),
       h('div.kpi-sub', {}, `플레이 ${seg.minutes}분·접속 ${seg.logins}회·월 ${fmtMoney(seg.spendWon)}원`),
       h('div.kpi-sub', {}, lv),
+      r.band ? h('div.kpi-sub', {}, `하위 10% `, h('b', {}, fmtNum(r.band.p10[D], 0)), ` · 상위 10% `, h('b', {}, fmtNum(r.band.p90[D], 0))) : null,
+      hasRetention(seg) ? h('div.kpi-sub', {}, `D${D} 잔존 `, h('b', {}, `${(r.retention[D] * 100).toFixed(1)}%`), ` · 설치당 매출 `, h('b', {}, `${fmtMoney(r.ltv)}원`)) : null,
       h('div.kpi-sub', {}, top ? h('span', {}, '병목 ', h('b', {}, curName(top[0])), ` (${top[1]}일)`) : '병목 없음',
         state.stamina.enabled ? ` · 스태미나 손실 ${fmtNum(r.staminaWastedPerDay, 0)}/일` : ''),
     );
@@ -226,14 +245,22 @@ function renderKPIs(res) {
 
 function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
-function lineChart(key, canvas, res, pick, yFmt) {
+/** '#rrggbb' → 투명도 적용 */
+function alpha(color, a) {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function lineChart(key, canvas, res, pick, yFmt, extra = []) {
   if (typeof Chart === 'undefined') return;
   const grid = cssVar('--grid'), text = cssVar('--text-3');
   const labels = Array.from({ length: res.days + 1 }, (_, d) => d);
   charts[key]?.destroy();
   charts[key] = new Chart(canvas, {
     type: 'line',
-    data: { labels, datasets: res.bySeg.map((r, i) => { const c = cssVar(SERIES[i % SERIES.length]); return { label: `${r.segment.name} (${r.segment.share}%)`, data: pick(r), borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, tension: 0.15 }; }) },
+    data: { labels, datasets: [...res.bySeg.map((r, i) => { const c = cssVar(SERIES[i % SERIES.length]); return { label: `${r.segment.name} (${r.segment.share}%)`, data: pick(r), borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, tension: 0.15 }; }), ...extra] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
       scales: {
@@ -241,16 +268,54 @@ function lineChart(key, canvas, res, pick, yFmt) {
         y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: text, maxTicksLimit: 6, callback: yFmt } },
       },
       plugins: {
-        legend: { labels: { color: text, usePointStyle: true, pointStyle: 'line' } },
-        tooltip: { callbacks: { title: (items) => `${items[0].label}일차`, label: (item) => `${item.dataset.label}: ${yFmt(item.raw)}` } },
+        legend: { labels: { color: text, usePointStyle: true, pointStyle: 'line', filter: (it, data) => !data.datasets[it.datasetIndex].band } },
+        tooltip: { filter: (it) => !it.dataset.band, callbacks: { title: (items) => `${items[0].label}일차`, label: (item) => `${item.dataset.label}: ${yFmt(item.raw)}` } },
       },
     },
   });
 }
 
 function drawCharts(res) {
-  lineChart('power', els.powerCanvas, res, (r) => r.series.power, (v) => fmtNum(v, 0));
+  // 편차 띠: 세그먼트마다 (상위 10%, 하위 10%) 한 쌍 — 위 선이 아래 선까지 채움
+  const bands = res.bySeg.flatMap((r, i) => {
+    if (!r.band) return [];
+    const c = cssVar(SERIES[i % SERIES.length]);
+    const common = { band: true, borderWidth: 0, pointRadius: 0, tension: 0.15 };
+    return [{ ...common, label: '', data: r.band.p90, fill: '+1', backgroundColor: alpha(c, 0.14) }, { ...common, label: '', data: r.band.p10, fill: false }];
+  });
+  lineChart('power', els.powerCanvas, res, (r) => r.series.power, (v) => fmtNum(v, 0), bands);
+  renderRetention(res);
   lineChart('hold', els.holdCanvas, res, (r) => r.series.hold[state.view.currency], (v) => fmtMoney(v));
+}
+
+/** 잔존 곡선, 설치당 매출, 콘텐츠가 열리는 날의 잔존율 */
+function renderRetention(res) {
+  const any = res.bySeg.some(r => hasRetention(r.segment));
+  els.retCard.hidden = false;
+  if (!any) {
+    charts.ret?.destroy(); charts.ret = null;
+    els.retCanvas.parentElement.hidden = true;
+    els.retHint.textContent = '';
+    els.retBody.replaceChildren(h('p.muted', {}, '유저 세그먼트 표에 D1·D7·D30 잔존율을 넣으면, 콘텐츠가 열리는 날 몇 %가 남아 있는지와 설치당 기대 매출을 계산합니다.'));
+    return;
+  }
+  els.retCanvas.parentElement.hidden = false;
+  lineChart('ret', els.retCanvas, res, (r) => r.retention.map(p => p * 100), (v) => `${(+v).toFixed(v < 10 ? 1 : 0)}%`);
+  els.retHint.textContent = `세그먼트 비율 가중 설치당 기대 매출 ${fmtMoney(res.ltv)}원 (${res.days}일)`;
+  const rows = state.contents.filter(c => (c.unlock || 0) > 0);
+  els.retBody.replaceChildren(
+    h('p.muted.small', {}, '설치당 매출 = Σ 그날 잔존율 × 월 과금 ÷ 30. 잔존 곡선은 D1·D7·D30을 지나는 구간별 멱법칙이고, D30 이후는 D7→D30 추세로 연장합니다.'),
+    rows.length ? h('div.table-wrap', {}, h('table.mini', {},
+      h('thead', {}, h('tr', {}, h('th.left', {}, '콘텐츠가 열리는 날'), ...res.bySeg.map(r => h('th', {}, r.segment.name)))),
+      h('tbody', {}, ...rows.map(c => h('tr', {}, h('td.left', {}, `${c.name} (전투력 ${fmtNum(c.unlock, 0)})`),
+        ...res.bySeg.map(r => {
+          const d = r.unlockDay[c.id];
+          if (d == null) return h('td.muted', {}, '기간 내 못 엶');
+          const ret = r.retention[Math.min(d, res.days)];
+          return h(`td${ret < 0.3 ? '.bad-text' : ''}`, { title: '그날 남아 있는 비율' }, `${d}일차 · ${(ret * 100).toFixed(0)}% 남음`);
+        })))),
+    )) : null,
+  );
 }
 
 function renderWarnings(res) {

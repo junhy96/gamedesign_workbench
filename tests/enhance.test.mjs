@@ -190,3 +190,14 @@ test('입력 오류 감지', () => {
   const noPity = tpl('artisan', { streak: { kind: 'fail', bonus: 1, bonusMode: 'rel', cap: 100, pity: 0 } });
   assert.match(validate(noPity).join(), /너무 많습니다/);
 });
+
+test('단계별 재화 기대 소모의 합 = 재화별 총 기대 소모 (재화 흐름으로 보내는 표)', () => {
+  for (const id of Object.keys(TEMPLATES)) {
+    const r = analyze(tpl(id));
+    if (!r.ok) continue;
+    r.resources.forEach((res, ri) => {
+      const sum = r.stages.reduce((a, o) => a + o.units[ri], 0);
+      close(sum, res.units, 1e-9, `${id} ${res.name}`);
+    });
+  }
+});

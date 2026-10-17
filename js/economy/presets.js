@@ -6,6 +6,7 @@ export const TEMPLATES = {
     note: '스태미나로 던전을 돌고, 시간 남으면 자동 사냥. 골드·강화석으로 장비·스킬·장신구를 올리면 전투력이 올라 보상이 늘고 상위 콘텐츠가 열립니다. 과금은 다이아 → 스태미나 충전.',
     make: () => ({
       days: 60, warmup: 7, sinkRatioWarn: 60, gapWarn: 3, basePower: 0,
+      variance: { enabled: true, users: 100, sd: 35, daily: 15 }, // 같은 세그먼트 안 플레이 시간 편차 (%)
       currencies: [
         { id: 'gold', name: '골드', start: 50000 },
         { id: 'stone', name: '강화석', start: 0 },
@@ -15,9 +16,9 @@ export const TEMPLATES = {
       stamina: { enabled: true, regenPerDay: 288, cap: 120, refillCost: 50, refillAmount: 60 }, // 5분에 1 회복
       // 세그먼트 = 측정 가능한 행동 기준
       segments: [
-        { id: 'light', name: '라이트', share: 50, minutes: 30, logins: 2, spendWon: 0, refills: 0 },
-        { id: 'core', name: '코어', share: 35, minutes: 90, logins: 4, spendWon: 10000, refills: 1 },
-        { id: 'heavy', name: '헤비', share: 15, minutes: 180, logins: 8, spendWon: 100000, refills: 3 },
+        { id: 'light', name: '라이트', share: 50, minutes: 30, logins: 2, spendWon: 0, refills: 0, d1: 35, d7: 12, d30: 4 },
+        { id: 'core', name: '코어', share: 35, minutes: 90, logins: 4, spendWon: 10000, refills: 1, d1: 60, d7: 35, d30: 18 },
+        { id: 'heavy', name: '헤비', share: 15, minutes: 180, logins: 8, spendWon: 100000, refills: 3, d1: 80, d7: 60, d30: 45 },
       ],
       // 생산: 표 순서 = 플레이 우선순위. limit 0 = 무제한(남은 시간·스태미나로 반복)
       contents: [
@@ -43,6 +44,7 @@ export const TEMPLATES = {
     note: '재화 1개, 콘텐츠 1개, 성장 1개에서 시작합니다.',
     make: () => ({
       days: 30, warmup: 7, sinkRatioWarn: 60, gapWarn: 3, basePower: 0,
+      variance: { enabled: false, users: 100, sd: 30, daily: 10 },
       currencies: [{ id: 'gold', name: '골드', start: 0 }],
       paid: { currency: '', priceWon: 0 },
       stamina: { enabled: false, regenPerDay: 288, cap: 120, refillCost: 50, refillAmount: 60 },

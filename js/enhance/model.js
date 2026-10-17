@@ -316,9 +316,11 @@ export function analyze(cfg) {
   states.forEach((st, r) => {
     const v = Math.max(0, N[r]);
     itemSpend += v * st.itemCost;
-    const o = stageMap.get(st.stage) || { stage: st.stage, visits: 0, cost: 0, destroys: 0, sens: 0 };
+    const o = stageMap.get(st.stage) || { stage: st.stage, visits: 0, cost: 0, destroys: 0, sens: 0, units: new Array(cfg.resources.length).fill(0) };
     o.visits += v;
     o.cost += v * (st.cost + st.p.b * destroyCost);
+    // 재화별 기대 소모 (이 단계에서 시도할 때 쓰는 양 — 하락 후 재도전·파괴 복구 포함). 단계 합 = 재화별 총 소모
+    for (let ri = 0; ri < o.units.length; ri++) o.units[ri] += v * (st.units[ri] + st.p.b * destroyUnits[ri]);
     o.destroys += v * st.p.b;
     // 민감도(수반 방법): dE_S ≈ Σ_s N_s · δ · [E_succ − (k·E_keep + d·E_drop + b·(복구비 + E_R)) / f]
     const { k, d, b } = st.p, f = k + d + b;
