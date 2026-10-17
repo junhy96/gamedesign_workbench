@@ -14,11 +14,20 @@
 //   같은 분해 하나로 기대 비용, 2차 모멘트(→ 정확한 표준편차), 재화별 소모량, 방문 횟수를 모두 구한다.
 
 /** @typedef {{stage:number, s:number, s2:number, k:number, d:number, b:number, costs:number[]}} Row  확률은 % */
-/** @typedef {{id:string, name:string, effect:'protect'|'nodrop'|'boost', amount:number, costs:number[], from:number, to:number}} Item */
+/** @typedef {{id:string, name:string, effect:'protect'|'nodrop'|'boost', mode?:'toggle'|'quantity', amount:number, maxUnits?:number, costs:number[], from:number, to:number}} Item
+ *  mode 'toggle'  : 한 번의 시도에 1개 쓰거나 안 씀
+ *  mode 'quantity': 개당 amount %p, 한 번의 시도에 0~maxUnits개 (성공률 증가 전용). 사용 중인 아이템은 { ...item, n }으로 개수를 들고 다닌다 */
 
 const EPS = 1e-12;
 export const MAX_COUNTER = 300;
 export const MAX_ITEMS = 5;
+export const MAX_UNITS = 999;
+const MAX_ACTIONS = 20000;   // 최적화에서 단계당 행동(투입 조합) 수 상한 — 효과가 같은 조합을 합친 뒤 기준
+export const SCHEMA = 3;     // 저장 형식 버전 (2 → 3: 수량형 보조 재료, 가격 곡선)
+
+export const isQty = (it) => it.mode === 'quantity';
+/** 사용 중인 아이템의 투입 개수 (토글형은 1) */
+export const unitsOf = (it) => it.n ?? 1;
 
 // ── 검증 ────────────────────────────────────────────────
 export function validate(cfg) {
@@ -45,6 +54,9 @@ export function validate(cfg) {
     if (!st.pity && !(st.bonus > 0)) errors.push('연속 보정을 켰다면 천장 또는 보너스 중 하나는 설정해야 합니다.');
   }
   if ((cfg.items || []).length > MAX_ITEMS) errors.push(`보조 아이템은 최대 ${MAX_ITEMS}개까지 지원합니다.`);
+  for (const it of cfg.items || []) {
+    if (isQty(it) && !(Number.isInteger(it.maxUnits) && it.maxUnits >= 1 && it.maxUnits <= MAX_UNITS)) errors.push(`${it.name}: 최대 개수는 1 ~ ${MAX_UNITS}의 정수여야 합니다.`);
+  }
   if (!errors.length) {
     const C = counterSize(cfg);
     if (C > MAX_COUNTER) errors.push(`연속 보정 상태가 너무 많습니다(${C}). 천장을 설정하거나 보너스를 키우세요.`);
@@ -128,7 +140,7 @@ export function effectiveProbs(cfg, row, c, items) {
     shiftToSuccess(p, add);
   }
   if (items?.length) {
-    const boost = items.filter(it => it.effect === 'boost').reduce((a, it) => a + it.amount / 100, 0);
+    const boost = items.filter(it => it.effect === 'boost').reduce((a, it) => a + it.amount * unitsOf(it) / 100, 0);
     if (boost > 0) shiftToSuccess(p, boost);
     if (items.some(it => it.effect === 'protect')) { p.k += p.b; p.b = 0; }
     if (items.some(it => it.effect === 'nodrop')) { p.k += p.d; p.d = 0; }
@@ -137,12 +149,60 @@ export function effectiveProbs(cfg, row, c, items) {
 }
 
 // ── 사용 아이템 조회 ────────────────────────────────────
-/** usage[stage] = 아이템 id 배열 (모든 카운터 공통) 또는 {byCounter: id배열[]} (최적화 결과) */
+/**
+ * usage[stage] 형식
+ *   id 배열                         : 토글형만, 모든 카운터 공통 (v2부터의 형식)
+ *   { units: { id: 개수 } }          : 수량형 포함, 모든 카운터 공통 (토글형은 개수 1)
+ *   { byCounter: [배열 | 개수 맵] }  : 최적화 결과, 연속 카운터마다 다름
+ */
+function specAt(u, c) {
+  if (!u) return null;
+  if (Array.isArray(u) || u.units) return u;
+  return u.byCounter?.[Math.min(c, u.byCounter.length - 1)] ?? null;
+}
+
+/** 배열 · { units } · 개수 맵 → { id: 개수 } */
+export function specUnits(spec) {
+  if (!spec) return {};
+  if (Array.isArray(spec)) return Object.fromEntries(spec.map(id => [id, 1]));
+  return { ...(spec.units ?? spec) };
+}
+
+/** 단계 공통으로 보여 줄 개수 — 카운터마다 다르면 그중 최대 (단계 표 편집용) */
+export function stageUnits(u) {
+  if (!u) return {};
+  if (Array.isArray(u) || u.units) return specUnits(u);
+  const out = {};
+  for (const spec of u.byCounter) for (const [id, n] of Object.entries(specUnits(spec))) out[id] = Math.max(out[id] ?? 0, n);
+  return out;
+}
+
+/** 개수 맵 → 저장 형식 (토글형만이면 id 배열, 수량형이 있으면 { units }) */
+export function unitsToSpec(items, units) {
+  const used = items.filter(it => (units[it.id] ?? 0) > 0);
+  if (used.every(it => !isQty(it))) return used.map(it => it.id);
+  return { units: Object.fromEntries(used.map(it => [it.id, isQty(it) ? units[it.id] : 1])) };
+}
+
+/** (단계, 카운터)에서 쓰는 아이템 목록. 수량형은 { ...item, n } (개수는 0~maxUnits로 자름) */
 export function usageAt(cfg, stage, c) {
-  const u = cfg.usage?.[stage];
-  if (!u) return [];
-  const ids = Array.isArray(u) ? u : u.byCounter[Math.min(c, u.byCounter.length - 1)] || [];
-  return ids.map(id => cfg.items.find(it => it.id === id)).filter(it => it && stage >= it.from && stage <= it.to);
+  const units = specUnits(specAt(cfg.usage?.[stage], c));
+  const out = [];
+  for (const [id, raw] of Object.entries(units)) {
+    const it = cfg.items.find(x => x.id === id);
+    if (!it || stage < it.from || stage > it.to || !(raw > 0)) continue;
+    if (!isQty(it)) { out.push(it); continue; }
+    const n = Math.min(Math.round(raw), it.maxUnits);
+    if (n > 0) out.push({ ...it, n });
+  }
+  return out;
+}
+
+/** 저장본 마이그레이션 (v2 → v3): 아이템에 mode가 없으면 기존 on/off 방식('toggle') */
+export function migrate(st) {
+  if (!st || !(st.v === 2 || st.v === SCHEMA)) return null;
+  const items = (st.items || []).map(it => ({ ...it, mode: it.mode === 'quantity' ? 'quantity' : 'toggle', ...(it.mode === 'quantity' ? { maxUnits: it.maxUnits ?? 1 } : {}) }));
+  return { ...st, v: SCHEMA, items };
 }
 
 // ── 체인 생성 ───────────────────────────────────────────
@@ -169,9 +229,9 @@ export function buildChain(cfg, actionFor = (i, c) => usageAt(cfg, i, c)) {
       const used = p.forced ? [] : items;
       const units = new Float64Array(nRes);
       for (let r = 0; r < nRes; r++) units[r] = (row.costs[r] || 0) * costMult;
-      for (const it of used) for (let r = 0; r < nRes; r++) units[r] += it.costs[r] || 0;
+      for (const it of used) for (let r = 0; r < nRes; r++) units[r] += (it.costs[r] || 0) * unitsOf(it);
       let cost = 0; for (let r = 0; r < nRes; r++) cost += units[r] * values[r];
-      let itemCost = 0; for (const it of used) for (let r = 0; r < nRes; r++) itemCost += (it.costs[r] || 0) * values[r];
+      let itemCost = 0; for (const it of used) for (let r = 0; r < nRes; r++) itemCost += (it.costs[r] || 0) * unitsOf(it) * values[r];
       const up = (x) => Math.min(x, C);
       const edges = [];
       if (p.s > 0) edges.push([idx(i + 1, 0), p.s, 's']);
@@ -350,7 +410,7 @@ export function analyze(cfg) {
     const pass = sol.solvePrefix(exit, K)[first];
     return {
       ...o,
-      p: st0.p, items: st0.items.map(it => it.id), attemptCost: st0.cost,
+      p: st0.p, items: st0.items.map(it => it.id), itemUnits: Object.fromEntries(st0.items.map(it => [it.id, unitsOf(it)])), attemptCost: st0.cost,
       destroyBeforePass: Math.min(1, Math.max(0, 1 - pass)),
       sensPct: E[S] > 0 ? o.sens / E[S] : 0,
     };
@@ -385,7 +445,51 @@ export function expectedCost(cfg, actionFor) {
 
 // ── 보조 아이템 최적 사용: 마르코프 결정 과정, 정책 반복 ──
 /**
- * 상태(단계, 카운터)마다 '어떤 아이템 조합을 쓸지'를 골라 목표까지의 기대 총비용(가치 기준)을 최소화한다.
+ * 단계에서 고를 수 있는 행동(아이템 투입 조합) 목록. 토글형은 0/1개, 수량형은 0~maxUnits개.
+ * 실효 확률은 (파괴방지 여부, 하락방지 여부, 성공률 증가 합)만으로 정해지므로, 효과가 같은 조합은 가장 싼 것
+ * 하나만 남긴다 (값이 같으면 앞 아이템을 적게 쓰는 조합). 증가 합은 100%p에서 자른다 (그 이상은 효과가 같음).
+ * 예: 상급 0~8 × 중급 0~15 × 하급 0~50 = 7,344 조합 → 증가 합 521가지.
+ */
+function actionsFor(items, stage, values) {
+  const avail = items.filter(it => stage >= it.from && stage <= it.to);
+  let acts = new Map([['0|0|0', { boost: 0, protect: false, nodrop: false, cost: 0, n: [] }]]);
+  for (const it of avail) {
+    const price = it.costs.reduce((a, v, r) => a + (v || 0) * values[r], 0);
+    const max = isQty(it) ? it.maxUnits : 1;
+    const next = new Map();
+    for (const a of acts.values()) for (let q = 0; q <= max; q++) {
+      const boost = Math.min(100, a.boost + (it.effect === 'boost' ? it.amount * q : 0));
+      const protect = a.protect || (q > 0 && it.effect === 'protect');
+      const nodrop = a.nodrop || (q > 0 && it.effect === 'nodrop');
+      const cost = a.cost + price * q;
+      const key = `${+protect}|${+nodrop}|${Math.round(boost * 1e6)}`;
+      const cur = next.get(key);
+      if (!cur || cost < cur.cost - 1e-9 * Math.max(1, cur.cost)) next.set(key, { boost, protect, nodrop, cost, n: [...a.n, q], key });
+    }
+    if (next.size > MAX_ACTIONS) return null;
+    acts = next;
+  }
+  return [...acts.values()].map(a => ({
+    key: a.key ?? '0|0|0',
+    cost: a.cost,
+    items: avail.flatMap((it, k) => (a.n[k] > 0 ? [isQty(it) ? { ...it, n: a.n[k] } : it] : [])),
+    // 확률 계산용 요약 (효과만)
+    probe: [
+      ...(a.boost > 0 ? [{ effect: 'boost', amount: a.boost }] : []),
+      ...(a.protect ? [{ effect: 'protect' }] : []),
+      ...(a.nodrop ? [{ effect: 'nodrop' }] : []),
+    ],
+  }));
+}
+
+/** 사용 아이템 목록의 효과 키 (actionsFor와 같은 규칙) */
+function effectKey(used) {
+  const boost = Math.min(100, used.filter(it => it.effect === 'boost').reduce((a, it) => a + it.amount * unitsOf(it), 0));
+  return `${+used.some(it => it.effect === 'protect')}|${+used.some(it => it.effect === 'nodrop')}|${Math.round(boost * 1e6)}`;
+}
+
+/**
+ * 상태(단계, 카운터)마다 '어떤 아이템을 몇 개 쓸지'를 골라 목표까지의 기대 총비용(가치 기준)을 최소화한다.
  * 정책 평가(연립방정식) ↔ 정책 개선(Q값 최소 행동 선택)을 바뀌는 것이 없을 때까지 반복.
  */
 export function optimizeItems(cfg) {
@@ -393,69 +497,115 @@ export function optimizeItems(cfg) {
   if (errors.length) return { ok: false, errors };
   const items = cfg.items || [];
   if (!items.length) return { ok: false, errors: ['보조 아이템이 없습니다.'] };
-  const subsets = (stage) => {
-    const avail = items.filter(it => stage >= it.from && stage <= it.to);
-    const out = [];
-    for (let mask = 0; mask < 1 << avail.length; mask++) out.push(avail.filter((_, i) => mask & (1 << i)));
-    return out;
-  };
   const floor = Math.min(...cfg.rows.map(r => r.stage));
   const m = counterSize(cfg) + 1;
+  const values = cfg.resources.map(r => r.value);
   const actionSets = new Map();
-  for (let i = floor; i < cfg.target; i++) actionSets.set(i, subsets(i));
-  // 시작 정책: 현재 수동 설정
+  for (let i = floor; i < cfg.target; i++) {
+    const acts = actionsFor(items, i, values);
+    if (!acts) return { ok: false, errors: [`+${i}: 아이템 투입 조합이 너무 많습니다 (효과가 다른 조합 ${MAX_ACTIONS.toLocaleString('ko-KR')}개 초과). 최대 개수를 줄이세요.`] };
+    actionSets.set(i, acts);
+  }
+  // 시작 정책: 현재 수동 설정 (효과가 같은 가장 싼 조합으로)
   const policy = new Map();
   for (let i = floor; i < cfg.target; i++) for (let c = 0; c < m; c++) {
-    const cur = usageAt(cfg, i, c).map(it => it.id).sort().join();
-    const opts = actionSets.get(i);
-    policy.set(i * 1000 + c, Math.max(0, opts.findIndex(a => a.map(it => it.id).sort().join() === cur)));
+    const key = effectKey(usageAt(cfg, i, c));
+    policy.set(i * 1000 + c, Math.max(0, actionSets.get(i).findIndex(a => a.key === key)));
   }
-  const actionFor = (i, c) => actionSets.get(i)[policy.get(i * 1000 + c)] || [];
+  const actionFor = (i, c) => actionSets.get(i)[policy.get(i * 1000 + c)]?.items || [];
   const before = expectedCost(cfg).cost;
   const byStage = new Map(cfg.rows.map(r => [r.stage, r]));
   const kind = cfg.streak?.kind || 'none';
-  const values = cfg.resources.map(r => r.value);
   const costMult = cfg.event?.on ? (cfg.event.costMult ?? 1) : 1;
-  let iterations = 0, res;
-  for (; iterations < 50; iterations++) {
+  let iterations = 0, res, changed = true;
+  for (; changed && iterations < 50; iterations++) {
     res = expectedCost(cfg, actionFor);
     if (!Number.isFinite(res.cost)) return { ok: false, errors: ['현재 정책으로는 목표에 도달할 수 없습니다.'] };
     const { E, chain } = res;
     const idx = (i, c) => (i >= cfg.target ? -1 : (i - floor) * m + c);
-    let changed = false;
+    const Ev = (to) => (to === -1 ? 0 : E[to]);
+    const up = (x) => Math.min(x, m - 1);
+    changed = false;
     for (let i = floor; i < cfg.target; i++) {
       const row = byStage.get(i);
       const base = row.costs.reduce((a, v, r) => a + (v || 0) * costMult * values[r], 0);
+      const acts = actionSets.get(i);
       for (let c = 0; c < m; c++) {
         const key = i * 1000 + c;
-        const q = actionSets.get(i).map(act => {
-          const p = effectiveProbs(cfg, row, c, act);
-          const itemCost = p.forced ? 0 : act.reduce((a, it) => a + it.costs.reduce((s, v, r) => s + (v || 0) * values[r], 0), 0);
-          const up = (x) => Math.min(x, m - 1);
-          const Ev = (to) => (to === -1 ? 0 : E[to]);
-          return base + itemCost
-            + p.s * Ev(idx(i + 1, 0)) + p.s2 * Ev(idx(i + 2, 0))
-            + p.k * Ev(idx(i, kind === 'fail' ? up(c + 1) : c))
-            + p.d * Ev(idx(Math.max(i - 1, floor), kind === 'none' ? 0 : up(c + 1)))
-            + p.b * (chain.destroyCost + Ev(idx(cfg.restore, 0)));
-        });
+        const eKeep = Ev(idx(i, kind === 'fail' ? up(c + 1) : c));
+        const eDrop = Ev(idx(Math.max(i - 1, floor), kind === 'none' ? 0 : up(c + 1)));
+        const eDestroy = chain.destroyCost + Ev(idx(cfg.restore, 0));
+        const eS = Ev(idx(i + 1, 0)), eS2 = Ev(idx(i + 2, 0));
+        const q = (a) => {
+          const p = effectiveProbs(cfg, row, c, acts[a].probe);
+          return base + (p.forced ? 0 : acts[a].cost) + p.s * eS + p.s2 * eS2 + p.k * eKeep + p.d * eDrop + p.b * eDestroy;
+        };
         const cur = policy.get(key);
-        let best = cur;
-        for (let a = 0; a < q.length; a++) if (q[a] < q[best] - 1e-9 * Math.max(1, Math.abs(q[best]))) best = a;
+        let best = cur, bestQ = q(cur);
+        for (let a = 0; a < acts.length; a++) {
+          if (a === cur) continue;
+          const v = q(a);
+          if (v < bestQ - 1e-9 * Math.max(1, Math.abs(bestQ))) { best = a; bestQ = v; }
+        }
         if (best !== cur) { policy.set(key, best); changed = true; }
       }
     }
-    if (!changed) break;
   }
-  // 결과를 usage 형식으로: 단계 내 모든 카운터가 같으면 배열, 다르면 byCounter
+  if (changed) res = expectedCost(cfg, actionFor); // 반복 상한에 걸린 경우 마지막 정책으로 다시 평가
+  // 결과를 usage 형식으로: 단계 내 모든 카운터가 같으면 공통, 다르면 byCounter
   const usage = {};
   for (let i = floor; i < cfg.target; i++) {
     const per = [];
-    for (let c = 0; c < m; c++) per.push(actionFor(i, c).map(it => it.id));
-    const same = per.every(a => a.join() === per[0].join());
-    if (same ? per[0].length : true) usage[i] = same ? per[0] : { byCounter: per };
+    for (let c = 0; c < m; c++) per.push(unitsToSpec(items, Object.fromEntries(actionFor(i, c).map(it => [it.id, unitsOf(it)]))));
+    const same = per.every(a => JSON.stringify(a) === JSON.stringify(per[0]));
+    if (same ? Object.keys(specUnits(per[0])).length : true) usage[i] = same ? per[0] : { byCounter: per };
   }
-  return { ok: true, usage, before, after: res.cost, iterations: iterations + 1 };
+  // BM 기대 매출(아이템 기대 지출)과 아이템별 기대 구매 개수 — 최종 정책의 체인에서 우변만 바꿔 푼다
+  const { chain } = res;
+  const sol = makeSolver(chain);
+  const itemSpend = sol.solve(Float64Array.from(chain.states, st => st.itemCost))[chain.S];
+  const itemUnits = Object.fromEntries(items.map(it => [it.id,
+    sol.solve(Float64Array.from(chain.states, st => st.items.filter(x => x.id === it.id).reduce((a, x) => a + unitsOf(x), 0)))[chain.S]]));
+  return { ok: true, usage, before, after: res.cost, iterations, itemSpend, itemUnits };
+}
+
+// ── 아이템 가격 곡선 ────────────────────────────────────
+export const MAX_SWEEP_POINTS = 101;
+
+/**
+ * 대상 아이템의 한 재화 가격을 from~to(step 간격)로 바꿔 가며 최적 정책을 다시 풀고,
+ * 가격별 BM 기대 매출(최적 정책에서 아이템에 쓰는 기대 금액)과 유저 절감률(아이템 없이 대비 기대 비용 절감)을 구한다.
+ * 유저가 합리적으로 산다고 보면, 가격을 올릴수록 개당 매출은 늘지만 투입량이 계단식으로 줄어 어딘가에서 매출이 꺾인다.
+ * sw = { item, resource, from, to, step, targetSaving }
+ */
+export function priceSweep(cfg, sw) {
+  const errors = validate(cfg);
+  if (errors.length) return { ok: false, errors };
+  const target = (cfg.items || []).find(it => it.id === sw?.item);
+  if (!target) return { ok: false, errors: ['가격을 바꿀 아이템을 고르세요.'] };
+  if (!(sw.resource >= 0 && sw.resource < cfg.resources.length)) return { ok: false, errors: ['가격 재화를 고르세요.'] };
+  if (!(sw.from >= 0 && sw.to >= sw.from && sw.step > 0)) return { ok: false, errors: ['가격 범위를 확인하세요 (시작 ≥ 0, 끝 ≥ 시작, 간격 > 0).'] };
+  const count = Math.floor((sw.to - sw.from) / sw.step + 1e-9) + 1;
+  if (count > MAX_SWEEP_POINTS) return { ok: false, errors: [`가격 점이 너무 많습니다 (${count}개, 최대 ${MAX_SWEEP_POINTS}개). 간격을 넓히세요.`] };
+  const base = expectedCost({ ...cfg, usage: {} }).cost;
+  if (!Number.isFinite(base)) return { ok: false, errors: ['아이템 없이는 목표에 도달할 수 없어 절감률을 정의할 수 없습니다.'] };
+  const points = [];
+  for (let k = 0; k < count; k++) {
+    const price = round(sw.from + k * sw.step, 9);
+    const items = cfg.items.map(it => (it.id === target.id ? { ...it, costs: it.costs.map((v, r) => (r === sw.resource ? price : v)) } : it));
+    const opt = optimizeItems({ ...cfg, items, usage: {} }); // 매 가격 같은 출발점(아이템 없음)에서 풀어 결과가 입력 순서에 의존하지 않게
+    if (!opt.ok) return opt;
+    const policyUnits = Object.values(opt.usage).reduce((a, u) => a + (stageUnits(u)[target.id] ?? 0), 0);
+    points.push({ price, expCost: opt.after, bmSpend: opt.itemSpend, saving: 1 - opt.after / base, units: opt.itemUnits[target.id], policyUnits, usage: opt.usage });
+  }
+  const tol = (x) => 1e-9 * Math.max(1, Math.abs(x));
+  const bmMax = points.reduce((a, p) => (p.bmSpend > a.bmSpend + tol(a.bmSpend) ? p : a));
+  const goal = sw.targetSaving ?? 0;
+  const reach = points.find(p => p.saving <= goal + 1e-12) ?? null;
+  // 이 가격부터 끝까지 대상 아이템을 전혀 쓰지 않음 (그 뒤로는 가격을 올려도 결과가 같다)
+  let unusedFrom = null;
+  for (let k = points.length - 1; k >= 0 && points[k].policyUnits === 0; k--) unusedFrom = points[k];
+  return { ok: true, base, points, bmMax, reach, unusedFrom, goal, item: target, resource: sw.resource };
 }
 
 // ── 역산: 목표 기대 비용에 맞는 성공률 배율 ───────────────

@@ -642,3 +642,24 @@ table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .goal-table input.name { min-width: 140px; }
 #tab-gacha .pct-list dd { text-align: right; }
 #tab-gacha .two-col .pct-list { margin-bottom: 10px; }
+
+/* 강화: 수량형 보조 재료 개수 칸 (단계 표) */
+.qty-chip {
+  display: inline-flex; align-items: center; gap: 2px; margin: 1px; padding: 0 2px 0 7px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--text-3);
+  font-size: 12px; font-weight: 600; white-space: nowrap; vertical-align: middle;
+}
+.qty-chip.on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+.qty-chip.partial { border-style: dashed; }
+#tab-enhance .stages .qty-chip input[type="number"] { width: 40px; padding: 1px 2px; border: 0; background: transparent; font-size: 12px; text-align: right; }
+
+/* 강화: 아이템 가격 곡선 */
+.sweep-form { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 10px; align-items: end; }
+.sweep-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.sweep-charts h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.sweep-charts .chart-box { height: 220px; }
+.sweep-facts { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+@media (max-width: 900px) {
+  .sweep-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sweep-charts { grid-template-columns: minmax(0, 1fr); }
+}

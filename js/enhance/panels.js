@@ -1,6 +1,6 @@
 // 왼쪽 설정 메뉴: 템플릿·구간, 연속 보정, 이벤트, 재화와 비용, 보조 아이템
 import { TEMPLATES } from './presets.js';
-import { MAX_ITEMS } from './model.js';
+import { MAX_ITEMS, MAX_UNITS } from './model.js';
 import { h, store } from '../lib/util.js';
 import { rateOf, setRate } from './currency.js';
 
@@ -145,6 +145,8 @@ function removeResource(ctx, ri) {
 
 // ── 보조 아이템 편집기 ──────────────────────────────────
 const EFFECTS = [['protect', '파괴방지 (파괴→유지)'], ['nodrop', '하락방지 (하락→유지)'], ['boost', '성공률 증가 (%p)']];
+// 수량형은 성공률 증가 전용 (파괴방지·하락방지는 1개면 효과가 다 나므로)
+const MODES = [['toggle', '1개 사용 (켜기/끄기)'], ['quantity', '개수 단위 투입']];
 
 function itemsBody(ctx) {
   const s = ctx.state;
@@ -155,8 +157,11 @@ function itemsBody(ctx) {
         h('input', { type: 'text', value: it.name, 'aria-label': '아이템 이름', oninput: (e) => { it.name = e.target.value || '아이템'; ctx.schedule(400, true); } }),
         h('button.icon-x', { type: 'button', title: '아이템 삭제', onclick: () => removeItem(ctx, it.id) }, '×')),
       h('div.effect-row', {},
-        select(EFFECTS, it.effect, (v) => { it.effect = v; ctx.rebuild(); }),
-        it.effect === 'boost' ? h('div.unit-input', {}, numInput(ctx, it, 'amount', { min: 0, max: 100, label: '증가량' }), h('span', {}, '%p')) : null),
+        select(EFFECTS, it.effect, (v) => { it.effect = v; if (v !== 'boost') it.mode = 'toggle'; ctx.markTableDirty(); ctx.rebuild(); }),
+        it.effect === 'boost' ? h('div.unit-input', {}, numInput(ctx, it, 'amount', { min: 0, max: 100, label: it.mode === 'quantity' ? '개당 증가량' : '증가량' }), h('span', {}, it.mode === 'quantity' ? '%p/개' : '%p')) : null),
+      it.effect === 'boost' ? h('div.effect-row', {},
+        select(MODES, it.mode ?? 'toggle', (v) => { it.mode = v; if (v === 'quantity') it.maxUnits ??= 10; ctx.markTableDirty(); ctx.rebuild(); }),
+        it.mode === 'quantity' ? h('div.unit-input', { title: '한 번의 시도에 넣을 수 있는 최대 개수' }, h('span', {}, '최대'), numInput(ctx, it, 'maxUnits', { int: true, min: 1, max: MAX_UNITS, label: '최대 개수', after: () => ctx.markTableDirty() }), h('span', {}, '개')) : null) : null,
       h('div.cost-mini', {}, ...s.resources.map((res, ri) => h('label.mini-field', {}, h('span', {}, res.name), numInput(ctx, it.costs, ri, { min: 0, label: `${it.name} ${res.name}` })))),
       h('div.kv-row', { title: '이 단계 범위에서만 사용할 수 있습니다. 실제 사용 여부는 단계 표의 아이템 칸에서 켭니다' },
         h('span', {}, '적용 단계'),
@@ -164,23 +169,25 @@ function itemsBody(ctx) {
         numInput(ctx, it, 'to', { int: true, min: 0, label: '적용 끝', after: () => ctx.markTableDirty() })),
     )),
     s.items.length < MAX_ITEMS ? h('button.btn.small', { type: 'button', onclick: () => addItem(ctx) }, '+ 아이템 추가') : null,
-    s.items.length ? h('p.desc', {}, '비용 = 1회 사용 비용. 단계별 사용은 오른쪽 단계 표의 아이템 칸에서 켭니다.') : null,
+    s.items.length ? h('p.desc', {}, '비용 = 1회 사용 비용 (수량형은 1개 가격). 단계별 사용은 오른쪽 단계 표의 아이템 칸에서 켜거나 개수를 넣습니다.') : null,
   ];
 }
 
 function addItem(ctx) {
   const s = ctx.state;
   const last = s.rows.at(-1)?.stage ?? 0;
-  s.items.push({ id: 'it' + Date.now().toString(36), name: '새 아이템', effect: 'protect', amount: 10, costs: s.resources.map(() => 0), from: 0, to: last });
+  s.items.push({ id: 'it' + Date.now().toString(36), name: '새 아이템', effect: 'protect', mode: 'toggle', amount: 10, costs: s.resources.map(() => 0), from: 0, to: last });
   ctx.markTableDirty(); ctx.rebuild();
 }
 
 function removeItem(ctx, id) {
   const s = ctx.state;
   s.items = s.items.filter(it => it.id !== id);
-  for (const [stage, u] of Object.entries(s.usage)) {
-    if (Array.isArray(u)) s.usage[stage] = u.filter(x => x !== id);
-    else s.usage[stage] = { byCounter: u.byCounter.map(a => a.filter(x => x !== id)) };
-  }
+  const drop = (spec) => {
+    if (Array.isArray(spec)) return spec.filter(x => x !== id);
+    const { [id]: _, ...rest } = spec.units ?? spec;
+    return spec.units ? { units: rest } : rest;
+  };
+  for (const [stage, u] of Object.entries(s.usage)) s.usage[stage] = u.byCounter ? { byCounter: u.byCounter.map(drop) } : drop(u);
   ctx.markTableDirty(); ctx.rebuild();
 }

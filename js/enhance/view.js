@@ -1,5 +1,5 @@
 // 강화 확률·비용 설계 — 화면 진입점: 상태, 레이아웃, 재계산 흐름, 시뮬레이션 워커, 저장·공유
-import { analyze, effectiveProbs } from './model.js';
+import { analyze, effectiveProbs, migrate, SCHEMA } from './model.js';
 import { simulate } from './simulate.js';
 import { TEMPLATES } from './presets.js';
 import { renderSidebar } from './panels.js';
@@ -7,13 +7,12 @@ import { bindCurrency } from './currency.js';
 import { renderTable } from './table.js';
 import {
   buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
-  renderOptCard, renderInverse, drawChart,
+  renderOptCard, renderInverse, drawChart, renderSweepCard, drawSweep,
 } from './results.js';
 import { importGrowthTable } from '../economy/view.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
 
-const SCHEMA = 2;
-const STORE_KEY = 'enhance:v2';
+const STORE_KEY = 'enhance:v2'; // 저장 키는 그대로 두고 내용을 migrate()로 v3까지 올려 읽는다
 const SECTIONS = [['enh-stages', '단계 표'], ['enh-analysis', '결과 분석'], ['enh-tools', '밸런스 도구']];
 const MC_STEP_BUDGET = 4e7;   // 시뮬레이션 계산량 상한 (기대 시도 × 반복 수)
 const MC_MAX_TRIALS = 20000;
@@ -42,12 +41,13 @@ const ctx = {
 
 // ── 상태 ────────────────────────────────────────────────
 function defaultState(id) {
-  return { v: SCHEMA, template: id, ...TEMPLATES[id].make(), showAll: false, baseline: null, budget: 0, inverse: null };
+  return migrate({ v: SCHEMA, template: id, ...TEMPLATES[id].make(), showAll: false, baseline: null, budget: 0, inverse: null, priceSweep: null });
 }
 function serialize(st) { const { baseline, ...rest } = st; return rest; }
 function hydrate(obj) {
-  if (!obj || obj.v !== SCHEMA || !TEMPLATES[obj.template]) return null;
-  return { ...defaultState(obj.template), ...obj };
+  const st = migrate(obj); // v2 저장본: 아이템을 기존 on/off 방식(toggle)으로
+  if (!st || !TEMPLATES[st.template]) return null;
+  return { ...defaultState(st.template), ...st };
 }
 function readHash() {
   const m = location.hash.match(/^#enhance\?s=([\w-]+)/);
@@ -60,7 +60,7 @@ export function mount(root) {
   if (location.hash.startsWith('#enhance?')) history.replaceState(null, '', '#enhance');
   build(root);
   rebuild();
-  document.addEventListener('themechange', () => ctx.lastMC && drawChart(ctx, els, ctx.lastMC));
+  document.addEventListener('themechange', () => { ctx.lastMC && drawChart(ctx, els, ctx.lastMC); drawSweep(ctx, els); });
   window.addEventListener('hashchange', () => {
     const st = readHash();
     if (!st) return;
@@ -107,8 +107,9 @@ function build(root) {
         buildDist(ctx, els),
         h('div.two-col', {}, els.resources = h('div.card'), els.verify = h('div.card')),
 
-        section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책'),
+        section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책 · 아이템 가격 곡선'),
         h('div.two-col', {}, els.inverse = h('div.card.tool-card'), els.optCard = h('div.card.tool-card')),
+        els.sweepCard = h('div.card.tool-card'),
       ),
     ),
   );
@@ -135,6 +136,7 @@ function rebuild() {
   renderHead();
   renderSidebar(ctx, els.side);
   renderOptCard(ctx, els);
+  renderSweepCard(ctx, els);
   els.showAll.checked = ctx.state.showAll;
   els.inverse.replaceChildren();
   ctx.tableDirty = true;

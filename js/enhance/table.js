@@ -1,6 +1,7 @@
 // 단계 표: 왼쪽은 설계 입력(확률·비용·아이템 사용), 오른쪽은 같은 줄의 계산 결과(기대 시도·돌파 전 파괴·비용 비중·민감도)
 import { h, fmtPct, fmtNum } from '../lib/util.js';
 import { money } from './currency.js';
+import { stageUnits, specUnits, unitsToSpec, isQty } from './model.js';
 
 /**
  * 표 구조를 다시 그린다. 입력 중(포커스가 표 안)이면 구조는 유지하고 값만 갱신해 포커스를 지킨다.
@@ -48,6 +49,7 @@ export function renderTable(ctx, els, res) {
   els.legend.replaceChildren(...(s.items.length ? [
     h('span.muted', {}, '아이템 칸: '),
     ...s.items.map(it => h('span.legend-item', {}, h('b', {}, abbr(s.items, it)), ` ${it.name}`)),
+    s.items.some(isQty) ? h('span.muted', {}, ' · 숫자 칸 = 1회 투입 개수') : null,
     h('span.muted', {}, ' · * 상황별 사용'),
   ] : []));
 
@@ -62,30 +64,51 @@ const HEAD_TIPS = {
   '기대 시도': '목표까지 가는 동안 이 단계에서 시도하는 평균 횟수',
   '비용 비중': '총 기대 비용 중 이 단계에서 쓰는 비율 (파괴 복구 비용 포함). 마우스를 올리면 기대 비용·1회 비용',
   '민감도': '이 단계 성공률을 1%p 올리면 총 기대 비용이 몇 % 바뀌는지 (수반 방법으로 정확히 계산한 1차 변화량)',
-  '보조 아이템': '켠 아이템을 이 단계의 모든 시도에 사용. "상황별"은 최적화 결과로 연속 실패 횟수에 따라 사용 여부가 다름',
+  '보조 아이템': '켠 아이템(수량형은 넣은 개수)을 이 단계의 모든 시도에 사용. "상황별"은 최적화 결과로 연속 실패 횟수에 따라 사용 여부·개수가 다름',
 };
 
-/** 아이템 약자: 이름 첫 글자, 겹치면 두 글자 */
+/** 아이템 약자: 이름 첫 글자, 겹치면 두 글자, 그래도 겹치면(예: 별빛 가호 (상급)/(중급)) 처음 갈라지는 글자 */
 function abbr(items, it) {
-  const first = (x) => [...x.name.trim()][0] ?? '?';
-  return items.some(o => o !== it && first(o) === first(it)) ? [...it.name.trim()].slice(0, 2).join('') : first(it);
+  const chars = (x) => [...x.name.trim()];
+  const me = chars(it), others = items.filter(o => o !== it).map(chars);
+  if (!others.some(o => o[0] === me[0])) return me[0] ?? '?';
+  const rivals = others.filter(o => o[0] === me[0] && o[1] === me[1]);
+  if (!rivals.length) return me.slice(0, 2).join('');
+  const k = me.findIndex((ch, i) => /[^\s()[\]]/.test(ch) && rivals.every(o => o[i] !== ch));
+  return k >= 0 ? me[k] : me.slice(0, 2).join('');
 }
 
 function itemChips(ctx, stage) {
   const s = ctx.state;
   const u = s.usage[stage];
-  const flat = Array.isArray(u) ? u : null;
+  const units = stageUnits(u); // 카운터마다 다르면 그중 최대
+  // 카운터마다 개수가 다른 아이템 = 상황별
+  const partialOf = (id) => !!u?.byCounter && !u.byCounter.every(spec => (specUnits(spec)[id] ?? 0) === (units[id] ?? 0));
+  // 수동 편집하면 '상황별' 정책은 단계 공통 설정으로 바뀐다
+  const write = (next) => { s.usage[stage] = unitsToSpec(s.items, next); };
   return s.items.map(it => {
     if (stage < it.from || stage > it.to) return h('span.chip-slot', { title: `${it.name}: 적용 단계 밖` }); // 칸 정렬 유지
-    const on = flat ? flat.includes(it.id) : u?.byCounter.some(a => a.includes(it.id));
-    const partial = !flat && on && !u.byCounter.every(a => a.includes(it.id));
+    const n = units[it.id] ?? 0, on = n > 0, partial = partialOf(it.id);
+    if (isQty(it)) {
+      return h(`label.qty-chip${on ? '.on' : ''}${partial ? '.partial' : ''}`, { title: `${it.name}: 1회 투입 개수 (0~${it.maxUnits}개, 개당 +${it.amount}%p)${partial ? ' · 상황별 — 고치면 모든 시도에 같은 개수' : ''}` },
+        h('span', {}, abbr(s.items, it), partial ? '*' : ''),
+        h('input', {
+          type: 'number', value: Math.min(n, it.maxUnits), min: 0, max: it.maxUnits, step: 1, inputmode: 'numeric', 'aria-label': `+${stage} ${it.name} 개수`,
+          oninput: (e) => {
+            const v = parseFloat(e.target.value);
+            if (!Number.isFinite(v)) return;
+            const k = Math.max(0, Math.min(it.maxUnits, Math.round(v)));
+            write({ ...units, [it.id]: k });
+            e.target.closest('label').classList.toggle('on', k > 0);
+            ctx.schedule(250);
+          },
+        }));
+    }
     return h(`button.chip${on ? '.on' : ''}${partial ? '.partial' : ''}`, {
       type: 'button', title: partial ? `${it.name}: 상황별 사용 (클릭하면 항상 사용으로 바뀜)` : `${it.name} ${on ? '사용 중' : '사용 안 함'}`,
-      'aria-pressed': String(!!on && !partial),
-      onclick: () => {
-        // 수동 편집하면 '상황별' 정책은 단계 공통 설정으로 바뀐다 (상황별 → 항상 사용, 사용 → 끔, 끔 → 사용)
-        const all = flat ?? [...new Set(u?.byCounter.flat() ?? [])];
-        s.usage[stage] = on && !partial ? all.filter(id => id !== it.id) : [...new Set([...all, it.id])];
+      'aria-pressed': String(on && !partial),
+      onclick: () => { // 상황별 → 항상 사용, 사용 → 끔, 끔 → 사용
+        write({ ...units, [it.id]: on && !partial ? 0 : 1 });
         ctx.markTableDirty(); ctx.recompute();
       },
     }, abbr(s.items, it), partial ? '*' : '');

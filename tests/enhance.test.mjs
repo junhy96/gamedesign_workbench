@@ -1,8 +1,10 @@
 // 실행: npm test  (node --test)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   analyze, validate, effectiveProbs, usageAt, buildChain, optimizeItems, solveForCost, expectedCost,
+  priceSweep, migrate, stageUnits, unitsOf,
 } from '../js/enhance/model.js';
 import { simulate, mulberry32, reachProbability } from '../js/enhance/simulate.js';
 import { TEMPLATES } from '../js/enhance/presets.js';
@@ -30,7 +32,7 @@ function ruleSim(cfg, trials, seed) {
       const row = rows.get(stage);
       const items = usageAt(cfg, stage, c);
       const p = effectiveProbs(cfg, row, c, items);
-      cost += val(row.costs) * costMult + (p.forced ? 0 : items.reduce((a, it) => a + val(it.costs), 0));
+      cost += val(row.costs) * costMult + (p.forced ? 0 : items.reduce((a, it) => a + val(it.costs) * unitsOf(it), 0));
       const u = rnd();
       if (u < p.s) { stage += 1; c = 0; }
       else if (u < p.s + p.s2) { stage += 2; c = 0; }
@@ -200,4 +202,85 @@ test('단계별 재화 기대 소모의 합 = 재화별 총 기대 소모 (재�
       close(sum, res.units, 1e-9, `${id} ${res.name}`);
     });
   }
+});
+
+// ── 수량형 보조 재료 · 아이템 가격 곡선 ─────────────────
+// docs/samples/enhance-quantity-items.json: 저장 파일 형식 + generate.mjs가 단계별 전수 탐색으로 구한 정답(expected)
+const sample = JSON.parse(readFileSync(new URL('../docs/samples/enhance-quantity-items.json', import.meta.url), 'utf8'));
+const sampleCfg = () => structuredClone(migrate(sample.state));
+/** expected는 소수 d자리로 반올림된 값 → 반올림 반 칸 + 1e-6 안이면 일치 */
+const near = (a, b, d, msg) => assert.ok(Math.abs(a - b) <= 0.5 * 10 ** -d + 1e-6, `${msg}: ${a} vs ${b}`);
+
+test('수량형 샘플: 아이템 없이 기대 비용 = 전수 탐색 정답', () => {
+  const cfg = sampleCfg();
+  assert.deepEqual(validate(cfg), []);
+  near(expectedCost({ ...cfg, usage: {} }).cost, sample.expected.noItemsExpCost, 2, '아이템 없이');
+  assert.ok(analyze(cfg).ok, '저장된 수동 투입량으로도 계산됨');
+});
+
+test('수량형 샘플: 최적 정책(MDP)의 기대 비용·BM 지출·투입 개수 = 전수 탐색 정답', () => {
+  const cfg = sampleCfg(), ex = sample.expected;
+  const opt = optimizeItems(cfg);
+  assert.ok(opt.ok, opt.errors?.join());
+  near(opt.after, ex.optimal.expCost, 2, '최적 기대 비용');
+  near(opt.itemSpend, ex.optimal.bmSpend, 2, 'BM 기대 지출');
+  near(1 - opt.after / ex.noItemsExpCost, ex.optimal.saving, 4, '절감률');
+  const policy = Object.fromEntries(Object.entries(opt.usage).map(([stage, u]) => [stage, stageUnits(u)]));
+  assert.deepEqual(policy, ex.optimal.policy);
+  close(analyze({ ...cfg, usage: opt.usage }).itemSpend, opt.itemSpend, 1e-9, '정책 적용 후 analyze 지출');
+});
+
+test('수량형 샘플: 가격 곡선 각 점과 매출 최대 가격 = 전수 탐색 정답', () => {
+  const cfg = sampleCfg(), ex = sample.expected;
+  const sw = priceSweep(cfg, cfg.priceSweep);
+  assert.ok(sw.ok, sw.errors?.join());
+  assert.equal(sw.points.length, ex.priceSweep.length);
+  sw.points.forEach((p, k) => {
+    const e = ex.priceSweep[k];
+    assert.equal(p.price, e.price);
+    near(p.expCost, e.expCost, 2, `${e.price} 기대 비용`);
+    near(p.bmSpend, e.bmSpend, 2, `${e.price} BM 지출`);
+    near(p.saving, e.saving, 4, `${e.price} 절감률`);
+    assert.equal(p.policyUnits, e.highUnits, `${e.price} 상급 투입 개수`);
+  });
+  assert.equal(sw.bmMax.price, ex.bmRevenueMaxAt.price);
+  near(sw.bmMax.bmSpend, ex.bmRevenueMaxAt.bmSpend, 2, '최대 매출');
+  assert.equal(sw.reach?.price ?? null, ex.savingAtOrBelowTargetFrom);
+  assert.equal(sw.unusedFrom.price, 240, '240 다이아부터 상급은 안 쓰임');
+});
+
+test('수량형 n개 = 효과·가격이 n배인 토글형 1개', () => {
+  const cfg = sampleCfg();
+  const it = cfg.items[0];
+  const qty = { ...cfg, usage: { 4: { units: { [it.id]: 5 } } } };
+  const tog = { ...cfg, items: [{ ...it, mode: 'toggle', amount: it.amount * 5, costs: it.costs.map(v => v * 5) }], usage: { 4: [it.id] } };
+  close(analyze(qty).expCost, analyze(tog).expCost, 1e-12, '기대 비용');
+  close(analyze(qty).itemSpend, analyze(tog).itemSpend, 1e-12, 'BM 지출');
+  // 최대 개수를 넘는 값은 maxUnits로 자른다
+  assert.equal(unitsOf(usageAt({ ...cfg, usage: { 4: { units: { [it.id]: 99 } } } }, 4, 0)[0]), it.maxUnits);
+});
+
+test('수량형 + 하락·파괴·천장: 정확해 = 규칙 시뮬레이터, 최적 정책 ≤ 수동 투입', () => {
+  const cfg = tpl('standard');
+  cfg.items.push({ id: 'dust', name: '축복 가루', effect: 'boost', mode: 'quantity', amount: 0.5, maxUnits: 6, costs: cfg.resources.map((_, r) => (r === cfg.resources.length - 1 ? 1 : 0)), from: 8, to: 14 });
+  cfg.usage = { 9: { units: { protect: 1, dust: 4 } }, 12: { units: { dust: 6 } }, 13: ['protect'] };
+  checkAgainstRuleSim(cfg, '수량형');
+  const opt = optimizeItems(cfg);
+  assert.ok(opt.ok && opt.after <= opt.before + 1e-6);
+  close(expectedCost({ ...cfg, usage: opt.usage }).cost, opt.after, 1e-9, '정책 적용 후 재계산');
+  const art = tpl('artisan');
+  art.items = [{ ...art.items[0], mode: 'quantity', amount: 1, maxUnits: 5 }];
+  const o2 = optimizeItems(art);
+  assert.ok(o2.ok);
+  close(expectedCost({ ...art, usage: o2.usage }).cost, o2.after, 1e-9, '카운터별 정책 재계산');
+});
+
+test('저장 형식 v2 → v3: 기존 on/off 아이템은 토글형으로 읽힘', () => {
+  const v2 = { v: 2, ...tpl('standard'), usage: { 9: ['protect'] } };
+  for (const it of v2.items) delete it.mode;
+  const st = migrate(v2);
+  assert.equal(st.v, 3);
+  assert.ok(st.items.every(it => it.mode === 'toggle'));
+  close(analyze(st).expCost, analyze(v2).expCost, 1e-12, '마이그레이션 전후 같은 결과');
+  assert.equal(migrate({ v: 1 }), null);
 });
