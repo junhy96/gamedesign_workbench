@@ -702,6 +702,169 @@ export function cycles(cfg, mx) {
   return out.map(c => ({ ids: c, names: c.map(x => E[x].name), wins: c.map((x, m) => mx.cell[x][c[(m + 1) % 3]].win) }));
 }
 
+
+// ── 밸런스 도구: 목표 역산, 민감도, 최소 변경, 효과 분해 ─────────
+// 결과 지표 '점수' = 승 + 무승부 ÷ 2 (한 상대 또는 모든 상대 평균). 정확해가 되는 쌍은 정확해, 아니면 같은 시드의 시뮬레이션
+// (같은 시드 = 같은 난수열이라 설정을 조금 바꿔도 잡음 차이가 작다).
+// 스탯 '배율'은 그 스탯 전체(기본값·성장값·표)를 k배 — 숨은 아이템 수정자 ×k로 계산하고, 적용할 때는 b·g·표 값을 k배.
+
+const SCALE_ID = '__scale__';
+/** 엔티티 entId의 스탯 stat을 k배 한 설정 (원본은 그대로) */
+export function withScale(cfg, entId, stat, k) {
+  return { ...cfg, items: [...(cfg.items || []), { id: `${SCALE_ID}${entId}.${stat}`, name: '', active: true, targets: [entId], mods: [{ stat, mult: k }] }] };
+}
+/** 엔티티의 스탯 값(기본·성장 또는 표) 하나를 바꾼 설정 */
+export function withParam(cfg, entId, stat, part, v) {
+  return { ...cfg, entities: cfg.entities.map(e => (e.id !== entId ? e : { ...e, stats: { ...e.stats, [stat]: { ...(e.stats[stat] || {}), [part]: v } } })) };
+}
+
+/** 점수: A의 (승 + 무/2). bId = 'all'이면 모든 상대 평균 */
+export function scoreOf(cfg, f, aId, bId, lv, { runs = Math.max(500, Math.round((cfg.sim?.runs ?? 4000) / 2)) } = {}) {
+  const A = cfg.entities.find(e => e.id === aId);
+  const opp = bId === 'all' ? cfg.entities.filter(e => e.id !== aId) : cfg.entities.filter(e => e.id === bId);
+  if (!A || !opp.length) return { score: NaN, exact: true };
+  let s = 0, exact = true;
+  for (const B of opp) {
+    const d = duel(cfg, f, A, B, lv, { runs, seed: 9090 });
+    s += d.winA + d.draw / 2; exact &&= d.exact;
+  }
+  return { score: s / opp.length, exact };
+}
+
+/** 단조 함수 g(x)가 target을 지나는 x (로그 축 이분 탐색, x > 0). 반환 { x, value, feasible, increasing } */
+function solveLog(g, target, { lo = 1 / 64, hi = 64, iters = 40 } = {}) {
+  const v1 = g(1), vlo = g(lo), vhi = g(hi);
+  const increasing = vhi >= vlo;
+  const reach = increasing ? (target >= vlo && target <= vhi) : (target <= vlo && target >= vhi);
+  if (!reach) return { x: increasing === (target > v1) ? hi : lo, value: increasing === (target > v1) ? vhi : vlo, feasible: false, increasing };
+  let a = Math.log(lo), b = Math.log(hi);
+  // a 쪽은 target 아래(증가 함수 기준), b 쪽은 target 이상
+  for (let k = 0; k < iters; k++) {
+    const m = (a + b) / 2, v = g(Math.exp(m));
+    if ((increasing && v >= target) || (!increasing && v <= target)) b = m; else a = m;
+  }
+  return { x: Math.exp(b), value: g(Math.exp(b)), below: g(Math.exp(a)), feasible: true, increasing };
+}
+
+/**
+ * 스탯 하나를 k배 해서 점수를 target으로: 반환 { k, value(도달 점수), below(바로 아래 k의 점수), feasible }
+ * 정확해도 데미지 반올림·공격 횟수가 정수라 점수는 계단 모양 — target을 처음 넘는 k와 그때의 점수를 돌려준다
+ */
+export function solveScale(cfg, f, { a, b, lv, stat, target, side = a, runs }) {
+  const g = (k) => scoreOf(withScale(cfg, side, stat, k), f, a, b, lv, { runs }).score;
+  const r = solveLog(g, target, { iters: runs ? 22 : 40 });
+  return { stat, side, k: r.x, value: r.value, below: r.below, feasible: r.feasible, increasing: r.increasing };
+}
+
+/** 지표 값: 점수 / CP / 초당 데미지(상대 대비) */
+function metricOf(cfg, f, { metric, entity, opponent, lv, runs }) {
+  const E = cfg.entities.find(e => e.id === entity);
+  if (metric === 'score') return scoreOf(cfg, f, entity, opponent, lv, { runs }).score;
+  const s = statsAt(cfg, E, lv);
+  if (metric === 'cp') return f.cp(s, lv);
+  const B = cfg.entities.find(e => e.id === (opponent === 'all' ? cfg.entities.find(x => x.id !== entity)?.id : opponent)) ?? E;
+  const pr = attackProfile(cfg, f, s, statsAt(cfg, B, lv), lv);
+  return pr.speed * pr.hit * ((1 - pr.crit) * pr.normal + pr.crit * pr.critical);
+}
+
+/**
+ * 목표 역산: 엔티티의 한 스탯 값(part = 'b' 기본값 / 'g' 성장값 / 'scale' 전체 배율)을 바꿔 지표를 target으로.
+ * Kalivra의 "Lv20 CP = 1000 → 성장값"을 승률 목표("Lv20 A 대 B 점수 50%")까지 넓힌 것. 반환 { value, achieved, feasible, from }
+ */
+export function solveTarget(cfg, f, { metric = 'score', entity, opponent = 'all', lv, stat, part = 'g', target, runs }) {
+  const ent = cfg.entities.find(e => e.id === entity);
+  const sv = ent?.stats?.[stat] ?? {};
+  const g = part === 'scale'
+    ? (k) => metricOf(withScale(cfg, entity, stat, k), f, { metric, entity, opponent, lv, runs })
+    : (v) => metricOf(withParam(cfg, entity, stat, part, v), f, { metric, entity, opponent, lv, runs });
+  if (part === 'scale') {
+    const r = solveLog(g, target, { iters: metric === 'score' && runs ? 22 : 50 });
+    return { part, from: 1, value: r.x, achieved: r.value, feasible: r.feasible };
+  }
+  if (sv.table && part !== 'scale') return { part, feasible: false, reason: '표로 넣은 스탯은 배율로 역산하세요.' };
+  // 선형 탐색 구간을 넓혀 target을 감싼 뒤 이분 탐색
+  const x0 = sv[part] ?? 0;
+  let step = Math.max(Math.abs(x0), part === 'g' ? 1 : 10), lo = x0, hi = x0;
+  const v0 = g(x0);
+  let up = g(x0 + step) >= v0; // 값을 올리면 지표가 오르나
+  if (g(x0 + step) === v0 && g(x0 - step) === v0) up = true;
+  const wantUp = target > v0;
+  const dir = up === wantUp ? 1 : -1;
+  let found = false;
+  for (let k = 0; k < 40; k++) {
+    const x = x0 + dir * step * 2 ** k;
+    const v = g(x);
+    if ((wantUp && v >= target) || (!wantUp && v <= target)) { lo = x0 + dir * step * (k ? 2 ** (k - 1) : 0); hi = x; found = true; break; }
+  }
+  if (!found) return { part, from: x0, feasible: false, reason: '이 스탯만으로는 목표에 닿지 않습니다.' };
+  for (let k = 0; k < (metric === 'score' && runs ? 24 : 60); k++) {
+    const m = (lo + hi) / 2, v = g(m);
+    if ((wantUp && v >= target) || (!wantUp && v <= target)) hi = m; else lo = m;
+  }
+  return { part, from: x0, value: hi, achieved: g(hi), feasible: true };
+}
+
+/**
+ * 민감도: A와 상대 B(한 명일 때)의 스탯마다 ±pct% → A 점수 변화 (%p). 레벨 lv의 스탯 값이 0인 것은 건너뜀
+ * 반환 rows [{ side, stat, lo, hi, swing }] (swing = 두 쪽 중 큰 |변화|, 큰 순)
+ */
+export function battleSensitivity(cfg, f, { a, b, lv, pct = 10, runs }) {
+  const base = scoreOf(cfg, f, a, b, lv, { runs }).score, p = pct / 100;
+  const rows = [];
+  const sides = b === 'all' ? [a] : [a, b];
+  for (const side of sides) {
+    const E = cfg.entities.find(e => e.id === side), s = statsAt(cfg, E, lv);
+    for (const def of cfg.stats) {
+      if (!(Math.abs(s[def.id]) > 0)) continue;
+      const lo = scoreOf(withScale(cfg, side, def.id, 1 - p), f, a, b, lv, { runs }).score - base;
+      const hi = scoreOf(withScale(cfg, side, def.id, 1 + p), f, a, b, lv, { runs }).score - base;
+      const swing = Math.max(Math.abs(lo), Math.abs(hi));
+      if (swing > 1e-9) rows.push({ side, stat: def.id, value: s[def.id], lo, hi, swing });
+    }
+  }
+  rows.sort((x, y) => y.swing - x.swing);
+  return { base, pct, rows };
+}
+
+/** 점수를 target으로 만드는 스탯별 최소 배율 (A의 스탯). 필요한 변화가 작은 순 */
+export function minChanges(cfg, f, { a, b, lv, target = 0.5, runs }) {
+  const E = cfg.entities.find(e => e.id === a), s = statsAt(cfg, E, lv);
+  const rows = cfg.stats.filter(d => Math.abs(s[d.id]) > 0).map(d => ({ ...solveScale(cfg, f, { a, b, lv, stat: d.id, target, runs }), value0: s[d.id] }));
+  rows.sort((x, y) => (x.feasible === y.feasible ? (x.feasible ? Math.abs(Math.log(x.k)) - Math.abs(Math.log(y.k)) : 0) : x.feasible ? -1 : 1));
+  return rows;
+}
+
+/**
+ * 효과 분해: A에게 걸린 아이템·A의 특성(그리고 상대 하나일 때 상대의 것)을 하나씩 끄면 A 점수가 얼마나 바뀌나.
+ * 반환 [{ kind: 'item'|'trait', owner, name, delta (= 있을 때 − 없을 때, A 기준 %p) }]
+ */
+export function contributions(cfg, f, { a, b, lv, runs }) {
+  const base = scoreOf(cfg, f, a, b, lv, { runs }).score;
+  const out = [];
+  const owners = b === 'all' ? [a] : [a, b];
+  for (const oid of owners) {
+    const E = cfg.entities.find(e => e.id === oid);
+    for (const it of (cfg.items || []).filter(it => it.active !== false && (it.targets === 'all' || it.targets?.includes(oid)))) {
+      const c2 = { ...cfg, items: cfg.items.map(x => (x === it ? (it.targets === 'all' ? { ...it, targets: cfg.entities.map(e => e.id).filter(id => id !== oid) } : { ...it, targets: it.targets.filter(t => t !== oid) }) : x)) };
+      out.push({ kind: 'item', owner: oid, ownerName: E.name, name: it.name, delta: base - scoreOf(c2, f, a, b, lv, { runs }).score });
+    }
+    (E.traits || []).forEach((tr, ti) => {
+      const c2 = { ...cfg, entities: cfg.entities.map(e => (e.id !== oid ? e : { ...e, traits: e.traits.filter((_, k) => k !== ti) })) };
+      out.push({ kind: 'trait', owner: oid, ownerName: E.name, name: tr.name, delta: base - scoreOf(c2, f, a, b, lv, { runs }).score });
+    });
+  }
+  out.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+  return { base, rows: out };
+}
+
+/** 배율 k를 실제 설정에 적용: b·g(선형)·b(등비)·표 값을 k배 */
+export function applyScale(ent, def, k) {
+  const sv = ent.stats[def.id] ??= { b: 0, g: 0 };
+  const r = (x) => +(x * k).toPrecision(6);
+  if (sv.table) sv.table = sv.table.map(([l, v]) => [l, r(v)]);
+  else { sv.b = r(sv.b ?? 0); if (def.growth !== 'geo') sv.g = r(sv.g ?? 0); }
+}
+
 /** 전체 분석 */
 export function analyze(cfg) {
   const errors = validate(cfg);

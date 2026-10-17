@@ -931,3 +931,11 @@ h3.sub { font-size: 14px; margin: 14px 0 8px; }
   .log-line { grid-template-columns: 52px minmax(0, 1fr); }
   .log-line .log-hp { grid-column: 1 / -1; }
 }
+
+/* 밸런스 도구 (스탯·전투) */
+.tool-pick { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 6px; }
+.tool-pick .field { min-width: 120px; flex: 0 1 160px; }
+.tool-pick select { width: 100%; }
+.solve-table td.up { color: var(--good); font-weight: 600; }
+.solve-table td.down { color: var(--bad); font-weight: 600; }
+.goal-out { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13.5px; margin-top: 6px; }

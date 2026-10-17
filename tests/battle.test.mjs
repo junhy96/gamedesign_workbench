@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parse, compile } from '../js/battle/formula.js';
 import {
   analyze, validate, compileRules, statsAt, tableAt, killDist, duelExact, duelSim, prepare, matrix, wilson, spearman,
-  crossovers, cpVsWin, fromKalivra, josa, battleOnce, duel, traitWarnings, phaseRanges, levelSweep, sweepPlan, phaseReport, cycles,
+  crossovers, cpVsWin, fromKalivra, josa, battleOnce, duel, traitWarnings, phaseRanges, levelSweep, sweepPlan, phaseReport, cycles, solveTarget, solveScale, minChanges, battleSensitivity, contributions, scoreOf, withScale, withParam, applyScale,
 } from '../js/battle/model.js';
 import { TEMPLATES } from '../js/battle/presets.js';
 import { mulberry32 } from '../js/enhance/simulate.js';
@@ -405,4 +405,60 @@ test('특성 템플릿·Kalivra 샘플(Golden Egg 포함) 계산', () => {
     assert.equal(res.ok, true, id);
     assert.equal(res.mx.allExact, false);
   }
+});
+
+// ── 밸런스 도구 (4단계) ─────────────────────────────────
+test('목표 역산: CP는 성장값을 정확히, 승률은 목표를 처음 넘는 값(계단 모양)', () => {
+  const cfg = TEMPLATES.classes.make();
+  const { f } = compileRules(cfg);
+  const r = solveTarget(cfg, f, { metric: 'cp', entity: 'e2', lv: 20, stat: 'atk', part: 'g', target: 4000 });
+  assert.equal(r.feasible, true);
+  const after = withParam(cfg, 'e2', 'atk', 'g', r.value);
+  close(f.cp(statsAt(after, after.entities[1], 20), 20), 4000, 1e-6);
+  // 점수 목표: 도달 점수 ≥ 목표, 조금 덜 바꾸면 목표 미만
+  const s = solveTarget(cfg, f, { metric: 'score', entity: 'e2', opponent: 'e1', lv: 10, stat: 'atk', part: 'b', target: 0.5 });
+  assert.equal(s.feasible, true);
+  assert.ok(s.achieved >= 0.5);
+  const less = scoreOf(withParam(cfg, 'e2', 'atk', 'b', s.from + (s.value - s.from) * 0.98), f, 'e2', 'e1', 10).score;
+  assert.ok(less < 0.5, String(less));
+});
+
+test('최소 변경(스탯 배율): 적용하면 목표 이상, 바로 아래 배율은 미만, 닿지 않는 스탯은 표시', () => {
+  const cfg = TEMPLATES.classes.make();
+  const { f } = compileRules(cfg);
+  const rows = minChanges(cfg, f, { a: 'e2', b: 'e1', lv: 10, target: 0.5 });
+  const ok = rows.filter(r => r.feasible);
+  assert.ok(ok.length >= 3);
+  for (const r of ok) {
+    assert.ok(r.value >= 0.5 && r.below < 0.5 + 1e-12, `${r.stat} ${r.value} ${r.below}`);
+    close(scoreOf(withScale(cfg, 'e2', r.stat, r.k), f, 'e2', 'e1', 10).score, r.value, 1e-12);
+  }
+  // 궁수의 명중은 이미 상한(95%)에 막혀 배율로는 못 닿음
+  assert.equal(rows.find(r => r.stat === 'acc').feasible, false);
+  // 정렬: 필요한 변화가 작은 순
+  for (let i = 1; i < ok.length; i++) assert.ok(Math.abs(Math.log(ok[i].k)) >= Math.abs(Math.log(ok[i - 1].k)));
+  // 적용(배율을 b·g에 곱함) = 수정자 ×k 결과
+  const c2 = structuredClone(cfg);
+  applyScale(c2.entities[1], c2.stats.find(s => s.id === ok[0].stat), ok[0].k);
+  close(scoreOf(c2, f, 'e2', 'e1', 10).score, ok[0].value, 0.02);
+});
+
+test('민감도·효과 분해: 공격력 +10%면 오르고, 아이템을 빼면 그만큼 내려간다', () => {
+  const cfg = TEMPLATES.classes.make();
+  const { f } = compileRules(cfg);
+  const se = battleSensitivity(cfg, f, { a: 'e2', b: 'e1', lv: 10, pct: 10 });
+  const atk = se.rows.find(r => r.side === 'e2' && r.stat === 'atk');
+  assert.ok(atk.hi > 0 && atk.lo < 0);
+  const oppAtk = se.rows.find(r => r.side === 'e1' && r.stat === 'atk');
+  assert.ok(oppAtk.hi < 0);
+  for (let i = 1; i < se.rows.length; i++) assert.ok(se.rows[i].swing <= se.rows[i - 1].swing);
+  const co = contributions(cfg, f, { a: 'e2', b: 'e1', lv: 10 });
+  const bow = co.rows.find(r => r.name === '전설 활');
+  const off = { ...cfg, items: [] };
+  close(bow.delta, co.base - scoreOf(off, f, 'e2', 'e1', 10).score, 1e-12);
+  assert.ok(bow.delta > 0);
+  // 모든 상대 평균
+  const all = scoreOf(cfg, f, 'e3', 'all', 10).score;
+  const mx = matrix(cfg, f, 10);
+  close(all, mx.score[2], 1e-12);
 });

@@ -1,7 +1,7 @@
 // 스탯·전투 밸런스 — 화면: 왼쪽 규칙(템플릿·전투 방식·수식), 오른쪽 엔티티·아이템 표 → 레벨 곡선 → 승률 행렬 → 1:1 상세 → 검증
 import {
   analyze, compileRules, curves, matrix, duel, duelSim, prepare, killStats, statsAt, fromKalivra,
-  MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt,
+  MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt, traitsOf, scoreOf, minChanges, battleSensitivity, contributions, solveTarget, applyScale,
 } from './model.js';
 import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
@@ -67,6 +67,7 @@ function build(root) {
         els.pairCard = h('div.card.role-out'),
         els.phaseCard = h('div.card.role-out'),
         els.checkCard = h('div.card.role-check'),
+        els.toolCard = h('div.card.role-tool'),
       ),
     ),
   );
@@ -436,6 +437,7 @@ function recompute() {
   renderPair(res);
   renderCheck(res);
   startPhase(res);
+  renderTools(res);
 }
 
 // 기준안: 저장한 설정으로 같은 지표 곡선·같은 레벨 행렬을 다시 계산
@@ -754,6 +756,155 @@ function renderCheck(res) {
       h('p.muted.small', {}, '한 번의 공격은 빗나감·일반·치명 세 결과. 상대를 쓰러뜨리는 공격 횟수의 분포를 (일반 적중 수, 치명 수) 상태로 정확히 구하고, 두 엔티티의 횟수가 서로 독립이라는 점을 이용해 승·무·패를 바로 계산합니다. 시간 기반은 n번째 공격 시각 (n − 1) ÷ 공격 속도로 결정타 순서를, 턴 교대는 선공 확률과 번갈아 공격 순서를 씁니다. 데미지 변동이 있으면 같은 규칙의 시뮬레이션(Wilson 95% 구간)으로 계산합니다.'),
     ),
   );
+}
+
+
+// ── 밸런스 도구: 최소 변경 · 민감도 · 효과 분해 · 목표 역산 ──────
+let toolToken = 0;
+function toolState() {
+  const E = state.entities;
+  const t = state.tool ??= {};
+  if (!E.some(e => e.id === t.a)) t.a = E[Math.min(state.pairA ?? 0, E.length - 1)]?.id;
+  if (t.b !== 'all' && (!E.some(e => e.id === t.b) || t.b === t.a)) t.b = E.find(e => e.id !== t.a)?.id ?? 'all';
+  t.lv = Math.min(Math.max(1, t.lv ?? state.level ?? 1), state.maxLevel);
+  t.target ??= 50; t.pct ??= 10;
+  t.goal ??= { metric: 'cp', stat: state.stats[0]?.id, part: 'g', value: 1000 };
+  return t;
+}
+const statName = (id) => { const d = state.stats.find(s => s.id === id); return d?.name ? `${d.name} (${id})` : id; };
+
+function renderTools(res) {
+  const E = state.entities;
+  if (E.length < 2) { put(els.toolCard, h('div.card-head', {}, h('h2', {}, '밸런스 도구')), h('p.muted', {}, '엔티티를 2개 이상 넣으세요.')); return; }
+  const t = toolState();
+  const A = E.find(e => e.id === t.a);
+  const needsSim = (x) => (x.variance || 0) > 0 || traitsOf(state, x).length > 0;
+  const opp = t.b === 'all' ? E.filter(e => e.id !== t.a) : E.filter(e => e.id === t.b);
+  const sim = needsSim(A) || opp.some(needsSim);
+  const rerun = () => { save(); renderTools(last); };
+  els.toolOut = { min: h('div', {}), sens: h('div', {}), contrib: h('div', {}), goal: h('div', {}) };
+  put(els.toolCard,
+    h('div.card-head', {}, h('h2', {}, '밸런스 도구'), h('span.hint', {}, `점수 = 승 + 무승부 ÷ 2 · ${sim ? `시뮬레이션 쌍은 같은 시드 ${comma(Math.max(500, Math.round(state.sim.runs / 2)))}회` : '정확해'}`)),
+    h('div.tool-pick', {},
+      field('대상', select(E.map(e => [e.id, e.name]), t.a, (v) => { t.a = v; rerun(); }, '대상 엔티티')),
+      field('상대', select([['all', '모든 상대 평균'], ...E.filter(e => e.id !== t.a).map(e => [e.id, e.name])], t.b, (v) => { t.b = v; rerun(); }, '상대')),
+      field('레벨', numIn(t, 'lv', { int: true, min: 1, max: state.maxLevel, label: '도구 레벨', after: () => {} })),
+      field('목표 점수 (%)', numIn(t, 'target', { min: 0, max: 100, label: '목표 점수' })),
+      field('민감도 변동폭', select([[5, '±5%'], [10, '±10%'], [20, '±20%']], t.pct, (v) => { t.pct = +v; rerun(); }, '민감도 변동폭')),
+      h('button.btn.primary', { type: 'button', onclick: () => runTools(res, true) }, sim ? '계산 (시뮬레이션)' : '다시 계산'),
+    ),
+    h('div.diag-sub', {}, h('h3', {}, `점수를 ${t.target}%로 만드는 최소 변경`), h('span.hint', {}, `${A.name}의 스탯 하나만 ×k (기본값·성장값·표 모두) · 필요한 배율이 작은 순 · 점수는 정수 공격 횟수 때문에 계단 모양이라 목표를 처음 넘는 값`)),
+    els.toolOut.min,
+    h('div.diag-sub', {}, h('h3', {}, `민감도 — 스탯을 ±${t.pct}% 바꾸면 ${A.name}의 점수가 얼마나 바뀌나`)),
+    h('div.tor-legend', {},
+      h('span', {}, h('i', { style: 'background:var(--tor-down)' }), `값을 ${t.pct}% 내림`),
+      h('span', {}, h('i', { style: 'background:var(--tor-up)' }), `값을 ${t.pct}% 올림`),
+      h('span.muted', {}, `오른쪽 = ${A.name}에게 유리 · 막대 길이 = 점수 변화(%p)${t.b === 'all' ? '' : ' · 상대 스탯도 함께'}`)),
+    els.toolOut.sens,
+    h('div.diag-sub', {}, h('h3', {}, '아이템·특성 효과 분해'), h('span.hint', {}, '하나씩 끄면 점수가 얼마나 바뀌나 (있을 때 − 없을 때)')),
+    els.toolOut.contrib,
+    h('div.diag-sub', {}, h('h3', {}, '목표 역산'), h('span.hint', {}, 'Kalivra의 "Lv20 CP = 1000 → 성장값"을 점수 목표까지')),
+    goalForm(t, A),
+    els.toolOut.goal,
+  );
+  runTools(res, !sim);
+}
+
+function goalForm(t, A) {
+  const g = t.goal;
+  return h('div.tool-pick', {},
+    field('지표', select([['cp', '전투력 (CP)'], ['dps', '초당 기대 데미지 (상대 대비)'], ['score', '점수 (상대 대비)']], g.metric, (v) => { g.metric = v; save(); }, '역산 지표')),
+    field('바꿀 스탯', select(state.stats.map(s => [s.id, statName(s.id)]), g.stat, (v) => { g.stat = v; save(); }, '역산 스탯')),
+    field('바꿀 값', select([['g', '성장값 (레벨당)'], ['b', '기본값 (Lv1)'], ['scale', '전체 배율']], g.part, (v) => { g.part = v; save(); }, '역산 대상')),
+    field('목표 (점수는 %)', numIn(g, 'value', { label: '역산 목표' })),
+    h('button.btn', { type: 'button', onclick: () => runGoal(t, A) }, '역산'),
+  );
+}
+
+function runGoal(t, A) {
+  const g = t.goal, f = last.f;
+  const target = g.metric === 'score' ? g.value / 100 : g.value;
+  const runs = Math.max(500, Math.round(state.sim.runs / 2));
+  put(els.toolOut.goal, h('p.muted', {}, '계산 중…'));
+  setTimeout(() => {
+    const r = solveTarget(state, f, { metric: g.metric, entity: A.id, opponent: t.b, lv: t.lv, stat: g.stat, part: g.part, target, runs });
+    const fmtV = (x) => (g.metric === 'score' ? pct(x) : num(x, 2));
+    if (!r.feasible) { put(els.toolOut.goal, h('p.bad-text', {}, r.reason || `이 스탯만으로는 목표에 닿지 않습니다 (가장 가까이 ${fmtV(r.achieved)}).`)); return; }
+    const label = g.part === 'scale' ? `${statName(g.stat)} 전체 ×${num(r.value, 4)}` : `${statName(g.stat)} ${g.part === 'g' ? '성장값' : '기본값'} ${num(r.from, 3)} → ${num(r.value, 4)}`;
+    put(els.toolOut.goal, h('div.goal-out', {},
+      h('span', {}, `${A.name}: ${label} → Lv${t.lv} ${g.metric === 'cp' ? 'CP' : g.metric === 'dps' ? '초당 데미지' : '점수'} ${fmtV(r.achieved)}`),
+      h('button.btn.small', { type: 'button', onclick: () => {
+        const e = state.entities.find(x => x.id === A.id), def = state.stats.find(s => s.id === g.stat);
+        if (g.part === 'scale') applyScale(e, def, r.value); else { e.stats[g.stat] ??= { b: 0, g: 0 }; e.stats[g.stat][g.part] = +r.value.toPrecision(6); }
+        rebuild(); toast(`${A.name}의 ${g.stat}을(를) 바꿨습니다`);
+      } }, '적용')));
+  }, 20);
+}
+
+/** 계산을 단계로 나눠 화면이 멈추지 않게 (설정이 바뀌면 이전 계산은 버림) */
+function runTools(res, go) {
+  const token = ++toolToken;
+  const t = toolState(), f = res.f, E = state.entities;
+  const A = E.find(e => e.id === t.a);
+  if (!go) { for (const k of ['min', 'sens', 'contrib']) put(els.toolOut[k], h('p.muted', {}, '시뮬레이션이 필요한 쌍이 있어 "계산"을 누르면 시작합니다.')); return; }
+  const runs = Math.max(500, Math.round(state.sim.runs / 2));
+  const opts = { a: t.a, b: t.b, lv: t.lv };
+  const steps = [
+    () => { put(els.toolOut.min, h('p.muted', {}, '계산 중…')); },
+    () => renderMinChanges(minChanges(state, f, { ...opts, target: t.target / 100, runs }), A, t, scoreOf(state, f, t.a, t.b, t.lv, { runs }).score),
+    () => renderSens(battleSensitivity(state, f, { ...opts, pct: t.pct, runs }), A, t),
+    () => renderContrib(contributions(state, f, { ...opts, runs }), A),
+  ];
+  let k = 0;
+  const step = () => { if (token !== toolToken || k >= steps.length) return; steps[k++](); setTimeout(step, 0); };
+  for (const x of ['sens', 'contrib']) put(els.toolOut[x], h('p.muted', {}, '계산 대기…'));
+  setTimeout(step, 0);
+}
+
+function renderMinChanges(rows, A, t, base) {
+  const ok = rows.filter(r => r.feasible), no = rows.filter(r => !r.feasible);
+  put(els.toolOut.min, h('p.muted.small', {}, `지금 점수 ${pct(base)} — ${base >= t.target / 100 ? '목표보다 높아서 아래 배율은 목표까지 내리는 값(여유)입니다' : '목표에 닿게 올리는 배율입니다'}`), h('div.table-wrap', {}, h('table.stages.solve-table', {},
+    h('thead', {}, h('tr', {}, h('th', {}, '스탯'), h('th', {}, `Lv${t.lv} 값`), h('th', {}, '필요 배율'), h('th', {}, '바뀐 값'), h('th', {}, '도달 점수'), h('th', {}, ''))),
+    h('tbody', {},
+      ...ok.map((r, i) => h(`tr${i < 3 ? '.top' : ''}`, {},
+        h('td.lever', {}, statName(r.stat)), h('td', {}, num(r.value0, 2)),
+        h('td', {}, `×${num(r.k, 4)} (${r.k >= 1 ? '+' : '−'}${Math.abs((r.k - 1) * 100).toFixed(1)}%)`),
+        h('td', {}, num(r.value0 * r.k, 2)), h('td', {}, pct(r.value)),
+        h('td', {}, h('button.btn.small', { type: 'button', onclick: () => { const e = state.entities.find(x => x.id === A.id); applyScale(e, state.stats.find(s => s.id === r.stat), r.k); rebuild(); toast(`${A.name}의 ${r.stat}을(를) ×${num(r.k, 4)} 했습니다`); } }, '적용')))),
+      ...no.map(r => h('tr.off', {}, h('td.lever', {}, statName(r.stat)), h('td', {}, num(r.value0, 2)), h('td', { colspan: 4, style: 'text-align:left' }, `이 스탯만으로는 닿지 않음 (×${r.k < 1 ? '1/64' : '64'}에서 ${pct(r.value)})`))),
+    ))));
+}
+
+function renderSens(se, A, t) {
+  const E = state.entities;
+  const rows = se.rows.slice(0, 12);
+  if (!rows.length) { put(els.toolOut.sens, h('p.muted', {}, '점수를 바꾸는 스탯이 없습니다.')); return; }
+  const max = Math.max(...rows.map(r => r.swing), 1e-9), W = 44;
+  const bar = (side, v) => {
+    const w = Math.min(Math.abs(v) / max, 1) * W, dir = v < 0 ? 'l' : 'r';
+    const pos = v < 0 ? `right:calc(50% + ${w}% + 4px)` : `left:calc(50% + ${w}% + 4px)`;
+    return [h(`span.tor-bar.${side}.${dir}`, { style: `width:${Math.max(w, 0.4)}%` }), h(`span.tor-val.${side}`, { style: pos }, `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}%p`)];
+  };
+  put(els.toolOut.sens,
+    h('div.tor-axis', { 'aria-hidden': 'true' }, h('span', {}, ''), h('span', {}, h('span', {}, `← ${A.name}에게 불리`), h('span', {}, '유리 →')), h('span', { style: 'text-align:right' }, '')),
+    h('div.tornado', {}, ...rows.map(r => {
+      const who = E.find(e => e.id === r.side)?.name;
+      const tip = `${who} ${r.stat}: −${t.pct}% → ${(r.lo * 100).toFixed(1)}%p, +${t.pct}% → ${(r.hi * 100).toFixed(1)}%p (지금 점수 ${pct(se.base)})`;
+      return h('div.tor-row', { title: tip },
+        h('div.tor-label', {}, `${who} · ${statName(r.stat)}`, h('small', {}, `Lv${t.lv} 값 ${num(r.value, 2)}${r.side === A.id ? '' : ' (상대)'}`)),
+        h('div.tor-track', { role: 'img', 'aria-label': tip }, ...bar('lo', r.lo), ...bar('hi', r.hi)),
+        h('div.tor-stag', {}, ''));
+    })));
+}
+
+function renderContrib(co, A) {
+  if (!co.rows.length) { put(els.toolOut.contrib, h('p.muted', {}, '대상(과 상대)에게 걸린 아이템·특성이 없습니다.')); return; }
+  put(els.toolOut.contrib, h('div.table-wrap', {}, h('table.stages.solve-table', {},
+    h('thead', {}, h('tr', {}, h('th', {}, '종류'), h('th', {}, '누구'), h('th', {}, '이름'), h('th', {}, `${A.name} 점수 기여`))),
+    h('tbody', {}, ...co.rows.map(r => h('tr', {},
+      h('td.lever', {}, r.kind === 'item' ? '아이템' : '특성'), h('td', {}, r.ownerName), h('td', {}, r.name),
+      h(`td.${r.delta >= 0 ? 'up' : 'down'}`, {}, `${r.delta >= 0 ? '+' : '−'}${Math.abs(r.delta * 100).toFixed(1)}%p`)))),
+  )), h('p.muted.small', {}, `지금 점수 ${pct(co.base)} · 상대 쪽 아이템·특성은 음수면 ${A.name}에게 불리하게 작용한다는 뜻`));
 }
 
 // ── 저장·공유·가져오기 ──────────────────────────────────
