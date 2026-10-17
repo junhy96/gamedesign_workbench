@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { analyze, validate, cumCost, stepCost, parseIntervalsCSV, parseCSV, intervalsToCSV, fmtBig, fmtBigShort, fmtDur } from '../js/stage/model.js';
+import { analyze, validate, cumCost, stepCost, parseIntervalsCSV, parseCSV, intervalsToCSV, fmtBig, fmtBigShort, fmtDur, quick, levers, leverValue, withLever, sensitivity, solveLevers } from '../js/stage/model.js';
 import { TEMPLATES } from '../js/stage/presets.js';
 
 const sample = JSON.parse(readFileSync(new URL('../docs/samples/stage-idle-growth.json', import.meta.url), 'utf8'));
@@ -81,6 +81,75 @@ test('증가폭을 앞 구간 수준으로 낮추면 16~17챕터 정체가 사�
   const res = analyze(cfg);
   assert.ok(!res.stagnantStages.some(s => /^1[67]-/.test(s)), res.stagnantStages.join(','));
   assert.ok(!res.warnings.some(w => w.kind === 'cause' && w.interval === 3));
+});
+
+test('quick = analyze (총 소요·정체 스테이지)', () => {
+  for (const cfg of [sample.state, ...Object.values(TEMPLATES).map(t => t.make())]) {
+    const a = analyze(cfg), q = quick(cfg);
+    close(q.total, a.totalSec, 1e-12);
+    assert.deepEqual(a.stagnant.map(x => x.s), [...q.stagnant.keys()].filter(s => q.stagnant[s]));
+  }
+});
+
+test('반대 가정 원인: 경고가 말한 만큼 실제로 풀린다 (다시 계산해 확인)', () => {
+  const res = analyze(sample.state);
+  const cause = res.warnings.find(w => w.kind === 'cause');
+  assert.equal(res.problem.length, 7); // 1-3 단발 정체는 대상 밖
+  const after = analyze(withLever(sample.state, cause.fix.lever, cause.fix.value));
+  assert.ok(res.problem.every(s => !after.stages[s - 1].stagnant));
+  assert.match(cause.text, /7곳 중 7곳/);
+  assert.deepEqual(sample.state.costIntervals[3].step, 30, '원본은 그대로');
+});
+
+test('구간 탓이 아닌 정체는 전체 변수 경고 (빈 템플릿)', () => {
+  const res = analyze(TEMPLATES.blank.make());
+  assert.ok(res.stagnant.length > 0);
+  assert.ok(!res.warnings.some(w => w.kind === 'cause' && w.level === 'serious'));
+  assert.ok(res.warnings.some(w => w.kind === 'global'));
+});
+
+test('민감도: 증가율은 증가분 기준으로 움직이고, 샘플에서 체력 증가율이 가장 크게 흔든다', () => {
+  const sens = sensitivity(sample.state, 10);
+  const top = sens.rows[0];
+  assert.equal(top.lever.id, 'hpGrowth');
+  close(top.lo.value, 0.036, 1e-9); close(top.hi.value, 0.044, 1e-9);
+  const hi = analyze({ ...sample.state, hpGrowth: 1.044 });
+  close(top.hi.total, hi.totalSec, 1e-12);
+  // 비용 구간 증가폭보다 성장률 쪽이 훨씬 크다
+  const step = sens.rows.find(r => r.lever.id === 'iv3.step');
+  assert.ok(top.swing > 10 * step.swing);
+  // 아직 도달하지 않는 구간(끝 없는 마지막 구간 등)은 영향 없음으로 빠짐
+  assert.ok(sens.flat >= 1);
+  assert.ok(sens.rows.every(r => r.lever.group !== 'intent'));
+});
+
+test('해소에 필요한 최소 변경: 적용하면 모두 풀리고, 절반만 바꾸면 남는다', () => {
+  const res = analyze(sample.state);
+  const sol = solveLevers(sample.state, res);
+  assert.equal(sol.rows[0].lever.id, 'hpGrowth');
+  for (const r of sol.rows.filter(x => x.feasible)) {
+    const after = analyze(withLever(sample.state, r.lever, r.target));
+    assert.ok(res.problem.every(s => !after.stages[s - 1].stagnant), r.lever.id);
+    const half = r.value + (r.target - r.value) / 2;
+    const mid = analyze(withLever(sample.state, r.lever, half));
+    assert.ok(res.problem.some(s => mid.stages[s - 1].stagnant), `${r.lever.id} 최소성`);
+  }
+  // 체력 증가율 4%를 1%도 안 줄여도 풀린다 (구간 증가폭은 13% 넘게 줄여야)
+  assert.ok(Math.abs(sol.rows[0].change) < 0.01);
+  assert.ok(Math.abs(sol.rows.find(r => r.lever.id === 'iv3.step').change) > 0.1);
+  assert.equal(sol.rows.find(r => r.lever.id === 'waveSeconds'), undefined, '방향이 정해지지 않는 변수는 제외');
+});
+
+test('레버 값 왕복: 증가율 1.04 ↔ 0.04, 의도 배수, 구간', () => {
+  const ls = levers(sample.state);
+  const hp = ls.find(l => l.id === 'hpGrowth');
+  assert.equal(leverValue(sample.state, hp), 0.04);
+  assert.equal(withLever(sample.state, hp, 0.05).hpGrowth, 1.05);
+  const intent = ls.find(l => l.id === 'intent');
+  assert.equal(withLever(sample.state, intent, 0.5).intendedDwell.perChapterMult, 1.5);
+  const iv = ls.find(l => l.id === 'iv2.initCost');
+  assert.equal(withLever(sample.state, iv, 1).costIntervals[2].initCost, 1);
+  assert.equal(sample.state.costIntervals[2].initCost, 8150);
 });
 
 test('CSV 샘플 = JSON의 costIntervals (빈 LV_MAX = 끝 없음)', () => {

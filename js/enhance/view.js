@@ -7,7 +7,7 @@ import { bindCurrency } from './currency.js';
 import { renderTable } from './table.js';
 import {
   buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
-  renderOptCard, renderInverse, drawChart, renderSweepCard, drawSweep,
+  renderOptCard, renderInverse, drawChart, renderSweepCard, drawSweep, renderQuantiles,
 } from './results.js';
 import { importGrowthTable } from '../economy/view.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
@@ -60,7 +60,7 @@ export function mount(root) {
   if (location.hash.startsWith('#enhance?')) history.replaceState(null, '', '#enhance');
   build(root);
   rebuild();
-  document.addEventListener('themechange', () => { ctx.lastMC && drawChart(ctx, els, ctx.lastMC); drawSweep(ctx, els); });
+  document.addEventListener('themechange', () => { if (ctx.lastMC) { drawChart(ctx, els, ctx.lastMC); renderQuantiles(ctx, els, ctx.lastMC, ctx.lastRes); } drawSweep(ctx, els); });
   window.addEventListener('hashchange', () => {
     const st = readHash();
     if (!st) return;
@@ -104,8 +104,9 @@ function build(root) {
           ),
         ),
 
-        section('enh-analysis', '결과 분석', '총비용 분포 · 재화별 소모 · 계산 검증', 'out'),
+        section('enh-analysis', '결과 분석', '총비용 분포 · 달성 분위 · 재화별 소모 · 계산 검증', 'out'),
         buildDist(ctx, els),
+        els.quantCard = h('div.card.role-out'),
         h('div.two-col', {}, els.resources = h('div.card.role-out'), els.verify = h('div.card.role-check')),
 
         section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책 · 아이템 가격 곡선', 'tool'),

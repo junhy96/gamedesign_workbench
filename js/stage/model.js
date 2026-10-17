@@ -81,17 +81,40 @@ export const continuedInit = (iv) => iv.initCost + iv.step * (iv.lvMax - iv.lvMi
 
 export const stageLabel = (s, spc) => `${Math.floor((s - 1) / spc) + 1}-${((s - 1) % spc) + 1}`;
 
+// 스테이지 공식 (analyze와 반복 계산용 quick이 같이 씀)
+function stageFns(cfg) {
+  const spc = cfg.stagesPerChapter;
+  const hp = (s) => cfg.hp0 * cfg.hpGrowth ** (s - 1);
+  return {
+    spc, N: cfg.chapters * spc, hp,
+    gold: (s) => cfg.gold0 * cfg.goldGrowth ** (s - 1),
+    levelReq: (s) => Math.max(0, Math.ceil((cfg.monstersPerWave * hp(s) / cfg.waveLimit - cfg.atk0) / cfg.atkPerLevel)),
+    intended: (s) => cfg.intendedDwell.baseSeconds * cfg.intendedDwell.perChapterMult ** Math.floor((s - 1) / spc),
+    clearSec: cfg.wavesPerStage * cfg.waveSeconds,
+  };
+}
+
+/** 총 소요와 스테이지별 정체만 (민감도·반대 가정에서 수백 번 반복) */
+export function quick(cfg) {
+  const { N, gold, levelReq, intended, clearSec } = stageFns(cfg);
+  const ivs = cfg.costIntervals;
+  const stagnant = new Uint8Array(N + 1);
+  let total = 0, count = 0, prevCum = 0;
+  for (let s = 1; s <= N; s++) {
+    const cum = cumCost(ivs, levelReq(s));
+    const dwell = Math.max(s > 1 ? (cum - prevCum) / (gold(s - 1) / cfg.waveSeconds) : 0, clearSec);
+    total += dwell;
+    if (dwell > cfg.stagnationRatio * intended(s)) { stagnant[s] = 1; count++; }
+    prevCum = cum;
+  }
+  return { total, stagnant, count };
+}
+
 export function analyze(cfg) {
   const errors = validate(cfg);
   if (errors.length) return { ok: false, errors };
   const ivs = cfg.costIntervals;
-  const spc = cfg.stagesPerChapter;
-  const N = cfg.chapters * spc;
-  const hp = (s) => cfg.hp0 * cfg.hpGrowth ** (s - 1);
-  const gold = (s) => cfg.gold0 * cfg.goldGrowth ** (s - 1);
-  const levelReq = (s) => Math.max(0, Math.ceil((cfg.monstersPerWave * hp(s) / cfg.waveLimit - cfg.atk0) / cfg.atkPerLevel));
-  const intended = (s) => cfg.intendedDwell.baseSeconds * cfg.intendedDwell.perChapterMult ** Math.floor((s - 1) / spc);
-  const clearSec = cfg.wavesPerStage * cfg.waveSeconds;
+  const { spc, N, hp, gold, levelReq, intended, clearSec } = stageFns(cfg);
 
   const stages = [];
   let elapsed = 0, intendedElapsed = 0;
@@ -149,8 +172,141 @@ export function analyze(cfg) {
     totalHours: Math.round(elapsed / 3600 * 100) / 100,
     finalLevel, finalCumCost: cumCost(ivs, finalLevel),
     stagnant, stagnantStages: stagnant.map(x => x.label),
+    problem: problemStages(stages, chapters),
     warnings: buildWarnings(cfg, stages, chapters, intervals, finalLevel),
   };
+}
+
+// ── 원인 진단: 변수(레버), 민감도, 반대 가정 ──────────────
+//
+// 레버 값은 '설계 단위'로 다룬다: 증가율(배/스테이지)은 증가분 g − 1 (1.04 → 4%)을 움직인다.
+// 배수 자체를 ±10% 하면 1.04 → 1.144가 되어 의미가 없고, 기획자도 "4%를 4.4%로"처럼 생각하기 때문.
+// dir = 체류를 줄이려면 값을 내려야 하나(−1) 올려야 하나(+1), 0 = 방향이 하나로 정해지지 않음(웨이브 시간은 골드 속도와 돌파 시간을 같이 바꿈)
+
+const LEVERS = [
+  ['hpGrowth', '몬스터 체력 증가율', -1, 'rate'],
+  ['hp0', '첫 몬스터 체력', -1],
+  ['monstersPerWave', '웨이브당 몬스터', -1],
+  ['waveLimit', '웨이브 제한 시간', 1],
+  ['goldGrowth', '웨이브 골드 증가율', 1, 'rate'],
+  ['gold0', '첫 웨이브 골드', 1],
+  ['atkPerLevel', '레벨당 공격력', 1],
+  ['atk0', '기본 공격력', 1],
+  ['waveSeconds', '웨이브 시간', 0],
+];
+
+export function levers(cfg) {
+  const out = LEVERS.map(([key, label, dir, unit = 'value']) => ({ id: key, group: 'stage', key, label, dir, unit }));
+  cfg.costIntervals.forEach((iv, i) => {
+    out.push({ id: `iv${i}.step`, group: 'interval', iv: i, key: 'step', label: `${fmtRange(iv)} 증가폭`, dir: -1, unit: 'value' });
+    out.push({ id: `iv${i}.initCost`, group: 'interval', iv: i, key: 'initCost', label: `${fmtRange(iv)} 시작 비용`, dir: -1, unit: 'value' });
+  });
+  // 실제 소요는 그대로 두고 의도를 고치는 쪽 (정체 판정만 바뀜)
+  out.push({ id: 'intent', group: 'intent', key: 'perChapterMult', label: '의도 체류 챕터 배수', dir: 1, unit: 'rate' });
+  return out;
+}
+
+export function leverValue(cfg, l) {
+  const raw = l.group === 'interval' ? cfg.costIntervals[l.iv][l.key] : l.group === 'intent' ? cfg.intendedDwell.perChapterMult : cfg[l.key];
+  return l.unit === 'rate' ? +(raw - 1).toPrecision(12) : raw;
+}
+
+/** 레버 하나만 바꾼 설정 (원본은 그대로) */
+export function withLever(cfg, l, v) {
+  const raw = l.unit === 'rate' ? 1 + v : v;
+  const c = { ...cfg };
+  if (l.group === 'interval') c.costIntervals = cfg.costIntervals.map((iv, i) => (i === l.iv ? { ...iv, [l.key]: raw } : iv));
+  else if (l.group === 'intent') c.intendedDwell = { ...cfg.intendedDwell, perChapterMult: raw };
+  else c[l.key] = raw;
+  return c;
+}
+
+/** 고칠 대상: 정체가 2곳 이상인 챕터의 정체 스테이지(정수 올림으로 생기는 단발 정체 제외), 없으면 모든 정체 */
+function problemStages(stages, chapters) {
+  const serious = new Set(chapters.filter(c => c.stagnant.length >= 2).map(c => c.chapter));
+  const xs = stages.filter(x => x.stagnant && serious.has(x.chapter));
+  return (xs.length ? xs : stages.filter(x => x.stagnant)).map(x => x.s);
+}
+const baseFlags = (stages) => { const f = new Uint8Array(stages.length + 1); for (const x of stages) if (x.stagnant) f[x.s] = 1; return f; };
+
+/** 바꾼 설정에서 대상 정체가 몇 곳 풀리고, 원래 없던 정체가 몇 곳 생기나 */
+function outcome(cfg, problem, base) {
+  const q = quick(cfg);
+  let left = 0, added = 0;
+  for (const s of problem) left += q.stagnant[s];
+  for (let s = 1; s < q.stagnant.length; s++) if (q.stagnant[s] && !base[s]) added++;
+  return { total: q.total, count: q.count, resolved: problem.length - left, left, added };
+}
+
+/** 구간 하나를 '이웃처럼' 바꾸는 반대 가정: 이웃보다 가파른 증가폭 → 이웃 중 낮은 쪽, 끊겨 올라간 시작 비용 → 앞 구간에 이어 붙임 */
+export function intervalFixes(ivs, i) {
+  const iv = ivs[i], fixes = [];
+  const nb = [ivs[i - 1], ivs[i + 1]].filter(Boolean).map(x => x.step);
+  const ref = Math.min(...nb);
+  if (nb.length && iv.step > ref) fixes.push({ lever: { id: `iv${i}.step`, group: 'interval', iv: i, key: 'step', unit: 'value', label: `${fmtRange(iv)} 증가폭` }, value: ref, what: `증가폭을 ${iv.step} → ${ref}(이웃 구간 수준)로` });
+  if (i && ivs[i - 1].lvMax != null) {
+    const cont = continuedInit(ivs[i - 1]);
+    if (iv.initCost > cont + 1e-9) fixes.push({ lever: { id: `iv${i}.initCost`, group: 'interval', iv: i, key: 'initCost', unit: 'value', label: `${fmtRange(iv)} 시작 비용` }, value: cont, what: `시작 비용을 ${iv.initCost.toLocaleString('ko-KR')} → ${cont.toLocaleString('ko-KR')}(앞 구간에 이어 붙여)` });
+  }
+  return fixes;
+}
+
+/**
+ * 민감도(토네이도): 레버마다 값을 ±pct% 바꿨을 때 총 소요와 정체 수.
+ * swing = 두 쪽 중 큰 |ln(바뀐 총 소요 ÷ 기준)| — ×2와 ×½을 같은 크기로 보려고 로그 배율로 정렬
+ */
+export function sensitivity(cfg, pct = 10) {
+  const base = quick(cfg), p = pct / 100;
+  const rows = [];
+  let flat = 0;
+  for (const l of levers(cfg)) {
+    if (l.group === 'intent') continue; // 의도는 실제 소요를 바꾸지 않음
+    const v = leverValue(cfg, l);
+    if (!(v > 0)) continue;
+    const side = (f) => { const q = quick(withLever(cfg, l, v * f)); return { value: v * f, total: q.total, ratio: q.total / base.total, stagnant: q.count }; };
+    const lo = side(1 - p), hi = side(1 + p);
+    const swing = Math.max(Math.abs(Math.log(lo.ratio)), Math.abs(Math.log(hi.ratio)));
+    if (!(swing > 1e-6)) { flat++; continue; } // 아직 도달하지 않는 구간 등
+    rows.push({ lever: l, value: v, lo, hi, swing: Number.isFinite(swing) ? swing : Infinity });
+  }
+  rows.sort((a, b) => b.swing - a.swing);
+  return { pct, baseTotal: base.total, baseStagnant: base.count, rows, flat };
+}
+
+// 유효 숫자 4자리, 정체가 다시 생기지 않는 쪽으로 반올림
+function roundSafe(x, dir) {
+  if (!(x > 0)) return x;
+  const m = 10 ** (Math.floor(Math.log10(x)) - 3);
+  return +((dir < 0 ? Math.floor(x / m) : Math.ceil(x / m)) * m).toPrecision(12);
+}
+
+/**
+ * 해소에 필요한 최소 변경: 레버 하나만 움직여 대상 정체를 모두 풀려면 얼마나 바꿔야 하나 (로그 이분 탐색, 최대 100배·1/100).
+ * 필요한 변화가 작은 레버일수록 그 정체를 좌우하는 변수다.
+ */
+export function solveLevers(cfg, res) {
+  const problem = res.problem;
+  if (!problem?.length) return { problem: [], rows: [] };
+  const base = baseFlags(res.stages), pset = new Set(problem);
+  const rows = [];
+  for (const l of levers(cfg)) {
+    if (!l.dir) continue;
+    const v = leverValue(cfg, l);
+    if (!(v > 0)) continue;
+    if (l.group === 'interval' && !res.intervals[l.iv].stagnant.some(x => pset.has(x.s))) continue; // 정체와 무관한 구간
+    const at = (f) => outcome(withLever(cfg, l, v * f), problem, base);
+    const end = Math.log(l.dir < 0 ? 0.01 : 100);
+    const far = at(Math.exp(end));
+    if (far.left) { rows.push({ lever: l, value: v, feasible: false, left: far.left }); continue; }
+    let a = 0, b = end; // a: 아직 남음, b: 모두 풀림
+    for (let k = 0; k < 30; k++) { const m = (a + b) / 2; if (at(Math.exp(m)).left) a = m; else b = m; }
+    let target = roundSafe(v * Math.exp(b), l.dir);
+    if (at(target / v).left) target = v * Math.exp(b);
+    const o = at(target / v);
+    rows.push({ lever: l, value: v, target, change: target / v - 1, feasible: true, total: o.total, stagnant: o.count, added: o.added });
+  }
+  rows.sort((x, y) => (x.feasible === y.feasible ? (x.feasible ? Math.abs(Math.log(x.target / x.value)) - Math.abs(Math.log(y.target / y.value)) : 0) : x.feasible ? -1 : 1));
+  return { problem, rows };
 }
 
 // 스테이지가 올리는 레벨 범위 [levelFrom, levelReq)가 구간과 겹치나 (마지막 구간은 끝 이후도 포함)
@@ -184,25 +340,30 @@ function buildWarnings(cfg, stages, chapters, intervals, finalLevel) {
     });
   }
 
-  // 원인 구간: 정체 스테이지가 몰린 구간의 증가폭이 앞뒤 구간보다 가파른가
-  const totalStag = stages.filter(x => x.stagnant).length;
-  for (const it of intervals) {
-    const i = it.index;
-    const prev = ivs[i - 1], next = ivs[i + 1];
-    const spike = !!(prev && next) && it.iv.step > prev.step && it.iv.step > next.step;
-    if (it.stagnant.length && spike) {
-      warnings.push({
-        level: 'serious', kind: 'cause', interval: i,
-        text: `원인 후보: ${fmtRange(it.iv)} 구간의 증가폭(${it.iv.step})이 앞뒤 구간(${prev.step}, ${next.step})보다 가파릅니다. 정체 ${totalStag}곳 중 ${it.stagnant.length}곳이 이 구간 레벨을 요구합니다.`,
-      });
-    } else if (it.stagnant.length >= 2) {
-      warnings.push({
-        level: 'warn', kind: 'cause', interval: i,
-        text: `정체 ${totalStag}곳 중 ${it.stagnant.length}곳이 ${fmtRange(it.iv)} 구간(증가폭 ${it.iv.step})에 몰려 있습니다. 이 구간의 시작 비용·증가폭이나 웨이브 골드 증가율을 확인하세요.`,
-      });
-    } else if (spike && it.stages.length) {
-      warnings.push({ level: 'info', kind: 'spike', interval: i, text: `${fmtRange(it.iv)} 구간의 증가폭(${it.iv.step})이 앞뒤 구간(${prev.step}, ${next.step})보다 크지만, 정체 기준을 넘는 스테이지는 ${it.stagnant.length ? `${it.stagnant.length}곳뿐입니다` : '없습니다'}.` });
+  // 원인 구간 (반대 가정): 정체 스테이지가 올리는 구간이 이웃처럼 생겼다면 정체가 풀리나 — 다시 계산해서 확인.
+  // 증가폭 숫자만 비교하면 구간마다 시작 비용·레벨 규모가 달라 오판하고, 실제로는 성장률이 원인인 경우를 놓친다.
+  const problem = problemStages(stages, chapters);
+  if (problem.length) {
+    const base = baseFlags(stages);
+    const pset = new Set(problem);
+    const n = problem.length, hrs = (sec) => (sec / 3600).toFixed(1);
+    let decisive = false;
+    for (const it of intervals) {
+      if (!it.stagnant.some(x => pset.has(x.s))) continue;
+      for (const fix of intervalFixes(ivs, it.index)) {
+        const o = outcome(withLever(cfg, fix.lever, fix.value), problem, base);
+        const k = o.resolved, extra = o.added ? `, 대신 새 정체 ${o.added}곳` : '';
+        if (k * 2 >= n) {
+          decisive = true;
+          warnings.push({ level: 'serious', kind: 'cause', interval: it.index, fix, text: `원인: ${fmtRange(it.iv)} 구간 ${fix.what} 바꾸면 정체 ${n}곳 중 ${k}곳이 풀립니다 (총 소요 ${hrs(stages.at(-1).elapsedSec)} → ${hrs(o.total)}시간${extra}).` });
+        } else if (k) {
+          warnings.push({ level: 'warn', kind: 'cause', interval: it.index, fix, text: `${fmtRange(it.iv)} 구간 ${fix.what} 바꿔도 정체 ${n}곳 중 ${k}곳만 풀립니다 — 이 구간보다 다른 변수의 영향이 큽니다 (아래 '해소에 필요한 최소 변경').` });
+        } else {
+          warnings.push({ level: 'info', kind: 'notCause', interval: it.index, fix, text: `${fmtRange(it.iv)} 구간은 ${fix.what} 바꿔도 정체가 하나도 풀리지 않습니다.` });
+        }
+      }
     }
+    if (!decisive) warnings.push({ level: 'warn', kind: 'global', text: `정체 ${n}곳은 특정 비용 구간 탓이 아닙니다 — 어느 구간을 이웃 수준으로 바꿔도 절반 이상 풀리지 않습니다. 체력·골드 증가율, 레벨당 공격력 같은 전체 변수를 '해소에 필요한 최소 변경'에서 비교하세요.` });
   }
 
   // 구간 경계 비용 점프

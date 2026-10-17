@@ -1,6 +1,7 @@
 // 가챠·수집 설계 — 화면: 왼쪽 설정(템플릿·비용·천장·픽업·마일리지·기준 유저), 오른쪽 등급·확률 → 목표 → 달성 곡선·예산 → 검증
 import { analyze, helpers, GOAL_TYPES, disclosure, unitExpectations } from './model.js';
 import { TEMPLATES } from './presets.js';
+import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma, fmtMoney, fmtPct } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -29,7 +30,7 @@ export function mount(root) {
   if (location.hash.startsWith('#gacha?')) history.replaceState(null, '', '#gacha');
   build(root);
   rebuild();
-  document.addEventListener('themechange', () => last && drawChart(last));
+  document.addEventListener('themechange', () => { if (last) { drawChart(last); renderQuantiles(last); } });
   window.addEventListener('hashchange', () => { const st = readHash(); if (st) { state = st; history.replaceState(null, '', '#gacha'); rebuild(); } });
 }
 
@@ -70,6 +71,7 @@ function build(root) {
             ),
           ),
         ),
+        els.quantCard = h('div.card.role-out'),
         h('div.two-col', {},
           els.why = h('div.card.role-out'),
           els.verify = h('div.card.role-check'),
@@ -290,7 +292,37 @@ function showSelected(res) {
   );
   renderBudget(res);
   drawChart(res);
+  renderQuantiles(res);
   renderWhy(r);
+}
+
+/** 달성 분위별 수치: 뽑기·비용·무과금 도달일·천장 발동을 0.1% ~ 99.9%로 */
+function renderQuantiles(res) {
+  const r = res.goals[state.view];
+  const pulls = Array.from(r.quant);
+  const times = (v) => (Number.isFinite(v) ? `${comma(v)}회` : '—');
+  const metrics = [
+    { id: 'pulls', label: '뽑기', values: pulls, mean: r.mean, fmt: times, short: comma },
+    { id: 'cost', label: hasWon() ? '비용' : state.gemName, values: pulls.map(pullsToMoney), mean: pullsToMoney(r.mean), fmt: money, short: (v) => fmtMoney(v) },
+  ];
+  if (res.gemPerDayFree > 0) {
+    const d = (n) => n * state.pullCost / res.gemPerDayFree;
+    metrics.push({ id: 'free', label: '무과금 도달', values: pulls.map(d), mean: d(r.mean), fmt: days, short: (v) => comma(v) });
+  }
+  const pity = r.sim.pity;
+  if (pity) metrics.push({ id: 'pity', label: '천장 구간 당첨', values: Array.from(pity.quantiles), mean: pity.mean, fmt: (v) => (Number.isInteger(v) ? times(v) : `${v.toFixed(2)}회`), short: comma });
+  const simNote = `0.1%·99.9%는 시뮬레이션 ${comma(r.sim.runs)}회 중 바깥쪽 ${comma(tailSamples(r.sim.runs))}회로 정해지는 값이라 흔들릴 수 있습니다 (왼쪽 '계산'에서 횟수를 늘리세요).`;
+  const notes = [];
+  if (r.exact) notes.push('뽑기·비용·도달일은 정확한 분포(동적 계획법).');
+  if (!r.exact || pity) notes.push(r.exact ? `천장 구간 당첨은 시뮬레이션: ${simNote}` : simNote);
+  if (pity) notes.push(`천장 구간 당첨 = 마지막 최상위 이후 ${comma(pity.from)}번째 뽑기부터(${pity.from < state.pity.hard ? '확률 상승 구간 ~ ' : ''}확정 천장 ${comma(state.pity.hard)}번째) 최상위가 나온 횟수 — 목표가 아닌 캐릭터도 셈.`);
+  renderQuantileCard(els.quantCard, {
+    title: `달성 분위별 수치 — ${r.goal.name}`,
+    hint: r.exact ? '정확한 분포' : `시뮬레이션 ${comma(r.sim.runs)}회${r.exactMean != null ? ' · 평균은 정확해' : ''}`,
+    metrics, selected: state.quantMetric ?? 'pulls',
+    onSelect: (id) => { state.quantMetric = id; save(); renderQuantiles(last); },
+    note: notes.join(' '),
+  });
 }
 
 function renderKPIs(res) {

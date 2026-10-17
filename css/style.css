@@ -781,3 +781,50 @@ main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), s
 .disc-names input { width: 100%; }
 .disc-eff { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .disc-notes { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--text-2); }
+
+/* ── 스테이지 성장: 정체 원인 · 민감도(토네이도) ─────────────
+   막대 색 = 입력을 어느 쪽으로 바꿨나(값 내림 / 값 올림), 위치 = 총 소요가 짧아짐(왼쪽) / 길어짐(오른쪽). 길이는 로그 배율 */
+:root { --tor-down: #eb6834; --tor-up: #2a78d6; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { --tor-down: #d95926; --tor-up: #3987e5; } }
+:root[data-theme="dark"] { --tor-down: #d95926; --tor-up: #3987e5; }
+.diag-sub { margin: 18px 0 8px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; justify-content: space-between; }
+.diag-sub:first-of-type { margin-top: 4px; }
+.diag-sub h3 { margin: 0; font-size: 14.5px; }
+.diag-sub .tool-actions { align-items: center; }
+.tor-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--text-2); margin-bottom: 6px; }
+.tor-legend i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+.tor-axis { display: grid; grid-template-columns: minmax(150px, 230px) 1fr 84px; gap: 12px; font-size: 11.5px; color: var(--text-3); }
+.tor-axis > span:nth-child(2) { display: flex; justify-content: space-between; }
+.tornado { display: grid; }
+.tor-row { display: grid; grid-template-columns: minmax(150px, 230px) 1fr 84px; gap: 12px; align-items: center; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; }
+.tor-row:hover { background: var(--surface-2); }
+.tor-label { font-size: 13px; line-height: 1.35; }
+.tor-label small { display: block; color: var(--text-3); font-size: 11.5px; }
+.tor-track { position: relative; height: 24px; }
+.tor-track::before { content: ''; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--line-strong); }
+.tor-bar { position: absolute; height: 9px; }
+.tor-bar.lo { top: 2px; background: var(--tor-down); }
+.tor-bar.hi { top: 13px; background: var(--tor-up); }
+.tor-bar.r { left: 50%; border-radius: 0 4px 4px 0; }
+.tor-bar.l { right: 50%; border-radius: 4px 0 0 4px; }
+.tor-val { position: absolute; font-size: 11px; line-height: 11px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tor-val.lo { top: 1px; } .tor-val.hi { top: 12px; }
+.tor-stag { font-size: 12px; color: var(--text-3); text-align: right; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.tor-stag b { color: var(--bad); font-weight: 600; }
+.solve-table td.lever { text-align: left; }
+.solve-table td.lever small { display: block; color: var(--text-3); }
+.solve-table tr.top td { font-weight: 600; }
+@media (max-width: 640px) {
+  .tor-row, .tor-axis { grid-template-columns: 1fr; gap: 2px; }
+  .tor-axis > span:first-child, .tor-axis > span:last-child { display: none; }
+  .tor-stag { text-align: left; }
+}
+.stages.solve-table { min-width: 680px; }
+
+/* ── 달성 분위별 수치 (강화·가챠 공용) ── */
+.stages.q-table { min-width: 560px; margin-top: 10px; }
+.q-table td.left, .q-table th.left { text-align: left; }
+.q-table tr.q-mid td { font-weight: 600; }
+.q-table td.q-sel { color: var(--text); font-weight: 600; background: var(--role-out-soft); }
+.q-table tr.q-mean td { border-top: 1px solid var(--line-strong); }
+.q-note { margin: 8px 0 0; }

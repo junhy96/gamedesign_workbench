@@ -196,3 +196,61 @@ test('캐릭터 1장 기대 뽑기: 고정 확률이면 등급마다 n ÷ p, 캐
   close(u.find(x => x.gi === 1).mean, 5 / 0.05, 1e-6);
   assert.deepEqual(unitNames({ ...cfg, grades: cfg.grades.map((g, i) => (i === 1 ? { ...g, names: ['갑', '', '병'] } : g)) }, 1), ['갑', '희귀 2', '병', '희귀 4', '희귀 5']);
 });
+
+test('분위수 표: 정확해 분위 = 누적 분포에서 찾은 값, 천장 발동 분위는 시뮬레이션', async () => {
+  const { PCTS, quantile } = await import('../js/lib/quantiles.js');
+  for (const id of Object.keys(TEMPLATES)) {
+    const cfg = TEMPLATES[id].make();
+    const res = analyze(cfg, { runs: 2000 });
+    if (!res.ok) continue;
+    for (const r of res.goals) {
+      assert.equal(r.quant.length, PCTS.length);
+      for (let i = 1; i < r.quant.length; i++) assert.ok(r.quant[i] >= r.quant[i - 1], `${id} ${r.goal.name} 단조`);
+      if (r.exact) {
+        // 정확한 분위 = 누적 확률이 처음 p 이상이 되는 뽑기 수 (보간 없는 누적 분포에서 확인)
+        PCTS.forEach((p, i) => { assert.ok(r.exact.reach(r.quant[i]) >= p - 1e-9, `${id} ${p}`); });
+        assert.equal(r.quant[PCTS.indexOf(0.5)], r.pct.p50);
+        assert.equal(r.quant[PCTS.indexOf(0.99)], r.pct.p99);
+      } else {
+        PCTS.forEach((p, i) => assert.equal(r.quant[i], quantile(r.sim.sorted, p)));
+      }
+      if (r.sim.pity) {
+        assert.ok(r.spec.isTop && cfg.pity.enabled);
+        assert.ok(r.sim.pity.quantiles.every(v => Number.isInteger(v) && v >= 0));
+        // 천장 구간 당첨에는 확정 천장으로 얻은 목표 장수가 모두 들어 있다
+        assert.ok(r.sim.pity.mean >= r.sim.sources.pity - 1e-12);
+      }
+    }
+  }
+});
+
+test('분위수 표: 확정 천장만 있는 1장 목표 — 천장 구간 당첨은 0 또는 1회, 확률 = (1 − p)^(N−1)', () => {
+  const cfg = TEMPLATES.blank.make();
+  const top = cfg.grades.length - 1;
+  cfg.levels = [0];
+  cfg.grades.forEach((g, i) => { g.probs = [i === top ? 1 : g.probs[0]]; g.exchange = 0; });
+  const rest = cfg.grades.slice(0, top).reduce((a, g) => a + g.probs[0], 0);
+  cfg.grades[0].probs[0] += 100 - 1 - rest;
+  cfg.pity = { enabled: true, hard: 50, softStart: 50, softStep: 0 };
+  cfg.pickup = { ...(cfg.pickup || {}), enabled: false };
+  cfg.mileage = { ...(cfg.mileage || {}), enabled: false };
+  cfg.grades[top].kinds = 1;
+  cfg.goals = [{ id: 'g1', name: '최상위 1장', type: 'unit', grade: cfg.grades[top].id, kinds: 1, copies: 1 }];
+  const res = analyze(cfg, { runs: 20000 });
+  assert.equal(res.ok, true, String(res.errors));
+  const r = res.goals[0];
+  const want = 0.99 ** 49;
+  assert.ok(Math.abs(r.sim.pity.mean - want) < 0.015, `${r.sim.pity.mean} vs ${want}`);
+  assert.ok(r.sim.pity.quantiles.every(v => v === 0 || v === 1));
+  assert.equal(r.quant.at(-1), 50); // 99.9%는 천장
+});
+
+test('분위수 표: 확률 상승 구간이 있으면 그 구간 당첨을 센다 (확정 천장은 거의 안 감)', () => {
+  const cfg = TEMPLATES.pity.make();
+  const res = analyze(cfg, { runs: 3000 });
+  const r = res.goals.find(x => x.sim.pity && x.goal.type === 'pickup' && x.goal.copies === 1);
+  assert.equal(r.sim.pity.from, cfg.pity.softStart);
+  // 최상위 1장(픽업 50%면 평균 1.5장 남짓)마다 상승 구간까지 갈 확률이 크므로 평균이 0보다 확실히 큼
+  assert.ok(r.sim.pity.mean > 0.3, String(r.sim.pity.mean));
+  assert.ok(r.sim.sources.pity < 0.01);
+});

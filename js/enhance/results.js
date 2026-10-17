@@ -1,6 +1,7 @@
 // 결과 영역: KPI(기준안 대비)·고정 띠, 분포·예산, 재화별 소모, 검증, 아이템 최적화(MDP), 아이템 가격 곡선, 목표 비용 역산
 import { optimizeItems, solveForCost, priceSweep, specUnits, isQty, MAX_SWEEP_POINTS } from './model.js';
 import { reachProbability } from './simulate.js';
+import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
 import { h, fmtMoney, fmtMoneyShort, fmtPct, fmtNum, comma, toast } from '../lib/util.js';
 import { money as won, moneyShort as wonShort, currency, toDisplay, fromDisplay } from './currency.js';
 export { won };
@@ -101,7 +102,26 @@ export function renderMC(ctx, els, mc, res) {
   );
   renderBudget(ctx, els);
   drawChart(ctx, els, mc);
+  renderQuantiles(ctx, els, mc, res);
   renderVerify(els, res, mc);
+}
+
+/** 달성 분위별 수치: 총비용·시도·파괴를 0.1% ~ 99.9%로 (평균은 정확해) */
+export function renderQuantiles(ctx, els, mc, res) {
+  const q = mc.quantiles;
+  const times = (v) => `${comma(v)}회`;
+  renderQuantileCard(els.quantCard, {
+    title: '달성 분위별 수치',
+    hint: `목표까지 — 시뮬레이션 ${comma(mc.trials)}회 · 평균은 정확해`,
+    metrics: [
+      { id: 'cost', label: '총비용', values: Array.from(q.cost), mean: res.expCost, fmt: won, short: wonShort },
+      { id: 'attempts', label: '시도', values: Array.from(q.attempts), mean: res.attempts, fmt: times, short: comma },
+      ...(res.expDestroy > 0 ? [{ id: 'destroys', label: '파괴', values: Array.from(q.destroys), mean: res.expDestroy, fmt: (v) => (Number.isInteger(v) ? times(v) : `${v.toFixed(2)}회`), short: comma }] : []),
+    ],
+    selected: ctx.state.quantMetric ?? 'cost',
+    onSelect: (id) => { ctx.state.quantMetric = id; ctx.save(); renderQuantiles(ctx, els, mc, res); },
+    note: `0.1%·99.9%는 ${comma(mc.trials)}회 중 바깥쪽 ${comma(tailSamples(mc.trials))}회로 정해지는 값이라 반복 수가 적으면 흔들립니다.`,
+  });
 }
 
 export function renderMCSkipped(ctx, els, res) {
@@ -111,6 +131,7 @@ export function renderMCSkipped(ctx, els, res) {
   els.attemptsSub.textContent = '';
   els.pct.replaceChildren();
   els.budgetOut.replaceChildren(h('span.muted', {}, '시뮬레이션 생략'));
+  els.quantCard.replaceChildren(h('div.card-head', {}, h('h2', {}, '달성 분위별 수치')), h('p.muted', {}, '기대 시도 횟수가 너무 커서 시뮬레이션을 생략했습니다.'));
   ctx.chart?.destroy(); ctx.chart = null;
   renderVerify(els, res, null);
 }

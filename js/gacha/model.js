@@ -30,6 +30,7 @@
 //     마일리지는 뽑기 수만으로 정해지는 시점에 1장을 더하므로 그대로 반영된다. 분포 전체(분위수·예산별 도달 확률)가 정확하다.
 
 import { mulberry32 } from '../enhance/simulate.js';
+import { PCTS, quantiles } from '../lib/quantiles.js';
 
 export const GOAL_TYPES = { collect: '수집 (K종 × k장)', pickup: '픽업 유닛 k장', unit: '특정 캐릭터 k장' };
 const MAX_PULLS = 1e9; // 한 번 시행의 상한 (확률 0 등으로 닿지 못하는 목표)
@@ -153,13 +154,16 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
   const shardRate = P.map(row => row.reduce((a, p, h) => a + (h === g ? 0 : p * (cfg.grades[h].shard || 0)), 0));
 
   const out = new Float64Array(runs);
+  // 시행마다 천장 구간 당첨 횟수: 확률 상승 구간(또는 확정 천장)에서 최상위가 나온 횟수 — 목표가 아닌 캐릭터도 셈.
+  // 확률 상승이 있으면 확정 천장까지 가는 일은 드물어(템플릿: 0.002%) 확정만 세면 늘 0이 된다
+  const pityRuns = pityOn ? new Float64Array(runs) : null;
   const src = { pull: 0, pity: 0, mileage: 0, exchange: 0 };
   const need = new Int32Array(K);
   const takeBest = () => { let b = 0; for (let i = 1; i < K; i++) if (need[i] > need[b]) b = i; need[b]--; };
 
   for (let r = 0; r < runs; r++) {
     need.fill(k);
-    let remaining = K * k, t = 0, c = 0, guar = false, miles = 0, shards = 0;
+    let remaining = K * k, t = 0, c = 0, guar = false, miles = 0, shards = 0, pityHits = 0;
     while (remaining > 0) {
       // 교환 (가능하면 바로)
       while (mil && remaining > 0 && miles >= mil.cost) { miles -= mil.cost; if (need[0] > 0) need[0]--; else takeBest(); remaining--; src.mileage++; }
@@ -174,12 +178,12 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
       if (mil) cap = Math.min(cap, Math.ceil((mil.cost - miles) / mil.per));
       if (exCost > 0 && rate > 0) cap = Math.min(cap, Math.ceil((exCost - shards) / rate));
 
-      let forced = false;
+      let forced = false, zone = false;
       if (cap <= 0) { // 천장 확률 상승 구간: 한 번씩
         const pj = topProb(cfg, P[L][g], c + 1);
         t++; miles += mil ? mil.per : 0; shards += rate;
         if (rnd() >= pj) { c++; continue; }
-        forced = pj >= 1;
+        forced = pj >= 1; zone = true;
       } else {
         const gap = geometric(P[L][g], rnd);
         if (gap > cap) {
@@ -191,6 +195,7 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
       }
       // 당첨: 어떤 유닛인가
       c = 0;
+      if (zone) pityHits++;
       let kind;
       if (pick) {
         if (guar || rnd() < pick.share) { kind = 0; guar = false; }
@@ -200,8 +205,11 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
       else shards += shardDup;
     }
     out[r] = t;
+    if (pityRuns) pityRuns[r] = pityHits;
   }
   out.sort();
+  let pitySum = 0;
+  if (pityRuns) { for (const v of pityRuns) pitySum += v; pityRuns.sort(); }
   let sum = 0, finite = 0;
   for (const v of out) if (Number.isFinite(v)) { sum += v; finite++; }
   const per = (v) => v / runs;
@@ -210,6 +218,7 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
     mean: finite === runs ? sum / runs : Infinity,
     q: (p) => quantile(out, p),
     sources: { pull: per(src.pull), pity: per(src.pity), mileage: per(src.mileage), exchange: per(src.exchange) },
+    pity: pityRuns ? { mean: pitySum / runs, quantiles: quantiles(pityRuns), from: softFrom } : null,
   };
 }
 
@@ -299,7 +308,7 @@ export function exactUnit(cfg, goal, { maxWork = 3e8, tol = 1e-10 } = {}) {
   let cur = new Float64Array(S), next = new Float64Array(S);
   cur[idx(0, 0, 0)] = 1;
   let survive = 1, mean = 0, t = 0, work = 0;
-  const qs = [0.5, 0.9, 0.99], qv = [null, null, null];
+  const qs = PCTS, qv = PCTS.map(() => null);
   const cdf = []; let stride = 1;
   const pushCdf = (tt, F) => {
     if (tt % stride) return;
@@ -360,7 +369,8 @@ export function exactUnit(cfg, goal, { maxWork = 3e8, tol = 1e-10 } = {}) {
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (cdf[mid][0] <= budgetPulls) lo = mid; else hi = mid - 1; }
     return cdf[lo][1];
   };
-  return { mean, q50: qv[0], q90: qv[1], q99: qv[2], cdf, reach };
+  const at = (p) => qv[PCTS.indexOf(p)] ?? t;
+  return { mean, q50: at(0.5), q90: at(0.9), q99: at(0.99), quantiles: qv.map(v => v ?? t), cdf, reach };
 }
 export const exactPickup = exactUnit; // 이전 이름
 
@@ -479,12 +489,13 @@ export function analyze(cfg, { runs = cfg.runs ?? 3000 } = {}) {
     const exactMean = exact ? exact.mean : exactCollectMean(cfg, goal);
     const mean = exactMean ?? sim.mean;
     const pct = exact ? { p50: exact.q50, p90: exact.q90, p99: exact.q99 } : { p50: sim.q(0.5), p90: sim.q(0.9), p99: sim.q(0.99) };
+    const quant = exact ? exact.quantiles : quantiles(sim.sorted); // 분위수 표 (PCTS 순서)
     const gems = mean * cfg.pullCost;
     const reach = exact ? exact.reach : (n) => reachShare(sim.sorted, n);
     const nd = noDupConfig(cfg, goal);
     const noDup = nd ? (exactCollectMean(nd.cfg, nd.goal) ?? simulateGoal(nd.cfg, nd.goal, runs, 20261017 + i * 7919).mean) : null;
     return {
-      goal, spec: goalSpec(cfg, goal), sim, exact, exactMean, mean, pct, reach, noDup,
+      goal, spec: goalSpec(cfg, goal), sim, exact, exactMean, mean, pct, quant, reach, noDup,
       naive: naivePulls(cfg, goal),
       gems, won: gems * cfg.wonPerGem,
       daysFree: gemPerDayFree > 0 ? gems / gemPerDayFree : Infinity,

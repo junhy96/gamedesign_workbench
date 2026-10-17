@@ -1,5 +1,5 @@
 // 방치형 스테이지 성장 — 화면: 왼쪽 설정(구조·몬스터·골드·의도 체류), 오른쪽 체류 그래프 → 강화 비용 구간 표 → 챕터 표·검증
-import { analyze, fmtBig, fmtBigShort, fmtDur, continuedInit, parseIntervalsCSV, intervalsToCSV, CSV_FIELDS } from './model.js';
+import { analyze, fmtBig, fmtBigShort, fmtDur, continuedInit, parseIntervalsCSV, intervalsToCSV, CSV_FIELDS, sensitivity, solveLevers } from './model.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
 
@@ -20,7 +20,7 @@ const opened = new Set(); // 펼친 챕터
 const save = debounce(() => store.set(STORE_KEY, state), 300);
 const schedule = (ms = 150) => { clearTimeout(timer); timer = setTimeout(recompute, ms); };
 
-function defaultState(id) { return { v: SCHEMA, template: id, view: 'dwell', numFmt: 'kr', ...TEMPLATES[id].make() }; }
+function defaultState(id) { return { v: SCHEMA, template: id, view: 'dwell', numFmt: 'kr', sensPct: 10, ...TEMPLATES[id].make() }; }
 function hydrate(o) {
   if (o?.tool === 'stage' && o.state) o = o.state; // 'JSON 저장' 파일(머리 정보 + state)도 그대로 받음
   return o && o.v === SCHEMA && TEMPLATES[o.template] ? { ...defaultState(o.template), ...o } : null;
@@ -66,6 +66,7 @@ function build(root) {
           h('div.chart-box.tall', {}, els.canvas = h('canvas', { role: 'img', 'aria-label': '스테이지별 실제 체류 시간과 의도 체류 시간' })),
         ),
         els.warnCard = h('div.card.role-check'),
+        els.diagCard = h('div.card.role-tool'),
         els.ivCard = h('div.card.role-in'),
         els.chapterCard = h('div.card.role-out'),
       ),
@@ -83,32 +84,48 @@ function num(obj, key, opts = {}) {
 }
 const select = (options, value, onchange) => h('select', { onchange: (e) => onchange(e.target.value) }, ...options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(value) }, l)));
 
+// 증가율(배/스테이지)은 %로 입력: 1.04 ↔ 4. 0.1%만 바뀌어도 총 소요가 수십 % 흔들리므로 0.01%p 단위
+const pctOf = (g) => +((g - 1) * 100).toPrecision(10);
+function pctNum(obj, key, label) {
+  return h('input', {
+    type: 'number', value: pctOf(obj[key]), step: 0.01, 'aria-label': label,
+    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v > -100) { obj[key] = +(1 + v / 100).toPrecision(12); refreshLive(); schedule(); } },
+  });
+}
+
+// 입력에 따라 바뀌는 요약·안내 글자 (메뉴를 다시 그리면 입력 중인 칸이 포커스를 잃으므로 글자만 갱신)
+let live = [];
+const liveText = (tag, fn) => { const el = h(tag, {}, fn()); live.push([el, fn]); return el; };
+function refreshLive() { for (const [el, fn] of live) el.textContent = fn(); }
+
 const OPEN_KEY = 'stage:sideOpen';
 function section(id, title, summary, ...body) {
   const open = (store.get(OPEN_KEY) || {})[id] ?? (id === 'base' || matchMedia('(min-width: 1101px)').matches);
   return h('details.side-sec', { open, ontoggle: (e) => store.set(OPEN_KEY, { ...(store.get(OPEN_KEY) || {}), [id]: e.target.open }) },
-    h('summary', {}, h('span.side-title', {}, title), summary ? h('span.side-sum', {}, summary) : null),
+    h('summary', {}, h('span.side-title', {}, title), typeof summary === 'function' ? liveText('span.side-sum', summary) : summary ? h('span.side-sum', {}, summary) : null),
     h('div.side-body', {}, ...body.filter(Boolean)));
 }
 
 // ── 왼쪽 메뉴 ───────────────────────────────────────────
 function renderSide() {
   const s = state, d = s.intendedDwell;
-  const resum = () => renderSide();
+  const resum = refreshLive;
+  const growthHint = (key) => () => `×${s[key]} / 스테이지 · 챕터당 ×${(s[key] ** s.stagesPerChapter).toFixed(2)}`;
+  live = [];
   els.side.replaceChildren(
-    section('base', '템플릿 · 구조', `${s.chapters}챕터 × ${s.stagesPerChapter}`,
+    section('base', '템플릿 · 구조', () => `${s.chapters}챕터 × ${s.stagesPerChapter}`,
       select(Object.entries(TEMPLATES).map(([id, t]) => [id, t.label]), s.template, (v) => { state = defaultState(v); opened.clear(); rebuild(); }),
       h('p.desc', {}, TEMPLATES[s.template].note),
       h('div.row2', {},
-        field('챕터 수', num(s, 'chapters', { int: true, min: 1, label: '챕터 수' })),
-        field('챕터당 스테이지', num(s, 'stagesPerChapter', { int: true, min: 1, label: '챕터당 스테이지' }))),
+        field('챕터 수', num(s, 'chapters', { int: true, min: 1, label: '챕터 수', after: resum })),
+        field('챕터당 스테이지', num(s, 'stagesPerChapter', { int: true, min: 1, label: '챕터당 스테이지', after: resum }))),
       field('큰 수 표시', select([['kr', '만·억·조·경 (25억 7,633만)'], ['exp', '지수 (2.58e9)']], s.numFmt, (v) => { s.numFmt = v; save(); renderIntervals(); recompute(); }),
         '1해(10²⁰) 이상은 한국식에서도 지수로 표시합니다'),
     ),
-    section('monster', '몬스터 · 웨이브', `체력 ×${s.hpGrowth}/스테이지`,
+    section('monster', '몬스터 · 웨이브', () => `체력 +${pctOf(s.hpGrowth)}%/스테이지`,
       h('div.row2', {},
         field('첫 몬스터 체력', num(s, 'hp0', { min: 0, label: '첫 몬스터 체력' })),
-        field('체력 증가 (배/스테이지)', num(s, 'hpGrowth', { min: 0, step: 0.01, label: '체력 증가율', after: resum }))),
+        h('label.field', {}, h('span', {}, '체력 증가 (%/스테이지)'), pctNum(s, 'hpGrowth', '체력 증가율 (%)'), liveText('small', growthHint('hpGrowth')))),
       h('div.row2', {},
         field('웨이브당 몬스터', num(s, 'monstersPerWave', { min: 1, label: '웨이브당 몬스터' })),
         field('웨이브 제한 (초)', num(s, 'waveLimit', { min: 0, label: '웨이브 제한 시간' }))),
@@ -117,21 +134,21 @@ function renderSide() {
         field('돌파 웨이브 수', num(s, 'wavesPerStage', { int: true, min: 0, label: '돌파 웨이브 수' }))),
       h('p.desc', {}, '돌파 조건: 공격력 × 제한 시간 ≥ 몬스터 수 × 체력. 레벨이 이미 충분하면 돌파 웨이브 수 × 웨이브 시간만 머뭅니다.'),
     ),
-    section('gold', '골드 · 공격력', `골드 ×${s.goldGrowth}/스테이지`,
+    section('gold', '골드 · 공격력', () => `골드 +${pctOf(s.goldGrowth)}%/스테이지`,
       h('div.row2', {},
         field('첫 웨이브 골드', num(s, 'gold0', { min: 0, label: '첫 웨이브 골드' })),
-        field('골드 증가 (배/스테이지)', num(s, 'goldGrowth', { min: 0, step: 0.01, label: '골드 증가율', after: resum }))),
+        h('label.field', {}, h('span', {}, '골드 증가 (%/스테이지)'), pctNum(s, 'goldGrowth', '골드 증가율 (%)'), liveText('small', growthHint('goldGrowth')))),
       h('div.row2', {},
         field('기본 공격력', num(s, 'atk0', { label: '기본 공격력' })),
         field('레벨당 공격력', num(s, 'atkPerLevel', { min: 0, label: '레벨당 공격력' }))),
       h('p.desc', {}, '다음 스테이지를 열 레벨까지 지금 스테이지 웨이브 골드로 강화한다고 봅니다 (방치 파밍).'),
     ),
-    section('intent', '의도 체류 · 정체 기준', `${d.baseSeconds}초 × ${d.perChapterMult}ⁿ · ${s.stagnationRatio}배`,
+    section('intent', '의도 체류 · 정체 기준', () => `${d.baseSeconds}초 × ${d.perChapterMult}ⁿ · ${s.stagnationRatio}배`,
       h('div.row2', {},
         field('1챕터 의도 (초/스테이지)', num(d, 'baseSeconds', { min: 0, label: '1챕터 의도 체류', after: resum })),
         field('챕터마다 배수', num(d, 'perChapterMult', { min: 0, step: 0.05, label: '챕터당 배수', after: resum }))),
-      field('정체 기준 (의도의 n배 초과)', num(s, 'stagnationRatio', { min: 1, step: 0.5, label: '정체 기준', after: resum }),
-        `챕터 c의 의도 체류 = ${d.baseSeconds}초 × ${d.perChapterMult}^(c−1). 실제가 그 ${s.stagnationRatio}배를 넘으면 정체, 1/${s.stagnationRatio} 미만이면 너무 빠름`),
+      h('label.field', {}, h('span', {}, '정체 기준 (의도의 n배 초과)'), num(s, 'stagnationRatio', { min: 1, step: 0.5, label: '정체 기준', after: resum }),
+        liveText('small', () => `챕터 c의 의도 체류 = ${d.baseSeconds}초 × ${d.perChapterMult}^(c−1). 실제가 그 ${s.stagnationRatio}배를 넘으면 정체, 1/${s.stagnationRatio} 미만이면 너무 빠름`)),
     ),
   );
 }
@@ -278,6 +295,7 @@ function recompute() {
   drawChart(res);
   renderChapters(res);
   renderWarnings(res);
+  renderDiag(res);
 }
 
 function renderKPIs(res) {
@@ -436,12 +454,125 @@ function renderWarnings(res) {
     h('div.card-head', {}, h('h2', {}, '검증 결과'), h('span.hint', {}, res.warnings.length ? `${res.warnings.length}건` : '문제 없음')),
     res.warnings.length
       ? h('ul.findings', {}, ...res.warnings.map(w => h(`li.${w.level === 'info' ? 'info' : w.level}`, {}, h('span.lv', {}, w.level === 'serious' ? '정체' : LV[w.level]), h('span', {}, w.text),
+        w.fix && w.kind === 'cause' ? h('button.btn.small', { type: 'button', title: '이 반대 가정을 구간 표에 적용', onclick: () => applyLever(w.fix.lever, w.fix.value) }, '적용') : null,
         w.chapter ? h('button.btn.small', { type: 'button', onclick: () => { opened.add(w.chapter); renderChapters(last); els.chapterCard.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, '보기') : null)))
       : h('p.muted', {}, `모든 스테이지가 의도 체류의 ${state.stagnationRatio}배 안에서 지나갑니다.`),
     h('div.supply-howto', {},
       h('b', {}, '계산 방법'),
       h('p.muted.small', {}, '필요 레벨 = 공격력 × 제한 시간이 몬스터 수 × 체력 이상이 되는 최소 레벨. 다음 스테이지를 열려면 두 필요 레벨 사이의 강화 비용(구간별 등차수열 합)을 지금 스테이지의 웨이브 골드로 벌어야 하고, 그 시간과 돌파 웨이브 시간 중 큰 값이 실제 체류입니다.'),
     ),
+  );
+}
+
+// ── 정체 원인 · 민감도 ──────────────────────────────────
+const trim = (x, d = 4) => (+x.toPrecision(d)).toLocaleString('ko-KR', { maximumFractionDigits: 8 });
+/** 레버 값 표시: 증가율 = %, 의도 배수 = ×, 나머지 = 숫자(큰 수는 만·억) */
+function levVal(l, v) {
+  if (l.unit === 'rate') return l.group === 'intent' ? `×${trim(1 + v)}` : `${trim(v * 100)}%`;
+  return v >= 1e4 ? big(v) : trim(v);
+}
+const signPct = (r, d = 1) => `${r >= 0 ? '+' : '−'}${Math.abs(r * 100).toFixed(d)}%`;
+/** 레버 변화: 증가율은 %p도 같이 (4% → 3.966% = −0.034%p, 증가분의 −0.85%) */
+function levChange(l, v, t) {
+  const rel = signPct(t / v - 1, Math.abs(t / v - 1) < 0.1 ? 2 : 1);
+  if (l.unit !== 'rate') return rel;
+  const dp = (t - v) * 100;
+  return `${dp >= 0 ? '+' : '−'}${trim(Math.abs(dp), 3)}%p (${rel})`;
+}
+
+function applyLever(l, v) {
+  const raw = l.unit === 'rate' ? +(1 + v).toPrecision(12) : v;
+  if (l.group === 'interval') state.costIntervals[l.iv][l.key] = raw;
+  else if (l.group === 'intent') state.intendedDwell.perChapterMult = raw;
+  else state[l.key] = raw;
+  rebuild();
+  toast(`${l.label}을(를) ${levVal(l, v)}(으)로 바꿨습니다`);
+}
+
+function renderDiag(res) {
+  const sens = sensitivity(state, state.sensPct);
+  const sol = solveLevers(state, res);
+  const pct = sens.pct;
+
+  // ① 해소에 필요한 최소 변경 (정체가 있을 때만)
+  let solveBlock;
+  if (sol.problem.length) {
+    const ok = sol.rows.filter(r => r.feasible), no = sol.rows.filter(r => !r.feasible);
+    const labelOf = (s) => res.stages[s - 1].label;
+    solveBlock = [
+      h('div.diag-sub', {}, h('h3', {}, '해소에 필요한 최소 변경'),
+        h('span.hint', {}, `대상: 정체 ${sol.problem.length}곳 (${labelOf(sol.problem[0])}${sol.problem.length > 1 ? ` ~ ${labelOf(sol.problem.at(-1))}` : ''}) · 변수 하나만 바꿔 모두 풀리는 값 · 필요한 변화가 작을수록 정체를 좌우하는 변수`)),
+      h('div.table-wrap', {}, h('table.stages.solve-table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, '변수'), h('th', {}, '지금'), h('th', {}, '필요 값'), h('th', {}, '변화'), h('th', {}, '총 소요'), h('th', { title: '대상 밖에 남는 정체(단발 정체 등)와 새로 생긴 정체' }, '남는 정체'), h('th', {}, ''))),
+        h('tbody', {},
+          ...ok.map((r, i) => h(`tr${i < 3 ? '.top' : ''}`, {},
+            h('td.lever', {}, r.lever.label, r.lever.group === 'intent' ? h('small', {}, '의도 수정 — 실제 소요는 그대로') : null),
+            h('td', {}, levVal(r.lever, r.value)),
+            h('td', {}, levVal(r.lever, r.target)),
+            h('td', {}, levChange(r.lever, r.value, r.target)),
+            h('td', { title: `지금 ${fmtDur(res.totalSec)}` }, `${fmtDur(r.total)} (${signPct(r.total / res.totalSec - 1)})`),
+            h('td', {}, r.stagnant ? `${r.stagnant}곳${r.added ? ` · 새로 ${r.added}` : ''}` : '0곳'),
+            h('td', {}, h('button.btn.small', { type: 'button', onclick: () => applyLever(r.lever, r.target) }, '적용')),
+          )),
+          ...no.map(r => h('tr.off', {},
+            h('td.lever', {}, r.lever.label),
+            h('td', {}, levVal(r.lever, r.value)),
+            h('td', { colspan: 5, style: 'text-align:left' }, `이 변수만으로는 해소 불가 — ${r.lever.dir < 0 ? '1/100' : '100배'}로 바꿔도 ${r.left}곳 남음`),
+          )),
+        ),
+      )),
+    ];
+  } else {
+    solveBlock = [h('div.diag-sub', {}, h('h3', {}, '해소에 필요한 최소 변경'), h('span.hint', {}, '정체 스테이지가 없습니다'))];
+  }
+
+  // ② 민감도 토네이도: 값 ±pct% → 총 소요 변화 (로그 배율 길이)
+  const TOP = 10;
+  const rows = sens.rows;
+  const maxSwing = Math.max(...rows.slice(0, TOP).map(r => (Number.isFinite(r.swing) ? r.swing : 0)), 1e-9);
+  const W = 44; // 한쪽 최대 길이(%) — 끝 글자가 들어갈 자리를 남김
+  const bar = (side, r) => {
+    const lr = Math.log(r.ratio), w = Number.isFinite(lr) ? Math.min(Math.abs(lr) / maxSwing, 1) * W : W;
+    const dirCls = lr < 0 ? 'l' : 'r';
+    const text = Number.isFinite(r.ratio) ? signPct(r.ratio - 1, Math.abs(r.ratio - 1) < 0.1 ? 1 : 0) : '∞';
+    const pos = lr < 0 ? { right: `calc(50% + ${w}% + 4px)` } : { left: `calc(50% + ${w}% + 4px)` };
+    return [
+      h(`span.tor-bar.${side}.${dirCls}`, { style: `width:${Math.max(w, 0.4)}%` }),
+      h(`span.tor-val.${side}`, { style: Object.entries(pos).map(([k, v]) => `${k}:${v}`).join(';') }, text),
+    ];
+  };
+  const torRow = (r) => {
+    const l = r.lever;
+    const tip = `${l.label}\n값 −${pct}%: ${levVal(l, r.lo.value)} → 총 소요 ${fmtDur(r.lo.total)} (${signPct(r.lo.ratio - 1)}), 정체 ${r.lo.stagnant}곳\n값 +${pct}%: ${levVal(l, r.hi.value)} → 총 소요 ${fmtDur(r.hi.total)} (${signPct(r.hi.ratio - 1)}), 정체 ${r.hi.stagnant}곳`;
+    return h('div.tor-row', { title: tip },
+      h('div.tor-label', {}, l.label, h('small', {}, `${levVal(l, r.lo.value)} ~ ${levVal(l, r.hi.value)} (지금 ${levVal(l, r.value)})`)),
+      h('div.tor-track', { role: 'img', 'aria-label': tip.replace(/\n/g, ', ') }, ...bar('lo', r.lo), ...bar('hi', r.hi)),
+      h('div.tor-stag', {}, '정체 ', h(r.lo.stagnant > sens.baseStagnant ? 'b' : 'span', {}, String(r.lo.stagnant)), ' / ', h(r.hi.stagnant > sens.baseStagnant ? 'b' : 'span', {}, String(r.hi.stagnant)), '곳'),
+    );
+  };
+  const tableView = h('details', {}, h('summary', {}, `표로 보기 (${rows.length}개 변수${sens.flat ? ` · 영향 없는 ${sens.flat}개 제외` : ''})`),
+    h('div.table-wrap', {}, h('table.stages.solve-table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, '변수'), h('th', {}, '지금'), h('th', {}, `−${pct}% 값`), h('th', {}, '총 소요'), h('th', {}, '정체'), h('th', {}, `+${pct}% 값`), h('th', {}, '총 소요'), h('th', {}, '정체'))),
+      h('tbody', {}, ...rows.map(r => h('tr', {},
+        h('td.lever', {}, r.lever.label), h('td', {}, levVal(r.lever, r.value)),
+        h('td', {}, levVal(r.lever, r.lo.value)), h('td', {}, signPct(r.lo.ratio - 1)), h('td', {}, `${r.lo.stagnant}곳`),
+        h('td', {}, levVal(r.lever, r.hi.value)), h('td', {}, signPct(r.hi.ratio - 1)), h('td', {}, `${r.hi.stagnant}곳`),
+      ))),
+    )));
+
+  els.diagCard.replaceChildren(
+    h('div.card-head', {}, h('h2', {}, '정체 원인 · 민감도'), h('span.hint', {}, '설정을 하나씩 바꿔 다시 계산한 결과 (반대 가정)')),
+    ...solveBlock,
+    h('div.diag-sub', {}, h('h3', {}, `민감도 — 값을 ±${pct}% 바꾸면 총 소요가 얼마나 바뀌나`),
+      h('div.tool-actions', {}, h('span.muted.small', {}, '변동폭'), select([[5, '±5%'], [10, '±10%'], [20, '±20%']], pct, (v) => { state.sensPct = Number(v); save(); renderDiag(last); }))),
+    h('div.tor-legend', {},
+      h('span', {}, h('i', { style: 'background:var(--tor-down)' }), `값을 ${pct}% 내림`),
+      h('span', {}, h('i', { style: 'background:var(--tor-up)' }), `값을 ${pct}% 올림`),
+      h('span.muted', {}, `증가율은 증가분 기준 (4% → ${trim(4 * (1 + pct / 100))}%) · 막대 길이는 로그 배율 (×2와 ×½이 같은 길이) · 지금 정체 ${sens.baseStagnant}곳`),
+    ),
+    h('div.tor-axis', { 'aria-hidden': 'true' }, h('span', {}, ''), h('span', {}, h('span', {}, '← 총 소요 짧아짐'), h('span', {}, '길어짐 →')), h('span', { style: 'text-align:right' }, '정체 (내림 / 올림)')),
+    h('div.tornado', {}, ...rows.slice(0, TOP).map(torRow)),
+    tableView,
   );
 }
 

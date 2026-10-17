@@ -284,3 +284,18 @@ test('저장 형식 v2 → v3: 기존 on/off 아이템은 토글형으로 읽힘
   close(analyze(st).expCost, analyze(v2).expCost, 1e-12, '마이그레이션 전후 같은 결과');
   assert.equal(migrate({ v: 1 }), null);
 });
+
+test('분위수 표: 시뮬레이션 분위 = 정렬 표본의 분위, 파괴는 정수, 단조 증가', async () => {
+  const { PCTS, quantile } = await import('../js/lib/quantiles.js');
+  const { simulate } = await import('../js/enhance/simulate.js');
+  const cfg = TEMPLATES[Object.keys(TEMPLATES)[0]].make();
+  const mc = simulate(cfg, 4000, 7);
+  for (const key of ['cost', 'attempts', 'destroys']) {
+    const q = mc.quantiles[key];
+    assert.equal(q.length, PCTS.length);
+    for (let i = 1; i < q.length; i++) assert.ok(q[i] >= q[i - 1], key);
+  }
+  PCTS.forEach((p, i) => assert.equal(mc.quantiles.cost[i], quantile(mc.sortedCost, p)));
+  assert.ok(mc.quantiles.destroys.every(Number.isInteger));
+  assert.equal(mc.quantiles.cost[PCTS.indexOf(0.5)] <= mc.quantiles.cost[PCTS.indexOf(0.9)], true);
+});

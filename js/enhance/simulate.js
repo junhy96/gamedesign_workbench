@@ -1,6 +1,7 @@
 // 몬테카를로 시뮬레이션 — 분포(분위수·예산별 도달 확률)와 정확해 검산용.
 // 시드 고정 난수(mulberry32)라 같은 설정이면 항상 같은 결과가 나온다.
 import { buildChain } from './model.js';
+import { quantiles } from '../lib/quantiles.js';
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -50,6 +51,7 @@ export function simulate(cfg, trials = 20000, seed = 20261013) {
   const mean = (arr) => { let s = 0; for (const v of arr) s += v; return s / arr.length; };
   const sortedCost = Float64Array.from(costs).sort();
   const sortedAtt = Uint32Array.from(attempts).sort();
+  const sortedDes = Uint32Array.from(destroys).sort();
   const q = (arr, p) => arr[Math.min(arr.length - 1, Math.floor(p * arr.length))];
   let zero = 0; for (const v of destroys) if (v === 0) zero++;
 
@@ -61,6 +63,8 @@ export function simulate(cfg, trials = 20000, seed = 20261013) {
       cost: { p50: q(sortedCost, 0.5), p90: q(sortedCost, 0.9), p99: q(sortedCost, 0.99) },
       attempts: { p50: q(sortedAtt, 0.5), p90: q(sortedAtt, 0.9), p99: q(sortedAtt, 0.99) },
     },
+    // 분위수 표 (PCTS 순서): 총비용·시도·파괴 각각의 분위
+    quantiles: { cost: quantiles(sortedCost), attempts: quantiles(sortedAtt), destroys: quantiles(sortedDes) },
     sortedCost, // 예산별 도달 확률 계산용
     histogram: histogram(sortedCost, 36),
   };
