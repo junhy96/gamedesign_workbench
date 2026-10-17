@@ -129,7 +129,7 @@ function renderStyleBox() {
     sw('범례(INDEX) 표시 · PPT 상단에 포함', 'legend'),
     h('details.syntax-help', {},
       h('summary', {}, '블록 종류와 Mermaid 모양'),
-      h('ul', {}, ...Object.entries(CATS).filter(([k]) => k !== 'state').map(([k, c]) => {
+      h('ul', {}, ...Object.entries(CATS).filter(([k]) => !['state', 'stateStart', 'stateEnd'].includes(k)).map(([k, c]) => {
         const col = PALETTES.type.light[k] ?? PALETTES.type.light[{ seqUser: 'terminal', seqClient: 'screen', seqSystem: 'process', seqData: 'data', seqQueue: 'event' }[k]];
         return h('li', {}, h('span.icon', { html: shapeIcon(k, col.fill, col.stroke) }), h('b', {}, c.label), h('code', {}, c.syntax));
       })),
@@ -343,7 +343,8 @@ export function legendSpecs(items, y) {
     const w = ICON_W + 0.1 + textW(it.label) + 0.24;
     if (x + w > X1) { row++; x = X0 + 0.9; }
     const yy = y + row * ROW;
-    if (it.kind === 'block') specs.push({ type: 'preset', preset: CATS[it.cat].preset, name: `범례 ${it.label}`, x, y: yy, w: ICON_W, h: ICON_H, fill: it.fill, line: it.stroke, lineWidth: 1 });
+    const round = it.cat === 'stateStart' || it.cat === 'stateEnd'; // 원은 정사각형으로 (늘어나지 않게)
+    if (it.kind === 'block') specs.push({ type: 'preset', preset: CATS[it.cat].preset, name: `범례 ${it.label}`, x: round ? x + (ICON_W - ICON_H) / 2 : x, y: yy, w: round ? ICON_H : ICON_W, h: ICON_H, fill: it.fill, line: it.stroke, lineWidth: 1 });
     else specs.push({ type: 'line', name: `범례 ${it.label}`, x, y: yy + ICON_H / 2, w: ICON_W, h: 0, line: it.stroke, lineWidth: 2, arrowEnd: true, dash: it.dash ? 'dash' : undefined });
     specs.push({ type: 'text', name: `범례 ${it.label} 글자`, text: it.label, x: x + ICON_W + 0.1, y: yy - 0.02, w: textW(it.label), h: 0.3, fontSize: 10.5, color: '#3A3A38' });
     x += w;

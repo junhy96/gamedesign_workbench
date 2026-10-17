@@ -73,3 +73,11 @@ test('시퀀스: 참여자 종류 분류(액터·DB·큐·이름 추정)와 요�
   const items = li(an, style());
   assert.deepEqual(items.filter(i => i.kind === 'edge').map(i => i.label), ['요청 · 호출 (실선)', '응답 · 반환 (점선)', '실패 · 아니오 메시지']);
 });
+
+test('상태도: [*] 시작·종료 점이 범례 맨 앞에', () => {
+  const st = { kind: 'state', nodes: [{ id: 'Idle', cat: 'state' }, { id: 'c', cat: 'decision' }], edges: [], marks: { start: true, end: true } };
+  const items = legendItems(st, style());
+  assert.deepEqual(items.map(i => i.cat).slice(0, 4), ['stateStart', 'stateEnd', 'decision', 'state']);
+  const onlyStart = legendItems({ ...st, marks: { start: true, end: false } }, style());
+  assert.deepEqual(onlyStart.map(i => i.cat).filter(c => c?.startsWith('stateS') || c === 'stateEnd'), ['stateStart']);
+});

@@ -17,6 +17,9 @@ export const CATS = {
   connector: { label: '연결점', syntax: 'id(("이름"))', preset: 'flowChartConnector' },
   state: { label: '상태', syntax: 'state "이름" as Id', preset: 'roundRect' },
   // 시퀀스 참여자
+  // 상태도 [*] 점
+  stateStart: { label: '시작', syntax: '[*] --> 상태', preset: 'flowChartConnector' },
+  stateEnd: { label: '종료', syntax: '상태 --> [*]', preset: 'donut' },
   seqUser: { label: '사용자 (액터)', syntax: 'actor U as 유저', preset: 'ellipse', seq: true },
   seqClient: { label: '클라이언트 (UI)', syntax: 'participant C as 클라이언트', preset: 'roundRect', seq: true },
   seqSystem: { label: '서버 · 시스템', syntax: 'participant S as 게임 서버', preset: 'rect', seq: true },
@@ -111,7 +114,13 @@ export async function analyze(mermaid, code) {
     const nodes = [...st.entries()]
       .filter(([id, s]) => !/^root_|_start$|_end$/.test(id) && s.type !== 'fork' && s.type !== 'join' && s.type !== 'divider' && !(s.doc && s.doc.length))
       .map(([id, s]) => ({ id, text: s.descriptions?.[0] ?? id, cat: s.type === 'choice' ? 'decision' : 'state' }));
-    return { kind: 'state', nodes, edges: [] };
+    // [*] 시작·종료 점: 색을 입힐 수 없으므로 범례에만 표시
+    const ids = [...st.entries()];
+    const marks = {
+      start: ids.some(([id, s]) => s.type === 'start' || /(^|_)start$/.test(id)),
+      end: ids.some(([id, s]) => s.type === 'end' || /(^|_)end$/.test(id)),
+    };
+    return { kind: 'state', nodes, edges: [], marks };
   }
   if (type === 'sequence') return analyzeSequence(diag.db);
   return { kind: type, nodes: [], edges: [] };
@@ -174,6 +183,13 @@ export function legendItems(an, style, dark = false) {
   const order = Object.keys(CATS);
   seen.sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const items = seen.map(cat => ({ kind: 'block', cat, label: CATS[cat].label, ...colorOf(pal, cat) }));
+  if (an.marks) { // 상태도 시작·종료 점은 맨 앞에
+    const ink = dark ? '#E8E6E1' : '#1B1B1A';
+    const marks = [];
+    if (an.marks.start) marks.push({ kind: 'block', cat: 'stateStart', label: CATS.stateStart.label, fill: ink, stroke: ink, text: ink });
+    if (an.marks.end) marks.push({ kind: 'block', cat: 'stateEnd', label: CATS.stateEnd.label, fill: ink, stroke: ink, text: ink });
+    items.unshift(...marks);
+  }
   if (an.kind === 'sequence' && an.edges.length) {
     const ink = dark ? '#C9C8C2' : '#333333';
     if (an.edges.some(e => !e.dotted)) items.push({ kind: 'edge', label: '요청 · 호출 (실선)', stroke: ink });
@@ -202,6 +218,8 @@ export function shapeIcon(cat, fill, stroke) {
     doc: `<path d="M3 3h26v12c-6-4-10 4-16 1s-8 -1-10 1z" ${a}/>`,
     connector: `<circle cx="16" cy="10" r="7" ${a}/>`,
     state: `<rect x="3" y="3" width="26" height="14" rx="5" ${a}/>`,
+    stateStart: `<circle cx="16" cy="10" r="6.5" fill="${fill}" stroke="${stroke}"/>`,
+    stateEnd: `<circle cx="16" cy="10" r="7.5" fill="none" stroke="${stroke}" stroke-width="1.5"/><circle cx="16" cy="10" r="4.5" fill="${fill}"/>`,
     seqUser: `<circle cx="16" cy="5" r="3.5" ${a}/><path d="M16 9v5M10 11h12M16 14l-5 5M16 14l5 5" stroke="${stroke}" stroke-width="1.5" fill="none"/>`,
     seqClient: `<rect x="3" y="3" width="26" height="14" rx="4" ${a}/>`,
     seqSystem: `<rect x="3" y="3" width="26" height="14" ${a}/>`,
