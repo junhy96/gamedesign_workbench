@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>가챠·수집 설계 — 기획 워크벤치</title>
+  <meta name="description" content="“필요 장수 ÷ 확률”이 놓치는 중복과 확률 구조까지. 등급 확률, 소환 레벨, 천장(확률 상승), 픽업 보장, 마일리지, 중복 분해 교환을 넣고 “이 유닛을 이만큼 모으려면 얼마가 드나”를 계산합니다. 비용이 왜 이만큼 드는지 원인을 나누고, 공시용 확률표를 만듭니다.">
+  <meta property="og:title" content="가챠·수집 설계 — 기획 워크벤치">
+  <meta property="og:description" content="“필요 장수 ÷ 확률”이 놓치는 중복과 확률 구조까지. 등급 확률, 소환 레벨, 천장(확률 상승), 픽업 보장, 마일리지, 중복 분해 교환을 넣고 “이 유닛을 이만큼 모으려면 얼마가 드나”를 계산합니다. 비용이 왜 이만큼 드는지 원인을 나누고, 공시용 확률표를 만듭니다.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#09090b">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2310b981'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='%23052e1f' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', 'Geist', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+            display: ['Geist', 'Pretendard', 'system-ui', 'sans-serif'],
+            mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: { accent: { DEFAULT: '#34d399', soft: '#6ee7b7', deep: '#059669' }, ink: '#09090b' },
+          transitionTimingFunction: { spring: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+        },
+      },
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { background: #09090b; color: #e4e4e7; -webkit-font-smoothing: antialiased; }
+    .ko { word-break: keep-all; overflow-wrap: break-word; }
+    .t-spring { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .grain { position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0.035; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    .orb { position: absolute; border-radius: 9999px; filter: blur(80px); pointer-events: none; animation: float 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-18px) } }
+    .reveal { opacity: 0; transform: translateY(2rem); filter: blur(4px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), filter 0.9s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: calc(var(--i, 0) * 80ms); }
+    .reveal.in { opacity: 1; transform: none; filter: none; }
+    .bezel { background: rgba(255, 255, 255, 0.03); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); padding: 6px; border-radius: 2rem; }
+    .bezel > .core { border-radius: calc(2rem - 6px); background: linear-gradient(180deg, #131316 0%, #0e0e10 100%); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08); }
+    .frame-view { position: relative; overflow: hidden; border-radius: 0 0 calc(2rem - 6px) calc(2rem - 6px); background: #121211; }
+    .frame-view iframe { position: absolute; left: 0; top: 0; width: 1280px; height: 820px; border: 0; transform-origin: 0 0; }
+    .marquee { display: flex; width: max-content; animation: marquee 38s linear infinite; }
+    .marquee:hover { animation-play-state: paused; }
+    @keyframes marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+    .nav-panel { opacity: 0; pointer-events: none; transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .nav-panel.open { opacity: 1; pointer-events: auto; }
+    .nav-panel a { opacity: 0; transform: translateY(2rem); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: calc(var(--i, 0) * 60ms); }
+    .nav-panel.open a { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal, .reveal.in { opacity: 1; transform: none; filter: none; transition: none; } .orb, .marquee { animation: none; } }
+  </style>
+</head>
+<body class="font-sans">
+<div class="grain" aria-hidden="true"></div>
+<header class="fixed inset-x-0 top-0 z-40 px-4">
+  <nav class="mx-auto mt-4 flex w-full max-w-5xl items-center justify-between gap-3 rounded-full border border-white/10 bg-zinc-900/60 py-2 pl-4 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl" aria-label="주요 메뉴">
+    <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10b981"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#052e1f" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
+    <div class="hidden items-center gap-1 md:flex">
+      <a href="index.html#tools" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">도구</a>
+      <a href="index.html#compare" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">비교</a>
+      <a href="index.html#proof" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">검증</a>
+      <a href="index.html#cases" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">사례</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="../index.html#gacha" class="t-spring group hidden items-center gap-2 rounded-full bg-accent py-2 pl-4 pr-2 text-sm font-semibold text-ink hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:flex">이 도구 열기<span class="t-spring flex h-7 w-7 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-0.5"><iconify-icon icon="solar:arrow-right-linear" class="text-base" aria-hidden="true"></iconify-icon></span></a>
+      <button type="button" class="nav-toggle flex h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:bg-white/5 md:hidden" aria-label="메뉴 열기" aria-expanded="false"><iconify-icon icon="solar:hamburger-menu-linear" class="text-2xl" aria-hidden="true"></iconify-icon></button>
+    </div>
+  </nav>
+</header>
+<div class="nav-panel fixed inset-0 z-50 flex flex-col bg-zinc-950/80 px-6 pt-24 backdrop-blur-3xl md:hidden" role="dialog" aria-label="메뉴">
+  <button type="button" class="nav-close absolute right-5 top-6 flex h-11 w-11 items-center justify-center rounded-full text-zinc-300 hover:bg-white/5" aria-label="메뉴 닫기"><iconify-icon icon="solar:close-circle-linear" class="text-3xl" aria-hidden="true"></iconify-icon></button>
+  <a href="index.html#tools" style="--i:0" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">도구</a>
+  <a href="index.html#compare" style="--i:1" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">비교</a>
+  <a href="index.html#proof" style="--i:2" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">검증</a>
+  <a href="index.html#cases" style="--i:3" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">사례</a>
+  <a href="../index.html#gacha" style="--i:4" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">워크벤치 열기</a>
+</div>
+<main>
+  <!-- 히어로: 왼쪽 설명, 오른쪽 템플릿 결과 -->
+  <section class="relative overflow-hidden pb-20 pt-32 md:pb-28 md:pt-40">
+    <div class="orb right-[-10%] top-[10%] h-[460px] w-[460px] bg-emerald-500/12" aria-hidden="true"></div>
+    <div class="relative mx-auto grid max-w-7xl gap-14 px-4 sm:px-6 lg:grid-cols-[1.25fr_1fr] lg:items-end lg:px-8">
+      <div class="reveal">
+        <a href="index.html#tools" class="t-spring inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-200"><iconify-icon icon="solar:arrow-left-linear" class="" aria-hidden="true"></iconify-icon>도구 목록</a>
+        <div class="mt-6"><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent"><iconify-icon icon="solar:gift-linear" class="text-sm" aria-hidden="true"></iconify-icon>가챠 · BM</span></div>
+        <p class="mt-6 text-lg font-semibold text-zinc-300">가챠·수집 설계</p>
+        <h1 class="ko mt-3 text-4xl font-bold leading-tight tracking-tight text-zinc-50 md:text-5xl lg:text-6xl">“필요 장수 ÷ 확률”이 놓치는 중복과 확률 구조까지</h1>
+        <p class="ko mt-7 max-w-[62ch] text-base leading-relaxed text-zinc-400 md:text-lg">등급 확률, 소환 레벨, 천장(확률 상승), 픽업 보장, 마일리지, 중복 분해 교환을 넣고 “이 유닛을 이만큼 모으려면 얼마가 드나”를 계산합니다. 비용이 왜 이만큼 드는지 원인을 나누고, 공시용 확률표를 만듭니다.</p>
+        <div class="mt-10 flex flex-wrap gap-3"><a href="../index.html#gacha" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">이 도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a><a href="#preview" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] py-2 pl-7 pr-2 text-base font-medium text-zinc-200 hover:scale-[1.02] hover:bg-white/[0.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 md:text-lg">화면 먼저 보기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-white/5 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div>
+      <div class="reveal bezel" style="--i:2">
+        <div class="core p-7 md:p-8">
+          <p class="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.15em] text-zinc-500"><iconify-icon icon="solar:play-circle-linear" class="text-sm text-accent" aria-hidden="true"></iconify-icon>템플릿을 돌린 결과</p>
+          <dl class="mt-6 divide-y divide-white/5">
+            <div class="py-5 first:pt-0 last:pb-0"><dt class="font-display text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">×1.71</dt><dd class="ko mt-1.5 text-sm leading-relaxed text-zinc-400">단순 계산 대비 실제 기대 뽑기 (레전드 전원 풀 초월)</dd></div>
+            <div class="py-5 first:pt-0 last:pb-0"><dt class="font-display text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">205,056회</dt><dd class="ko mt-1.5 text-sm leading-relaxed text-zinc-400">실제 기대 뽑기 — 단순 계산은 120,000회</dd></div>
+            <div class="py-5 first:pt-0 last:pb-0"><dt class="font-display text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">684일</dt><dd class="ko mt-1.5 text-sm leading-relaxed text-zinc-400">월 3만 원 과금 유저의 평균 도달</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 이런 질문에 답합니다: 번호 목록 -->
+  <section class="border-y border-white/5 bg-zinc-950/70 py-24 md:py-32">
+    <div class="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
+      <div class="reveal"><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">질문</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">이런 질문에<br>답합니다</h2></div>
+      <ol class="divide-y divide-white/5">
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:0"><span class="font-display text-2xl font-semibold text-zinc-700 md:text-3xl">01</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">레전드 4종을 6장씩 모으려면 실제로 몇 번을 뽑나요?</p></li>
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:1"><span class="font-display text-2xl font-semibold text-zinc-700 md:text-3xl">02</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">천장·마일리지·조각 교환 중 무엇이 운 나쁜 1%의 꼬리를 자르나요?</p></li>
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:2"><span class="font-display text-2xl font-semibold text-zinc-700 md:text-3xl">03</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">무과금 유저와 과금 유저는 며칠이 걸리나요?</p></li>
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:3"><span class="font-display text-2xl font-semibold text-zinc-700 md:text-3xl">04</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">공시할 캐릭터별 확률과 천장 변동표는 어떻게 되나요?</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 실제 도구 -->
+  <section id="preview" class="scroll-mt-28 py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <div><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">실제 화면</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">설명 대신 직접 만져 보세요</h2></div>
+        <p class="ko max-w-[46ch] text-sm leading-relaxed text-zinc-500">아래는 캡처가 아니라 실제 도구입니다. 여기서 바꾼 값은 이 브라우저에 저장되고, 앱의 ↶ 버튼으로 되돌릴 수 있습니다.</p>
+      </div>
+      <div class="reveal mt-12 hidden md:block"><div class="bezel">
+    <div class="core overflow-hidden">
+      <div class="flex items-center gap-3 border-b border-white/5 px-5 py-3">
+        <span class="flex gap-1.5" aria-hidden="true"><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i></span>
+        <span class="truncate font-mono text-xs text-zinc-500">기획 워크벤치 / #gacha</span>
+        <span class="ml-auto hidden items-center gap-1.5 text-xs text-zinc-500 sm:flex"><iconify-icon icon="solar:play-circle-linear" class="text-sm text-accent" aria-hidden="true"></iconify-icon>직접 조작할 수 있는 실제 도구</span>
+      </div>
+      <div class="frame-view" style="height:420px">
+        <iframe src="../index.html#gacha" title="가챠·수집 설계 도구" loading="lazy" ></iframe>
+      </div>
+    </div>
+  </div></div>
+      <div class="reveal mt-10 md:hidden"><div class="bezel"><div class="core p-7">
+        <p class="ko text-base leading-relaxed text-zinc-300">작은 화면에서는 도구를 바로 여는 편이 보기 좋습니다.</p>
+        <div class="mt-6"><a href="../index.html#gacha" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div></div></div>
+    </div>
+  </section>
+
+  <!-- 기능: 좌우가 번갈아 -->
+  <section class="py-12 md:py-20">
+    <div class="mx-auto grid max-w-7xl gap-20 px-4 sm:px-6 md:gap-28 lg:px-8">
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal ">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:layers-minimalistic-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">비용 원인 분해</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">단순 계산(필요 장수 ÷ 확률) → 중복이 없다면(소환 레벨·천장·교환 효과) → 실제(중복 효과)로 나눠, 확률을 올릴지 교환을 넣을지 구분합니다.</p>
+        </div>
+        <div class="reveal " style="--i:1">
+          <div class="bezel md:-rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-emerald-500/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">① 단순 계산 120,000</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">② 중복이 없다면 176,479 (×1.47)</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">③ 실제 205,056 (×1.16)</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal md:order-2">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:calculator-minimalistic-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">공식 계산 + 시뮬레이션</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">수집 목표는 포아송화 적분, 픽업·특정 캐릭터는 (모은 장수 × 천장 카운터 × 보장) 상태를 뽑기마다 전진시키는 동적 계획법으로 분포까지 구합니다. 나머지는 기하분포로 건너뛰는 시뮬레이션이라 0.005% 확률 목표도 바로 계산됩니다.</p>
+        </div>
+        <div class="reveal md:order-1" style="--i:1">
+          <div class="bezel md:rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-emerald-500/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">E[N] = (1/λ)∫ 1 − P(k,u)^K du</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">상태 = (장수, 천장, 보장)</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">확률이 바뀌는 지점에서만 끊기</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal ">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:list-check-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">확률 공시표</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">소환 레벨별 등급 확률, 모든 캐릭터의 개별 확률, 천장 확률 변동표, 천장·보장을 포함한 실효 확률, 확률이 바뀌는 조건 문장을 만들고, 반올림하면 0%로 보이는 캐릭터와 합계 오차를 경고합니다.</p>
+        </div>
+        <div class="reveal " style="--i:1">
+          <div class="bezel md:-rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-emerald-500/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">캐릭터별 확률 합 100%</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">천장 변동표·실효 확률</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">CSV (소수 6자리 이상)</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal md:order-2">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:graph-up-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">분위·수렴</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">0.1%~99.9% 달성 분위(뽑기·비용·무과금 도달일·천장 구간 당첨)와 시뮬레이션 수렴 그래프로 운 나쁜 유저가 어디까지 가는지 보여 줍니다.</p>
+        </div>
+        <div class="reveal md:order-1" style="--i:1">
+          <div class="bezel md:rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-emerald-500/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">99% = 266,762회</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">마일리지안 99% = 200,000회</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">천장 구간 당첨 횟수 분위</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 계산 방법 · 검증: 크기가 다른 두 칸 -->
+  <section class="py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal"><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">계산과 검증</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">어떻게 계산하고, 어떻게 확인했나</h2></div>
+      <div class="mt-12 grid gap-4 lg:grid-cols-12">
+        <div class="reveal bezel lg:col-span-7"><div class="core h-full p-7 md:p-9">
+          <p class="flex items-center gap-2 text-sm font-semibold text-zinc-200"><iconify-icon icon="solar:calculator-minimalistic-linear" class="text-lg text-accent" aria-hidden="true"></iconify-icon>계산 방법</p>
+          <ul class="mt-6 grid gap-4"><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>수집: E[N] = (1/λ)∫ 1 − P(k, u)^K du (포아송화, 심프슨 적분)</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>픽업·특정 캐릭터: 상태 분포 동적 계획법 (분포 전체)</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>실효 확률 = 최상위 1장당 평균 뽑기의 역수</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>시뮬레이션: 확률이 바뀌는 지점에서만 끊는 기하분포 건너뛰기</li></ul>
+        </div></div>
+        <div class="reveal bezel lg:col-span-5" style="--i:1"><div class="core flex h-full flex-col p-7 md:p-9">
+          <p class="flex items-center gap-2 text-sm font-semibold text-zinc-200"><iconify-icon icon="solar:test-tube-linear" class="text-lg text-accent" aria-hidden="true"></iconify-icon>검증</p>
+          <ul class="mt-6 grid gap-4"><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>쿠폰 수집 n·Hₙ/p, 음이항 평균과 오차 1e-6</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>천장: 절단 기하분포 해석해와 일치</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>공시표: 레벨마다 캐릭터 확률 합 100%, 천장 변동표 마지막 줄 100%</li></ul>
+          <div class="mt-auto flex items-end gap-3 border-t border-white/5 pt-6"><span class="font-display text-5xl font-semibold tracking-tight text-zinc-50">22</span><span class="ko pb-1.5 text-sm text-zinc-500">이 도구의 자동 테스트 (전체 155개)</span></div>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 사례 -->
+  <section class="relative overflow-hidden border-y border-white/5 bg-zinc-950/70 py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal grid gap-10 lg:grid-cols-[0.7fr_1.3fr]">
+        <div><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">판단 사례</span></div>
+        <div>
+          <h2 class="ko text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">마일리지 선택권이 꼬리를 정확히 자릅니다</h2>
+          <p class="ko mt-6 max-w-[64ch] text-lg leading-relaxed text-zinc-300 md:text-xl">방치형 동료 소환에서 레전드 천장(8천 회)은 평균을 26% 줄이지만 레전드가 나오는 속도 자체를 바꿔 스테이지 밸런스까지 흔듭니다. 2만 회마다 레전드 선택권을 주는 마일리지는 평균을 20% 줄이면서 99% 꼬리를 266,762회에서 정확히 200,000회로 자릅니다. 공시 확률은 그대로 두고 “아무리 운이 나빠도 여기까지”를 보여 줄 수 있어 1차안으로 골랐습니다.</p>
+          <p class="ko mt-6 text-sm text-zinc-500">템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 함께 쓰는 도구 -->
+  <section class="py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal flex items-end justify-between gap-6">
+        <h2 class="ko text-2xl font-bold tracking-tight text-zinc-50 md:text-3xl">함께 쓰는 도구</h2>
+        <a href="index.html#tools" class="t-spring hidden items-center gap-1.5 text-sm text-zinc-400 hover:text-accent sm:inline-flex">전체 도구<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></a>
+      </div>
+      <div class="mt-10 grid gap-4 md:grid-cols-[1.2fr_1fr_1fr]">
+        <a href="enhance.html" class="reveal t-spring bezel group block hover:-translate-y-1" style="--i:0"><div class="core h-full p-7">
+          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:magic-stick-3-linear" class="text-xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-5 text-lg font-semibold text-zinc-50">강화 확률·비용 설계</h3>
+          <p class="ko mt-2 text-sm leading-relaxed text-zinc-400">하락·파괴·천장이 섞인 강화의 기대 비용을 정확하게</p>
+          <span class="mt-5 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">자세히<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span>
+        </div></a>
+        <a href="economy.html" class="reveal t-spring bezel group block hover:-translate-y-1" style="--i:1"><div class="core h-full p-7">
+          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:wallet-money-linear" class="text-xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-5 text-lg font-semibold text-zinc-50">재화 흐름 시뮬레이터</h3>
+          <p class="ko mt-2 text-sm leading-relaxed text-zinc-400">평균 유저 한 명이 아니라 편차와 이탈까지 봅니다</p>
+          <span class="mt-5 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">자세히<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span>
+        </div></a>
+        <a href="brief.html" class="reveal t-spring bezel group block hover:-translate-y-1" style="--i:2"><div class="core h-full p-7">
+          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:clipboard-check-linear" class="text-xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-5 text-lg font-semibold text-zinc-50">브리핑</h3>
+          <p class="ko mt-2 text-sm leading-relaxed text-zinc-400">모든 탭의 결론을 한 장으로 모아 회의에 가져갑니다</p>
+          <span class="mt-5 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">자세히<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span>
+        </div></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 마무리 CTA -->
+  <section class="relative overflow-hidden border-t border-white/5 py-24 md:py-32">
+    <div class="orb left-[10%] top-[20%] h-[380px] w-[380px] bg-emerald-500/10" aria-hidden="true"></div>
+    <div class="relative mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:items-end lg:px-8">
+      <div class="reveal">
+        <h2 class="ko text-3xl font-bold leading-tight tracking-tight text-zinc-50 md:text-5xl">템플릿으로 시작해<br>내 수치로 바꿔 보세요</h2>
+        <div class="mt-10 flex flex-wrap gap-3"><a href="../index.html#gacha" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">가챠 도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div>
+      <nav class="reveal grid grid-cols-2 gap-3" style="--i:1" aria-label="다른 도구">
+        <a href="enhance.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center gap-1.5 text-xs text-zinc-500"><iconify-icon icon="solar:arrow-left-linear" class="" aria-hidden="true"></iconify-icon>이전 도구</span><span class="ko mt-2 block text-base font-semibold text-zinc-100">강화 확률·비용 설계</span></a>
+        <a href="supply.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 text-right hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center justify-end gap-1.5 text-xs text-zinc-500">다음 도구<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></span><span class="ko mt-2 block text-base font-semibold text-zinc-100">성장 재화 수급 설계</span></a>
+      </nav>
+    </div>
+  </section>
+</main>
+<footer class="border-t border-white/5">
+  <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
+    <div class="max-w-md">
+      <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10b981"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#052e1f" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 8개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+    </div>
+    <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
+      <a href="../index.html#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>
+      <a href="index.html#tools" class="t-spring hover:text-zinc-100">도구 목록</a>
+      <a href="https://github.com/junhy96/gamedesign_workbench" class="t-spring hover:text-zinc-100" rel="noopener">GitHub 저장소</a>
+      <a href="https://github.com/junhy96/gamedesign_workbench/blob/main/docs/case-study.md" class="t-spring hover:text-zinc-100" rel="noopener">기획 판단 사례</a>
+    </div>
+  </div>
+</footer>
+<script>
+  // 화면에 들어올 때 나타나기 (스크롤 이벤트 대신 IntersectionObserver)
+  const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  // 숫자 올라가기
+  const fmt = new Intl.NumberFormat('ko-KR');
+  const co = new IntersectionObserver((es) => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const el = e.target, to = +el.dataset.count, t0 = performance.now();
+    const step = (t) => { const p = Math.min(1, (t - t0) / 1200), k = 1 - Math.pow(1 - p, 3); el.textContent = fmt.format(Math.round(to * k)); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step); co.unobserve(el);
+  }), { threshold: 0.6 });
+  document.querySelectorAll('[data-count]').forEach(el => co.observe(el));
+  // 실제 도구 미리보기: 1280px 화면을 칸 너비에 맞춰 줄임
+  document.querySelectorAll('.frame-view').forEach(box => {
+    const f = box.querySelector('iframe');
+    new ResizeObserver(() => { const s = box.clientWidth / 1280; f.style.transform = 'scale(' + s + ')'; box.style.height = Math.round(820 * s) + 'px'; }).observe(box);
+  });
+  // 모바일 메뉴
+  const panel = document.querySelector('.nav-panel'), tog = document.querySelector('.nav-toggle');
+  const setMenu = (open) => { panel.classList.toggle('open', open); tog.setAttribute('aria-expanded', String(open)); document.body.style.overflow = open ? 'hidden' : ''; };
+  tog.addEventListener('click', () => setMenu(true));
+  panel.querySelector('.nav-close').addEventListener('click', () => setMenu(false));
+  panel.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setMenu(false)));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+</script>
+</body>
+</html>

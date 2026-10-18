@@ -265,6 +265,13 @@ Machinations라는 유료 툴이 있지만 한국어·경량 버전은 비어 �
 
 ---
 
+### 4-8. 소개 페이지 (2026-10-18)
+- landing/index.html(랜딩) + 도구별 세부 8장. 혼자 열리는 HTML(Tailwind CDN 3.4.16 · Pretendard · Geist · Iconify Solar), 앱 코드와 섞지 않음. 문구·수치는 landing/_build.mjs 한 곳에서 고치고 다시 생성
+- 디자인: supanova 스킬(어두운 배경 + 강조색 하나, 이중 테두리 카드, 떠 있는 둥근 메뉴, 화면 진입 시 나타나기)
+- 쓰지 않은 규칙: 가짜 후기·이름·회사, 지어낸 사용자 수, 긴급성 문구(카운트다운 등), 사진 자리 채우기용 이미지. 대신 템플릿을 실제로 돌린 숫자, 테스트 수, Kalivra 대조 결과, docs/case-study.md 사례와 실제 도구 화면(iframe)을 넣음
+- 수치는 템플릿 결과와 맞춰 둠 — 템플릿을 바꾸면 _build.mjs의 facts·case도 같이 고친다
+- 로컬 serve는 serve.json(cleanUrls 끔, 끝 슬래시 유지)으로 /landing/의 상대 경로가 GitHub Pages와 같게 동작
+
 ## 5. 참고 자료
 
 - 흡수 마르코프 체인 — 기대 방문 횟수(fundamental matrix)

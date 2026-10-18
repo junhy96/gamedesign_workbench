@@ -6,6 +6,8 @@
 
 ![강화 확률·비용 설계 화면](docs/screenshot.png)
 
+**▶ 도구 소개 페이지: https://junhy96.github.io/gamedesign_workbench/landing/** — 도구별 계산 방법·검증·사례와 실제 화면 ([landing/](landing/))
+
 **▶ 기획 판단 사례: [docs/case-study.md](docs/case-study.md)** — 이 도구들로 실제로 어떤 결정을 내리는지 (가챠 목표 비용, 강화 아이템 가격, 콘텐츠 해금과 잔존)
 
 ### 핵심 검증 도구
@@ -343,6 +345,7 @@ js/gacha/view.js        화면: 등급·확률 표, 목표 표, 달성 곡선·�
 js/diagram/*            자연어 다이어그램: Claude API 호출(llm.js), 예시, 화면
 js/lib/pptx.js          PowerPoint: PptxGenJS 지연 로드, 도형 사양 렌더, SVG → 편집 가능한 도형 변환
 js/lib/mermaid.js       Mermaid 지연 로드·렌더·내보내기용 오프스크린 렌더
+landing/                소개 페이지(랜딩 + 도구별 세부 8장, Tailwind CDN). 문구는 landing/_build.mjs에서 고치고 node landing/_build.mjs로 다시 생성
 pdf/                    PDF 도구 (별도 페이지): core.js 순수 함수, ops.js 압축·합치기·수정, app.js 화면
 tests/                  node:test
 docs/PLAN.md            전체 기획 정리

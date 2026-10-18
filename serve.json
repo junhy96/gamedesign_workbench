@@ -1,0 +1,9 @@
+{
+  "cleanUrls": false,
+  "trailingSlash": true,
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/landing", "destination": "/landing/index.html" },
+    { "source": "/pdf", "destination": "/pdf/index.html" }
+  ]
+}

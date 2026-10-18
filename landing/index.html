@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>기획 워크벤치 — 게임 시스템·BM 밸런스 검증 도구</title>
+  <meta name="description" content="강화 확률, 가챠 천장, 성장 재화, 스테이지 체류, 전투 승률까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.">
+  <meta property="og:title" content="기획 워크벤치 — 게임 시스템·BM 밸런스 검증 도구">
+  <meta property="og:description" content="강화 확률, 가챠 천장, 성장 재화, 스테이지 체류, 전투 승률까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#09090b">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2310b981'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='%23052e1f' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', 'Geist', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+            display: ['Geist', 'Pretendard', 'system-ui', 'sans-serif'],
+            mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: { accent: { DEFAULT: '#34d399', soft: '#6ee7b7', deep: '#059669' }, ink: '#09090b' },
+          transitionTimingFunction: { spring: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+        },
+      },
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { background: #09090b; color: #e4e4e7; -webkit-font-smoothing: antialiased; }
+    .ko { word-break: keep-all; overflow-wrap: break-word; }
+    .t-spring { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .grain { position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0.035; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    .orb { position: absolute; border-radius: 9999px; filter: blur(80px); pointer-events: none; animation: float 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-18px) } }
+    .reveal { opacity: 0; transform: translateY(2rem); filter: blur(4px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), filter 0.9s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: calc(var(--i, 0) * 80ms); }
+    .reveal.in { opacity: 1; transform: none; filter: none; }
+    .bezel { background: rgba(255, 255, 255, 0.03); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); padding: 6px; border-radius: 2rem; }
+    .bezel > .core { border-radius: calc(2rem - 6px); background: linear-gradient(180deg, #131316 0%, #0e0e10 100%); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08); }
+    .frame-view { position: relative; overflow: hidden; border-radius: 0 0 calc(2rem - 6px) calc(2rem - 6px); background: #121211; }
+    .frame-view iframe { position: absolute; left: 0; top: 0; width: 1280px; height: 820px; border: 0; transform-origin: 0 0; }
+    .marquee { display: flex; width: max-content; animation: marquee 38s linear infinite; }
+    .marquee:hover { animation-play-state: paused; }
+    @keyframes marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+    .nav-panel { opacity: 0; pointer-events: none; transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .nav-panel.open { opacity: 1; pointer-events: auto; }
+    .nav-panel a { opacity: 0; transform: translateY(2rem); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: calc(var(--i, 0) * 60ms); }
+    .nav-panel.open a { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal, .reveal.in { opacity: 1; transform: none; filter: none; transition: none; } .orb, .marquee { animation: none; } }
+  </style>
+</head>
+<body class="font-sans">
+<div class="grain" aria-hidden="true"></div>
+<header class="fixed inset-x-0 top-0 z-40 px-4">
+  <nav class="mx-auto mt-4 flex w-full max-w-5xl items-center justify-between gap-3 rounded-full border border-white/10 bg-zinc-900/60 py-2 pl-4 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl" aria-label="주요 메뉴">
+    <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10b981"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#052e1f" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
+    <div class="hidden items-center gap-1 md:flex">
+      <a href="index.html#tools" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">도구</a>
+      <a href="index.html#compare" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">비교</a>
+      <a href="index.html#proof" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">검증</a>
+      <a href="index.html#cases" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">사례</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="../index.html#enhance" class="t-spring group hidden items-center gap-2 rounded-full bg-accent py-2 pl-4 pr-2 text-sm font-semibold text-ink hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:flex">워크벤치 열기<span class="t-spring flex h-7 w-7 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-0.5"><iconify-icon icon="solar:arrow-right-linear" class="text-base" aria-hidden="true"></iconify-icon></span></a>
+      <button type="button" class="nav-toggle flex h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:bg-white/5 md:hidden" aria-label="메뉴 열기" aria-expanded="false"><iconify-icon icon="solar:hamburger-menu-linear" class="text-2xl" aria-hidden="true"></iconify-icon></button>
+    </div>
+  </nav>
+</header>
+<div class="nav-panel fixed inset-0 z-50 flex flex-col bg-zinc-950/80 px-6 pt-24 backdrop-blur-3xl md:hidden" role="dialog" aria-label="메뉴">
+  <button type="button" class="nav-close absolute right-5 top-6 flex h-11 w-11 items-center justify-center rounded-full text-zinc-300 hover:bg-white/5" aria-label="메뉴 닫기"><iconify-icon icon="solar:close-circle-linear" class="text-3xl" aria-hidden="true"></iconify-icon></button>
+  <a href="index.html#tools" style="--i:0" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">도구</a>
+  <a href="index.html#compare" style="--i:1" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">비교</a>
+  <a href="index.html#proof" style="--i:2" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">검증</a>
+  <a href="index.html#cases" style="--i:3" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">사례</a>
+  <a href="../index.html#enhance" style="--i:4" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">워크벤치 열기</a>
+</div>
+<main>
+  <!-- 히어로: 왼쪽 문장, 오른쪽 실제 도구 화면 -->
+  <section class="relative min-h-[100dvh] overflow-hidden pt-32 md:pt-40">
+    <div class="orb left-[-10%] top-[8%] h-[420px] w-[420px] bg-emerald-500/15" aria-hidden="true"></div>
+    <div class="orb right-[-8%] top-[40%] h-[520px] w-[520px] bg-zinc-500/10" style="animation-delay:-4s" aria-hidden="true"></div>
+    <div class="relative mx-auto grid max-w-7xl items-center gap-14 px-4 pb-24 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:px-8">
+      <div class="reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent"><iconify-icon icon="solar:cpu-bolt-linear" class="text-sm" aria-hidden="true"></iconify-icon>게임 시스템 · BM 기획</span>
+        <h1 class="ko mt-7 text-4xl font-bold leading-tight tracking-tight text-zinc-50 md:text-6xl lg:text-[4.25rem] lg:leading-[1.12]">엑셀로 못 푸는<br>밸런스 계산을<br><span class="text-accent">링크 하나</span>로 확인합니다</h1>
+        <p class="ko mt-7 max-w-[54ch] text-base leading-relaxed text-zinc-400 md:text-lg">강화 확률, 가챠 천장, 성장 재화, 스테이지 체류, 전투 승률까지. 기획서 숫자를 넣으면 기대값과 분포, 문제가 생기는 구간과 그 원인을 바로 보여 줍니다. 설치·로그인 없이 열리고, 넣은 숫자는 서버로 가지 않습니다.</p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href="../index.html#enhance" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">워크벤치 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a>
+          <a href="#tools" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] py-2 pl-7 pr-2 text-base font-medium text-zinc-200 hover:scale-[1.02] hover:bg-white/[0.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 md:text-lg">도구 둘러보기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-white/5 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a>
+        </div>
+        <ul class="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-500">
+          <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>브라우저 안에서만 계산</li>
+          <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>공식 계산 + 시뮬레이션 비교</li>
+          <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>자동 테스트 155개</li>
+        </ul>
+      </div>
+      <div class="reveal relative" style="--i:2">
+        <div class="hidden md:block"><div class="bezel">
+    <div class="core overflow-hidden">
+      <div class="flex items-center gap-3 border-b border-white/5 px-5 py-3">
+        <span class="flex gap-1.5" aria-hidden="true"><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i></span>
+        <span class="truncate font-mono text-xs text-zinc-500">기획 워크벤치 / #battle</span>
+        <span class="ml-auto hidden items-center gap-1.5 text-xs text-zinc-500 sm:flex"><iconify-icon icon="solar:play-circle-linear" class="text-sm text-accent" aria-hidden="true"></iconify-icon>실제 도구 화면</span>
+      </div>
+      <div class="frame-view" style="height:420px">
+        <iframe src="../index.html#battle" title="스탯·전투 밸런스 도구 화면" loading="lazy" tabindex="-1" style="pointer-events:none"></iframe>
+      </div>
+    </div>
+  </div></div>
+        <div class="bezel md:hidden"><div class="core overflow-hidden"><img src="../docs/screenshot.png" alt="강화 확률·비용 설계 도구 화면: 기대 총비용, 단계별 확률 표, 비용 분포" class="w-full" decoding="async"></div></div>
+        <div class="absolute -bottom-6 -left-4 hidden rounded-2xl border border-white/10 bg-zinc-900/90 px-5 py-4 shadow-[0_20px_60px_-20px_rgba(16,185,129,0.25)] md:block" style="animation: float 7s cubic-bezier(0.45,0,0.55,1) infinite">
+          <p class="text-xs text-zinc-500">CP 2위 궁수 → 전사</p>
+          <p class="font-display text-2xl font-semibold text-zinc-50">승률 24.8%</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 숫자 띠 -->
+  <section class="border-y border-white/5 bg-zinc-950/60">
+    <div class="mx-auto grid max-w-7xl grid-cols-2 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-4 lg:px-8">
+      <div class="reveal"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="8">8</p><p class="ko mt-2 text-sm text-zinc-500">기획 도구 (다이어그램·PDF 부가 도구 별도)</p></div>
+      <div class="reveal" style="--i:1"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="155">155</p><p class="ko mt-2 text-sm text-zinc-500">계산 모듈 자동 테스트</p></div>
+      <div class="reveal" style="--i:2"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="1400000">1,400,000</p><p class="ko mt-2 text-sm text-zinc-500">Kalivra 엔진 대조에 쓴 전투 횟수</p></div>
+      <div class="reveal" style="--i:3"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl">0<span class="text-zinc-500">B</span></p><p class="ko mt-2 text-sm text-zinc-500">8개 도구가 서버로 보내는 데이터</p></div>
+    </div>
+  </section>
+
+  <!-- 누가 쓰나: 세 장이 살짝 겹친 카드 -->
+  <section class="py-24 md:py-32 lg:py-40">
+    <div class="mx-auto grid max-w-7xl gap-14 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
+      <div class="reveal lg:sticky lg:top-32 lg:self-start">
+        <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">누가 쓰나요</span>
+        <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">기획서의 숫자가<br>맞는지 확인해야 하는 사람</h2>
+        <p class="ko mt-6 max-w-[46ch] text-base leading-relaxed text-zinc-400 md:text-lg">“필요 장수 ÷ 확률”, “평균 유저 한 명”, “CP 합계”처럼 엑셀에서 흔히 쓰는 계산이 어디서 빗나가는지, 같은 화면에서 원인까지 보여 줍니다.</p>
+      </div>
+      <div class="grid gap-5">
+        <div class="reveal bezel md:-rotate-1" style="--i:0">
+          <div class="core p-7 md:p-9">
+            <div class="flex items-center gap-4"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:widget-5-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span><h3 class="text-xl font-semibold text-zinc-50 md:text-2xl">시스템 기획자</h3></div>
+            <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400">성장 재화가 며칠 만에 맞물리는지, 스테이지가 어디서 막히는지, 강화 확률을 바꾸면 골드가 언제 바닥나는지 봅니다.</p>
+            <div class="mt-6 flex flex-wrap gap-2"><a href="supply.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:routing-2-linear" class="text-base" aria-hidden="true"></iconify-icon>수급</a><a href="stage.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:ranking-linear" class="text-base" aria-hidden="true"></iconify-icon>스테이지</a><a href="economy.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:wallet-money-linear" class="text-base" aria-hidden="true"></iconify-icon>재화 흐름</a><a href="enhance.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:magic-stick-3-linear" class="text-base" aria-hidden="true"></iconify-icon>강화</a></div>
+          </div>
+        </div>
+        <div class="reveal bezel md:translate-x-8 md:rotate-[0.6deg]" style="--i:1">
+          <div class="core p-7 md:p-9">
+            <div class="flex items-center gap-4"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:cart-large-2-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span><h3 class="text-xl font-semibold text-zinc-50 md:text-2xl">BM 기획자</h3></div>
+            <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400">가챠 목표의 실제 비용과 운 나쁜 1%, 보조 아이템 가격과 기대 매출, 세그먼트별 설치당 매출을 확인합니다.</p>
+            <div class="mt-6 flex flex-wrap gap-2"><a href="gacha.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:gift-linear" class="text-base" aria-hidden="true"></iconify-icon>가챠</a><a href="enhance.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:magic-stick-3-linear" class="text-base" aria-hidden="true"></iconify-icon>강화</a><a href="economy.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:wallet-money-linear" class="text-base" aria-hidden="true"></iconify-icon>재화 흐름</a></div>
+          </div>
+        </div>
+        <div class="reveal bezel md:-rotate-[0.4deg]" style="--i:2">
+          <div class="core p-7 md:p-9">
+            <div class="flex items-center gap-4"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:gamepad-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span><h3 class="text-xl font-semibold text-zinc-50 md:text-2xl">전투·레벨 기획자</h3></div>
+            <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400">CP가 실제 승률을 반영하는지, 보스 연계를 보고 피할 수 있는지, 반격할 틈이 몇 번인지 숫자로 판정합니다.</p>
+            <div class="mt-6 flex flex-wrap gap-2"><a href="battle.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:gamepad-linear" class="text-base" aria-hidden="true"></iconify-icon>스탯·전투</a><a href="frame.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:stopwatch-linear" class="text-base" aria-hidden="true"></iconify-icon>프레임</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 도구: 비대칭 벤토 -->
+  <section id="tools" class="scroll-mt-28 py-24 md:py-32 lg:py-40">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div>
+          <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">도구</span>
+          <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">검증 도구 여덟 가지</h2>
+        </div>
+        <p class="ko max-w-[44ch] text-base leading-relaxed text-zinc-400">카드의 숫자는 각 도구의 템플릿을 실제로 돌린 결과입니다. 누르면 계산 방법과 검증, 실제 화면을 볼 수 있습니다.</p>
+      </div>
+      <div class="mt-14 grid grid-flow-dense grid-cols-1 gap-4 lg:grid-cols-12">
+        <a href="enhance.html" style="--i:0" class="reveal t-spring bezel group block lg:col-span-7 lg:row-span-2 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:magic-stick-3-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">강화 · BM</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">강화 확률·비용 설계</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">+15까지 평균·운 나쁜 1%·예산별 도달 확률, 보조 아이템 가격까지</p>
+          <ul class="mt-8 hidden gap-2.5 md:grid"><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>+15까지 평균 얼마가 들고, 운 나쁜 1%는 얼마를 쓰나요?</li><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>3만 원 안에 목표에 닿는 유저는 몇 %인가요?</li><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>파괴방지권 가격이 적정한가요? 합리적인 유저는 어느 단계부터 쓰나요?</li></ul>
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-4xl md:text-5xl font-semibold tracking-tight text-zinc-50">27,967원</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">+0 → +15 기대 총비용 (기본 템플릿)</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            <ul class="mt-5 grid gap-2 text-sm text-zinc-400 sm:grid-cols-2"><li class="ko rounded-2xl bg-white/[0.03] p-4"><span class="block font-display text-lg font-semibold text-zinc-200">30.4%</span>한 번도 파괴되지 않고 도달할 확률</li><li class="ko rounded-2xl bg-white/[0.03] p-4"><span class="block font-display text-lg font-semibold text-zinc-200">−52.8%</span>보조 아이템을 최적으로 쓸 때 줄어드는 비용</li></ul>
+          </div>
+        </div>
+      </a>
+        <a href="gacha.html" style="--i:1" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:gift-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">가챠 · BM</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">가챠·수집 설계</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">단순 계산 → 확률 구조 → 중복으로 비용을 나누고, 확률 공시표까지</p>
+          
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">×1.71</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">단순 계산 대비 실제 기대 뽑기 (레전드 전원 풀 초월)</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            
+          </div>
+        </div>
+      </a>
+        <a href="supply.html" style="--i:2" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:routing-2-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">성장 · 재화</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">성장 재화 수급 설계</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">콘텐츠가 뿌리는 재화로 레벨별 필요량 표를 역산하고 세그먼트별 도달일 확인</p>
+          
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">역산</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">공급 → 레벨별 필요량 표</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            
+          </div>
+        </div>
+      </a>
+        <a href="stage.html" style="--i:3" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:ranking-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">방치형 · 성장</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">방치형 스테이지 성장</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">실제 체류 vs 의도 체류, 정체 원인과 해소에 필요한 최소 변경</p>
+          
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">78.41시간</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">샘플 200스테이지 총 소요</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            
+          </div>
+        </div>
+      </a>
+        <a href="battle.html" style="--i:0" class="reveal t-spring bezel group block lg:col-span-7 lg:row-span-2 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:gamepad-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">전투 · 스탯</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">스탯·전투 밸런스</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">엔티티 × 스탯 × 수식으로 레벨별 CP와 1:1 승률, 특성까지</p>
+          <ul class="mt-8 hidden gap-2.5 md:grid"><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>CP가 높은데 실제로는 지는 캐릭터가 있나요?</li><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>레벨 구간마다 누가 메타를 지배하나요?</li><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>이 상성을 50%로 맞추려면 어느 스탯을 얼마나 바꿔야 하나요?</li></ul>
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-4xl md:text-5xl font-semibold tracking-tight text-zinc-50">24.8%</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">CP 2위 궁수의 전사 상대 승률 (4직업 템플릿)</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            <ul class="mt-5 grid gap-2 text-sm text-zinc-400 sm:grid-cols-2"><li class="ko rounded-2xl bg-white/[0.03] p-4"><span class="block font-display text-lg font-semibold text-zinc-200">2.6% → 75.1%</span>공격 속도를 공격 횟수로 반영하면 바뀌는 승률</li><li class="ko rounded-2xl bg-white/[0.03] p-4"><span class="block font-display text-lg font-semibold text-zinc-200">0.72643</span>Kalivra 엔진 140만 회 결과(0.72676)와 맞는 공식 계산</li></ul>
+          </div>
+        </div>
+      </a>
+        <a href="economy.html" style="--i:1" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:wallet-money-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">경제 · 라이브</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">재화 흐름 시뮬레이터</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">성장 루프를 일 단위로 돌려 편차 띠, 해금일 잔존율, 설치당 매출</p>
+          
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">15일차</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">라이트 유저의 주간 레이드 해금 (모바일 RPG 템플릿)</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            
+          </div>
+        </div>
+      </a>
+        <a href="frame.html" style="--i:2" class="reveal t-spring bezel group block lg:col-span-6 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:stopwatch-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">전투 · 액션</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">패턴 프레임 검증기</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">선딜·판정·후딜과 회피 무적으로 반응·암기·반격 여유 판정</p>
+          
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">3f</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">기본 템플릿에서 가장 빡빡한 회피 윈도우</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            
+          </div>
+        </div>
+      </a>
+        <a href="brief.html" style="--i:3" class="reveal t-spring bezel group block lg:col-span-6 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:clipboard-check-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">공유 · 회의</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">브리핑</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">기준 스냅샷 대비 변화, 지표별 목표 통과·미달, 메모와 PDF</p>
+          
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">7개 탭</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">핵심 지표와 검증 문장을 한 장에</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            
+          </div>
+        </div>
+      </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 단순 계산 vs 워크벤치 -->
+  <section id="compare" class="scroll-mt-28 border-y border-white/5 bg-zinc-950/70 py-24 md:py-32 lg:py-40">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal max-w-3xl">
+        <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">비교</span>
+        <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">같은 숫자, 다른 결론</h2>
+        <p class="ko mt-6 max-w-[60ch] text-base leading-relaxed text-zinc-400 md:text-lg">왼쪽은 기획서에서 흔히 쓰는 계산, 오른쪽은 같은 템플릿을 워크벤치로 돌린 결과입니다.</p>
+      </div>
+      <div class="mt-14 overflow-hidden rounded-[2rem] ring-1 ring-white/10">
+        <div class="hidden grid-cols-[1.1fr_1fr_1.3fr] gap-px bg-white/5 text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500 md:grid">
+          <div class="bg-zinc-950 px-7 py-4">상황</div><div class="bg-zinc-950 px-7 py-4">흔한 계산</div><div class="bg-zinc-950 px-7 py-4 text-accent">워크벤치</div>
+        </div>
+        <a href="gacha.html" class="reveal t-spring group grid grid-cols-1 gap-px border-t border-white/5 bg-white/5 md:grid-cols-[1.1fr_1fr_1.3fr]" style="--i:0">
+          <div class="ko flex items-center gap-3 bg-zinc-950 px-7 py-6 text-base font-semibold text-zinc-100 group-hover:bg-zinc-900"><iconify-icon icon="solar:gift-linear" class="text-xl text-zinc-500" aria-hidden="true"></iconify-icon>가챠 · 레전드 4종 풀 초월</div>
+          <div class="ko bg-zinc-950 px-7 py-6 text-base text-zinc-500 group-hover:bg-zinc-900"><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-600 no-underline md:hidden">흔한 계산</span><span class="line-through decoration-zinc-700">필요 장수 ÷ 확률 = 120,000회</span></div>
+          <div class="ko flex items-center justify-between gap-4 bg-zinc-950 px-7 py-6 text-base font-medium text-zinc-100 group-hover:bg-zinc-900"><span><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-accent md:hidden">워크벤치</span>205,056회 — 소환 레벨 ×1.47, 중복 ×1.16</span><iconify-icon icon="solar:arrow-right-up-linear" class="t-spring text-xl text-zinc-600 group-hover:text-accent" aria-hidden="true"></iconify-icon></div>
+        </a>
+        <a href="enhance.html" class="reveal t-spring group grid grid-cols-1 gap-px border-t border-white/5 bg-white/5 md:grid-cols-[1.1fr_1fr_1.3fr]" style="--i:1">
+          <div class="ko flex items-center gap-3 bg-zinc-950 px-7 py-6 text-base font-semibold text-zinc-100 group-hover:bg-zinc-900"><iconify-icon icon="solar:magic-stick-3-linear" class="text-xl text-zinc-500" aria-hidden="true"></iconify-icon>강화 · 보조 아이템 가격</div>
+          <div class="ko bg-zinc-950 px-7 py-6 text-base text-zinc-500 group-hover:bg-zinc-900"><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-600 no-underline md:hidden">흔한 계산</span><span class="line-through decoration-zinc-700">아이템 효과만 곱해 “조금 싸진다”</span></div>
+          <div class="ko flex items-center justify-between gap-4 bg-zinc-950 px-7 py-6 text-base font-medium text-zinc-100 group-hover:bg-zinc-900"><span><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-accent md:hidden">워크벤치</span>최적 정책이면 −52.8% — 아이템이 너무 쌈</span><iconify-icon icon="solar:arrow-right-up-linear" class="t-spring text-xl text-zinc-600 group-hover:text-accent" aria-hidden="true"></iconify-icon></div>
+        </a>
+        <a href="battle.html" class="reveal t-spring group grid grid-cols-1 gap-px border-t border-white/5 bg-white/5 md:grid-cols-[1.1fr_1fr_1.3fr]" style="--i:2">
+          <div class="ko flex items-center gap-3 bg-zinc-950 px-7 py-6 text-base font-semibold text-zinc-100 group-hover:bg-zinc-900"><iconify-icon icon="solar:gamepad-linear" class="text-xl text-zinc-500" aria-hidden="true"></iconify-icon>전투 · 공격 속도 4배 캐릭터</div>
+          <div class="ko bg-zinc-950 px-7 py-6 text-base text-zinc-500 group-hover:bg-zinc-900"><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-600 no-underline md:hidden">흔한 계산</span><span class="line-through decoration-zinc-700">턴 교대: 승률 80% (선공 확률뿐)</span></div>
+          <div class="ko flex items-center justify-between gap-4 bg-zinc-950 px-7 py-6 text-base font-medium text-zinc-100 group-hover:bg-zinc-900"><span><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-accent md:hidden">워크벤치</span>시간 기반: 100% — 같은 시간에 4배 공격</span><iconify-icon icon="solar:arrow-right-up-linear" class="t-spring text-xl text-zinc-600 group-hover:text-accent" aria-hidden="true"></iconify-icon></div>
+        </a>
+        <a href="stage.html" class="reveal t-spring group grid grid-cols-1 gap-px border-t border-white/5 bg-white/5 md:grid-cols-[1.1fr_1fr_1.3fr]" style="--i:3">
+          <div class="ko flex items-center gap-3 bg-zinc-950 px-7 py-6 text-base font-semibold text-zinc-100 group-hover:bg-zinc-900"><iconify-icon icon="solar:ranking-linear" class="text-xl text-zinc-500" aria-hidden="true"></iconify-icon>스테이지 · 16~17챕터 정체</div>
+          <div class="ko bg-zinc-950 px-7 py-6 text-base text-zinc-500 group-hover:bg-zinc-900"><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-600 no-underline md:hidden">흔한 계산</span><span class="line-through decoration-zinc-700">비용 구간 증가폭(30) 탓</span></div>
+          <div class="ko flex items-center justify-between gap-4 bg-zinc-950 px-7 py-6 text-base font-medium text-zinc-100 group-hover:bg-zinc-900"><span><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-accent md:hidden">워크벤치</span>체력 증가율 −0.85%로도 해소 — 성장률 비율이 핵심</span><iconify-icon icon="solar:arrow-right-up-linear" class="t-spring text-xl text-zinc-600 group-hover:text-accent" aria-hidden="true"></iconify-icon></div>
+        </a>
+        <a href="economy.html" class="reveal t-spring group grid grid-cols-1 gap-px border-t border-white/5 bg-white/5 md:grid-cols-[1.1fr_1fr_1.3fr]" style="--i:4">
+          <div class="ko flex items-center gap-3 bg-zinc-950 px-7 py-6 text-base font-semibold text-zinc-100 group-hover:bg-zinc-900"><iconify-icon icon="solar:wallet-money-linear" class="text-xl text-zinc-500" aria-hidden="true"></iconify-icon>재화 흐름 · 주간 레이드 15일차 해금</div>
+          <div class="ko bg-zinc-950 px-7 py-6 text-base text-zinc-500 group-hover:bg-zinc-900"><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-600 no-underline md:hidden">흔한 계산</span><span class="line-through decoration-zinc-700">평균 유저 한 명: “정상”</span></div>
+          <div class="ko flex items-center justify-between gap-4 bg-zinc-950 px-7 py-6 text-base font-medium text-zinc-100 group-hover:bg-zinc-900"><span><span class="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.15em] text-accent md:hidden">워크벤치</span>라이트 잔존 7%, 하위 10%는 28일차</span><iconify-icon icon="solar:arrow-right-up-linear" class="t-spring text-xl text-zinc-600 group-hover:text-accent" aria-hidden="true"></iconify-icon></div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 검증: 왼쪽 큰 문장, 오른쪽 목록 -->
+  <section id="proof" class="scroll-mt-28 py-24 md:py-32 lg:py-40">
+    <div class="mx-auto grid max-w-7xl gap-14 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+      <div class="reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">검증</span>
+        <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">계산이 맞다는 근거를<br>함께 둡니다</h2>
+        <p class="ko mt-6 max-w-[48ch] text-base leading-relaxed text-zinc-400 md:text-lg">공식으로 풀 수 있는 곳은 공식으로 풀고, 같은 규칙의 시뮬레이션과 화면에서 바로 비교합니다. 계산 모듈은 화면과 분리해 자동 테스트 155개로 확인합니다.</p>
+        <div class="mt-10 bezel max-w-md"><div class="core p-7">
+          <p class="text-sm text-zinc-500">턴 교대 공식 계산 vs Kalivra 엔진 140만 회</p>
+          <div class="mt-4 grid grid-cols-2 gap-4">
+            <div><p class="font-display text-3xl font-semibold text-zinc-50">0.72643</p><p class="mt-1 text-xs text-zinc-500">공식 계산</p></div>
+            <div><p class="font-display text-3xl font-semibold text-zinc-400">0.72676</p><p class="mt-1 text-xs text-zinc-500">엔진 실행 결과</p></div>
+          </div>
+          <p class="ko mt-5 flex items-center gap-2 text-sm text-accent"><iconify-icon icon="solar:shield-check-linear" class="" aria-hidden="true"></iconify-icon>차이가 표준오차 안 (z ≈ −0.9)</p>
+        </div></div>
+      </div>
+      <ol class="grid gap-4">
+        <li class="reveal" style="--i:0"><a href="battle.html" class="t-spring group flex gap-5 rounded-[1.75rem] border border-white/5 bg-white/[0.02] p-6 hover:border-white/10 hover:bg-white/[0.04] md:p-7">
+          <span class="font-mono text-sm text-zinc-600">01</span>
+          <div><h3 class="text-lg font-semibold text-zinc-100">Kalivra 엔진과 대조</h3><p class="ko mt-2 text-sm leading-relaxed text-zinc-400 md:text-base">Kalivra v1.0.1 전투 엔진을 그대로 돌린 40만~140만 회 결과와, 같은 규칙의 공식 계산이 3σ 안에서 일치합니다.</p><span class="mt-3 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">스탯·전투 밸런스<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span></div>
+        </a></li>
+        <li class="reveal" style="--i:1"><a href="enhance.html" class="t-spring group flex gap-5 rounded-[1.75rem] border border-white/5 bg-white/[0.02] p-6 hover:border-white/10 hover:bg-white/[0.04] md:p-7">
+          <span class="font-mono text-sm text-zinc-600">02</span>
+          <div><h3 class="text-lg font-semibold text-zinc-100">독립 규칙 시뮬레이터</h3><p class="ko mt-2 text-sm leading-relaxed text-zinc-400 md:text-base">강화 체인과 따로 게임 규칙을 그대로 구현한 시뮬레이터, 밀집 행렬 풀이(오차 1e-8)와 비교합니다.</p><span class="mt-3 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">강화 확률·비용 설계<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span></div>
+        </a></li>
+        <li class="reveal" style="--i:2"><a href="frame.html" class="t-spring group flex gap-5 rounded-[1.75rem] border border-white/5 bg-white/[0.02] p-6 hover:border-white/10 hover:bg-white/[0.04] md:p-7">
+          <span class="font-mono text-sm text-zinc-600">03</span>
+          <div><h3 class="text-lg font-semibold text-zinc-100">브루트포스 대조</h3><p class="ko mt-2 text-sm leading-relaxed text-zinc-400 md:text-base">프레임 판정의 최적 입력 계획을 무작위 연계 1,000개의 모든 입력 조합과 비교합니다.</p><span class="mt-3 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">패턴 프레임 검증기<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span></div>
+        </a></li>
+        <li class="reveal" style="--i:3"><a href="gacha.html" class="t-spring group flex gap-5 rounded-[1.75rem] border border-white/5 bg-white/[0.02] p-6 hover:border-white/10 hover:bg-white/[0.04] md:p-7">
+          <span class="font-mono text-sm text-zinc-600">04</span>
+          <div><h3 class="text-lg font-semibold text-zinc-100">해석해 대조</h3><p class="ko mt-2 text-sm leading-relaxed text-zinc-400 md:text-base">쿠폰 수집 n·Hₙ/p, 음이항 평균, 절단 기하분포 같은 알려진 답과 오차 1e-6 안에서 맞춥니다.</p><span class="mt-3 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">가챠·수집 설계<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span></div>
+        </a></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 사례: 높이가 다른 카드 -->
+  <section id="cases" class="scroll-mt-28 border-t border-white/5 py-24 md:py-32 lg:py-40">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">기획 판단 사례</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">계산 결과로 무엇을 정했나</h2></div>
+        <a href="https://github.com/junhy96/gamedesign_workbench/blob/main/docs/case-study.md" class="t-spring inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-accent" rel="noopener">사례 전문 보기<iconify-icon icon="solar:arrow-right-up-linear" class="" aria-hidden="true"></iconify-icon></a>
+      </div>
+      <div class="mt-14 columns-1 gap-4 md:columns-2 lg:columns-3">
+        <article class="reveal bezel mb-4 break-inside-avoid" style="--i:0"><div class="core p-7 md:p-8">
+          <span class="flex items-center gap-2 text-xs text-zinc-500"><iconify-icon icon="solar:gift-linear" class="text-base text-accent" aria-hidden="true"></iconify-icon>가챠·수집 설계</span>
+          <h3 class="ko mt-5 text-xl font-semibold leading-snug text-zinc-50">마일리지 선택권이 꼬리를 정확히 자릅니다</h3>
+          <p class="ko mt-4 text-base leading-relaxed text-zinc-400">방치형 동료 소환에서 레전드 천장(8천 회)은 평균을 26% 줄이지만 레전드가 나오는 속도 자체를 바꿔 스테이지 밸런스까지 흔듭니다. 2만 회마다 레전드 선택권을 주는 마일리지는 평균을 20% 줄이면서 99% 꼬리를 266,762회에서 정확히 200,000회로 자릅니다. 공시 확률은 그대로 두고 “아무리 운이 나빠도 여기까지”를 보여 줄 수 있어 1차안으로 골랐습니다.</p>
+          <a href="gacha.html" class="t-spring mt-6 inline-flex items-center gap-1.5 text-sm text-zinc-300 hover:text-accent">도구 자세히 보기<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></a>
+        </div></article>
+        <article class="reveal bezel mb-4 break-inside-avoid" style="--i:1"><div class="core p-7 md:p-8">
+          <span class="flex items-center gap-2 text-xs text-zinc-500"><iconify-icon icon="solar:magic-stick-3-linear" class="text-base text-accent" aria-hidden="true"></iconify-icon>강화 확률·비용 설계</span>
+          <h3 class="ko mt-5 text-xl font-semibold leading-snug text-zinc-50">최적 사용 정책이 보여 준 가격 오류</h3>
+          <p class="ko mt-4 text-base leading-relaxed text-zinc-400">아이템 없이 27,967원이던 기대 비용이 최적 정책으로 13,196원(−52.8%)이 됩니다. 합리적인 유저가 쓰면 비용이 절반이 되는 아이템은 선택이 아니라 필수품입니다. 절감 폭이 의도한 수준(예: 15% 이내)이 되고, 아이템을 쓰는 단계가 +12 이상으로 좁혀질 때까지 가격을 조정합니다.</p>
+          <a href="enhance.html" class="t-spring mt-6 inline-flex items-center gap-1.5 text-sm text-zinc-300 hover:text-accent">도구 자세히 보기<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></a>
+        </div></article>
+        <article class="reveal bezel mb-4 break-inside-avoid" style="--i:2"><div class="core p-7 md:p-8">
+          <span class="flex items-center gap-2 text-xs text-zinc-500"><iconify-icon icon="solar:wallet-money-linear" class="text-base text-accent" aria-hidden="true"></iconify-icon>재화 흐름 시뮬레이터</span>
+          <h3 class="ko mt-5 text-xl font-semibold leading-snug text-zinc-50">“15일차 해금, 정상”이 정상이 아니었던 이유</h3>
+          <p class="ko mt-4 text-base leading-relaxed text-zinc-400">라이트(하루 30분, 무과금)는 주간 레이드를 15일차에 엽니다. 그날 남아 있는 라이트 유저는 7%이고, 하위 10%는 28일차에 엽니다. 열려도 시간·스태미나가 남지 않아 60일 동안 한 번도 하지 못합니다. 평균 유저 한 명만 돌렸다면 보이지 않았을 문제라, 해금 전투력과 소요 시간을 낮춰 7일차 안에 첫 레이드를 경험하게 조정합니다.</p>
+          <a href="economy.html" class="t-spring mt-6 inline-flex items-center gap-1.5 text-sm text-zinc-300 hover:text-accent">도구 자세히 보기<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></a>
+        </div></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 작업 흐름: 가로 띠 -->
+  <section class="overflow-hidden border-y border-white/5 bg-zinc-950/70 py-16">
+    <div class="marquee gap-4" aria-label="작업 흐름">
+      <span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:camera-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>스냅샷으로 지금 설정 저장</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:ruler-pen-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>수치 한 칸 바꾸기</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:undo-left-round-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>Ctrl+Z로 되돌리기</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:clipboard-check-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>브리핑에서 목표 통과·미달</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:document-text-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>PDF로 회의 자료</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:code-square-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>Unity·Unreal로 내보내기</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300"><iconify-icon icon="solar:link-round-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>공유 링크 한 줄</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:camera-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>스냅샷으로 지금 설정 저장</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:ruler-pen-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>수치 한 칸 바꾸기</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:undo-left-round-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>Ctrl+Z로 되돌리기</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:clipboard-check-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>브리핑에서 목표 통과·미달</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:document-text-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>PDF로 회의 자료</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:code-square-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>Unity·Unreal로 내보내기</span><span class="flex flex-none items-center gap-3 rounded-full border border-white/10 bg-white/[0.02] px-6 py-3 text-base text-zinc-300" aria-hidden="true"><iconify-icon icon="solar:link-round-linear" class="text-xl text-accent" aria-hidden="true"></iconify-icon>공유 링크 한 줄</span>
+    </div>
+  </section>
+
+  <!-- 마무리 CTA -->
+  <section class="relative overflow-hidden py-28 md:py-40">
+    <div class="orb left-1/2 top-1/2 h-[480px] w-[720px] -translate-x-1/2 -translate-y-1/2 bg-emerald-500/10" aria-hidden="true"></div>
+    <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal max-w-4xl">
+        <h2 class="ko text-4xl font-bold leading-tight tracking-tight text-zinc-50 md:text-6xl">기획서 숫자 하나를<br>넣어 보세요</h2>
+        <p class="ko mt-6 max-w-[52ch] text-base leading-relaxed text-zinc-400 md:text-lg">템플릿으로 바로 시작하고, 내 수치로 바꾼 뒤 공유 링크나 PDF로 팀에 보낼 수 있습니다.</p>
+        <div class="mt-10 flex flex-wrap gap-3"><a href="../index.html#enhance" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">지금 바로 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a><a href="https://github.com/junhy96/gamedesign_workbench" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] py-2 pl-7 pr-2 text-base font-medium text-zinc-200 hover:scale-[1.02] hover:bg-white/[0.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 md:text-lg">GitHub에서 코드 보기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-white/5 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="border-t border-white/5">
+  <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
+    <div class="max-w-md">
+      <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10b981"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#052e1f" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 8개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+    </div>
+    <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
+      <a href="../index.html#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>
+      <a href="index.html#tools" class="t-spring hover:text-zinc-100">도구 목록</a>
+      <a href="https://github.com/junhy96/gamedesign_workbench" class="t-spring hover:text-zinc-100" rel="noopener">GitHub 저장소</a>
+      <a href="https://github.com/junhy96/gamedesign_workbench/blob/main/docs/case-study.md" class="t-spring hover:text-zinc-100" rel="noopener">기획 판단 사례</a>
+    </div>
+  </div>
+</footer>
+<script>
+  // 화면에 들어올 때 나타나기 (스크롤 이벤트 대신 IntersectionObserver)
+  const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  // 숫자 올라가기
+  const fmt = new Intl.NumberFormat('ko-KR');
+  const co = new IntersectionObserver((es) => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const el = e.target, to = +el.dataset.count, t0 = performance.now();
+    const step = (t) => { const p = Math.min(1, (t - t0) / 1200), k = 1 - Math.pow(1 - p, 3); el.textContent = fmt.format(Math.round(to * k)); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step); co.unobserve(el);
+  }), { threshold: 0.6 });
+  document.querySelectorAll('[data-count]').forEach(el => co.observe(el));
+  // 실제 도구 미리보기: 1280px 화면을 칸 너비에 맞춰 줄임
+  document.querySelectorAll('.frame-view').forEach(box => {
+    const f = box.querySelector('iframe');
+    new ResizeObserver(() => { const s = box.clientWidth / 1280; f.style.transform = 'scale(' + s + ')'; box.style.height = Math.round(820 * s) + 'px'; }).observe(box);
+  });
+  // 모바일 메뉴
+  const panel = document.querySelector('.nav-panel'), tog = document.querySelector('.nav-toggle');
+  const setMenu = (open) => { panel.classList.toggle('open', open); tog.setAttribute('aria-expanded', String(open)); document.body.style.overflow = open ? 'hidden' : ''; };
+  tog.addEventListener('click', () => setMenu(true));
+  panel.querySelector('.nav-close').addEventListener('click', () => setMenu(false));
+  panel.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setMenu(false)));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+</script>
+</body>
+</html>
