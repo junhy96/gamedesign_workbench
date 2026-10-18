@@ -5,9 +5,16 @@ const live = new Map();       // key → Chart
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const MOTION = { duration: 520, easing: 'easeOutQuart' };
 
-// 그래프별 플러그인(점선·띠 등)은 바꿔 끼울 수 있게 한 플러그인으로 대신 부른다
+// 그래프별 플러그인(점선·띠 등)은 바꿔 끼울 수 있게 한 플러그인으로 대신 부른다.
+// 목록은 그래프를 만들기 전에 넣어 둔다 — 움직임이 꺼져 있으면 new Chart() 안에서 바로 첫 그림을 그리기 때문
 const HOOKS = ['beforeDraw', 'afterDraw', 'beforeDatasetsDraw', 'afterDatasetsDraw'];
-const relay = Object.fromEntries([['id', 'liveRelay'], ...HOOKS.map(h => [h, (c, args, o) => { for (const p of c.$live || []) p[h]?.(c, args, o); }])]);
+const relayFor = (holder) => Object.fromEntries([['id', 'liveRelay'], ...HOOKS.map(h => [h, (c, args, o) => { for (const p of holder.list) p[h]?.(c, args, o); }])]);
+function create(canvas, type, data, options, plugins) {
+  const holder = { list: plugins };
+  const chart = new Chart(canvas, { type, data, options, plugins: [relayFor(holder)] });
+  chart.$plugins = holder;
+  return chart;
+}
 
 const shapeOf = (cfg) => `${cfg.type}|${(cfg.data?.datasets || []).map(d => d.type || '').join(',')}`;
 
@@ -34,7 +41,7 @@ export function drawChart(key, canvas, config) {
   const healthy = prev && prev.attached !== false && canvas.isConnected && prev.width > 0;
   if (prev && healthy && prev.canvas === canvas && shapeOf(prev.config) === shapeOf(config)) {
     prev.options = options;
-    prev.$live = plugins;
+    prev.$plugins.list = plugins;
     setData(prev, config.data);
     prev.update();
     return prev;
@@ -52,14 +59,12 @@ export function drawChart(key, canvas, config) {
   if (from) {
     // 새 캔버스에 이전 값으로 먼저(움직임 없이) 그린 뒤 새 값으로 움직임
     const startData = { labels: from.labels, datasets: config.data.datasets.map((d, i) => ({ ...d, data: from.datasets[i] })) };
-    chart = new Chart(canvas, { type: config.type, data: startData, options: { ...options, animation: false }, plugins: [relay] });
-    chart.$live = plugins;
-    chart.options.animation = motion;
+    chart = create(canvas, config.type, startData, { ...options, animation: false }, plugins);
+    chart.options = options;
     setData(chart, config.data);
     chart.update();
   } else {
-    chart = new Chart(canvas, { type: config.type, data: config.data, options, plugins: [relay] });
-    chart.$live = plugins;
+    chart = create(canvas, config.type, config.data, options, plugins);
   }
   if (key) live.set(key, chart);
   return chart;
