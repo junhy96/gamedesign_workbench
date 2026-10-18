@@ -299,3 +299,21 @@ test('분위수 표: 시뮬레이션 분위 = 정렬 표본의 분위, 파괴는
   assert.ok(mc.quantiles.destroys.every(Number.isInteger));
   assert.equal(mc.quantiles.cost[PCTS.indexOf(0.5)] <= mc.quantiles.cost[PCTS.indexOf(0.9)], true);
 });
+
+test('성공률을 고치면 파괴는 그대로, 유지·하락이 비율대로 합 100%', async () => {
+  const { fillFailure } = await import('../js/enhance/table.js');
+  const r = { s: 50, s2: 0, k: 30, d: 10, b: 10 };
+  const base = { k: r.k, d: r.d };
+  r.s = 60; // 나머지 30 = 유지 22.5 + 하락 7.5 (3:1)
+  assert.deepEqual(fillFailure(r, false, base), { k: 22.5, d: 7.5 });
+  assert.equal(r.b, 10);
+  r.s = 100; fillFailure(r, false, base); // 중간에 0이 돼도 시작 비율 유지
+  r.s = 70; assert.deepEqual(fillFailure(r, false, base), { k: 15, d: 5 });
+  const z = { s: 40, s2: 5, k: 0, d: 0, b: 5 };
+  assert.deepEqual(fillFailure(z, true), { k: 50, d: 0 }); // 둘 다 0이면 모두 유지, 대성공 포함
+  const over = { s: 95, s2: 0, k: 3, d: 0, b: 10 };
+  assert.deepEqual(fillFailure(over, false), { k: 0, d: 0 }); // 넘치면 0 (표가 합 경고)
+  const third = { s: 33.33, s2: 0, k: 1, d: 2, b: 0 };
+  const f = fillFailure(third, false);
+  assert.ok(Math.abs(third.s + f.k + f.d - 100) < 1e-9);
+});

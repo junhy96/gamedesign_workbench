@@ -3,6 +3,7 @@ import { optimizeItems, solveForCost, priceSweep, specUnits, isQty, MAX_SWEEP_PO
 import { reachProbability } from './simulate.js';
 import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
+import { drawChart as liveChart, dropChart } from '../lib/chart.js';
 import { h, fmtMoney, fmtMoneyShort, fmtPct, fmtNum, comma, toast } from '../lib/util.js';
 import { money as won, moneyShort as wonShort, currency, toDisplay, fromDisplay } from './currency.js';
 export { won };
@@ -121,7 +122,6 @@ export function renderPaths(ctx, els, mc, res) {
     h('p.muted.small', {}, '회색 = 다른 시행 · 파란 선 = 시도 횟수가 중간인 시행 · 주황 선 = 가장 오래 걸린 시행 · 빨간 × = 두 시행에서 파괴된 단계'),
   );
   if (typeof Chart === 'undefined') return;
-  ctx.pathChart?.destroy();
   const grid = cssVar('--grid'), text = cssVar('--text-3'), ink = cssVar('--text-2'), main = cssVar('--series-1'), bad = cssVar('--bad'), slow = cssVar('--tor-down');
   const line = (p, i) => {
     const hl = i === mid ? main : i === worst ? slow : null;
@@ -133,10 +133,10 @@ export function renderPaths(ctx, els, mc, res) {
   // 파괴는 강조한 두 시행에만, 파괴된 그 단계에 표시 (모든 시행에 찍으면 복구 단계에 겹쳐 선을 가림)
   const dest = [mid, worst].filter((v, k, a) => a.indexOf(v) === k).flatMap(i => P[i].destroys.map(x => ({ x: x - 1, y: P[i].stages[x - 1] ?? 0 })));
   if (dest.length) ds.push({ type: 'scatter', label: '파괴', data: dest, pointStyle: 'crossRot', pointRadius: 5, borderColor: bad, borderWidth: 2, order: -1 });
-  ctx.pathChart = new Chart(canvas, {
+  ctx.pathChart = liveChart('enhance:path', canvas, {
     type: 'line', data: { datasets: ds },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false },
       scales: {
         x: { type: 'linear', min: 0, grid: { color: grid }, ticks: { color: text }, title: { display: true, text: '시도 횟수', color: text } },
@@ -176,8 +176,8 @@ export function renderMCSkipped(ctx, els, res) {
   els.pct.replaceChildren();
   els.budgetOut.replaceChildren(h('span.muted', {}, '시뮬레이션 생략'));
   els.quantCard.replaceChildren(h('div.card-head', {}, h('h2', {}, '달성 분위별 수치')), h('p.muted', {}, '기대 시도 횟수가 너무 커서 시뮬레이션을 생략했습니다.'));
-  ctx.chart?.destroy(); ctx.chart = null;
-  ctx.pathChart?.destroy(); ctx.pathChart = null; els.pathCard.replaceChildren();
+  dropChart('enhance:dist'); ctx.chart = null;
+  dropChart('enhance:path'); ctx.pathChart = null; els.pathCard.replaceChildren();
   renderVerify(els, res, null);
 }
 
@@ -214,12 +214,11 @@ export function drawChart(ctx, els, mc) {
       g.restore();
     },
   };
-  ctx.chart?.destroy();
-  ctx.chart = new Chart(els.canvas, {
+  ctx.chart = liveChart('enhance:dist', els.canvas, {
     type: 'bar',
     data: { datasets: [{ data, backgroundColor: series, hoverBackgroundColor: series + 'cc', borderRadius: { topLeft: 4, topRight: 4 }, borderSkipped: 'start', barPercentage: 0.9, categoryPercentage: 1 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
+      responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 6 } },
       scales: {
         x: { type: 'linear', offset: false, min: edges[0], max: edges.at(-1) + binW * 0.01, grid: { display: false }, border: { color: grid }, ticks: { color: text, maxTicksLimit: 6, callback: (v) => fmtMoneyShort(toDisplay(v)) } },
@@ -431,7 +430,6 @@ function runSweep(ctx, els) {
 }
 
 export function drawSweep(ctx, els) {
-  ctx.sweepCharts?.forEach(c => c.destroy());
   ctx.sweepCharts = [];
   const r = ctx.lastSweep;
   if (!r || typeof Chart === 'undefined' || !els.sweepRev?.isConnected) return;
@@ -465,11 +463,11 @@ export function drawSweep(ctx, els) {
       g.restore();
     },
   });
-  const chart = (canvas, color, y, tick, hLine, extra = {}) => new Chart(canvas, {
+  const chart = (key, canvas, color, y, tick, hLine, extra = {}) => liveChart(key, canvas, {
     type: 'line',
     data: { datasets: [{ data: r.points.map(p => ({ x: p.price, y: y(p), p })), borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
+      responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       layout: { padding: { top: 6 } },
       scales: {
@@ -494,8 +492,8 @@ export function drawSweep(ctx, els) {
   });
   const savings = r.points.map(p => p.saving * 100);
   ctx.sweepCharts.push(
-    chart(els.sweepRev, cssVar('--series-1'), (p) => toDisplay(p.bmSpend), (v) => fmtMoneyShort(v), null, { beginAtZero: true }),
-    chart(els.sweepSave, cssVar('--series-2'), (p) => p.saving * 100, (v) => `${v}%`, r.goal * 100,
+    chart('enhance:sweepRev', els.sweepRev, cssVar('--series-1'), (p) => toDisplay(p.bmSpend), (v) => fmtMoneyShort(v), null, { beginAtZero: true }),
+    chart('enhance:sweepSave', els.sweepSave, cssVar('--series-2'), (p) => p.saving * 100, (v) => `${v}%`, r.goal * 100,
       { suggestedMin: Math.min(r.goal * 100, ...savings) - 2, suggestedMax: Math.max(r.goal * 100, ...savings) + 2 }),
   );
 }

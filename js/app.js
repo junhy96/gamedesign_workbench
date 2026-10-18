@@ -49,9 +49,37 @@ window.addEventListener('hashchange', refreshUndo);
 const mounted = new Set();
 const tabs = [...document.querySelectorAll('[data-tab]')];
 
+// 분류 메뉴: 지금 도구가 든 분류를 강조하고, 분류 버튼에 지금 도구 이름을 함께 보인다
+const groups = [...document.querySelectorAll('.nav-group')];
+const closeMenus = (except) => { for (const g of groups) if (g !== except) { g.classList.remove('open'); g.querySelector('.nav-trigger').setAttribute('aria-expanded', 'false'); } };
+for (const g of groups) {
+  const trig = g.querySelector('.nav-trigger'), items = [...g.querySelectorAll('.nav-menu [data-tab]')];
+  const open = (on) => { g.classList.toggle('open', on); trig.setAttribute('aria-expanded', String(on)); if (on) closeMenus(g); };
+  trig.addEventListener('click', () => open(!g.classList.contains('open'))); // 터치: 눌러서 열고 닫기
+  g.addEventListener('mouseenter', () => { g.classList.remove('picked'); trig.setAttribute('aria-expanded', 'true'); });
+  g.addEventListener('mouseleave', () => { g.classList.remove('picked'); open(false); });
+  g.addEventListener('keydown', (e) => {
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { open(false); trig.focus(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); open(true);
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      items[i < 0 ? (d > 0 ? 0 : items.length - 1) : (i + d + items.length) % items.length].focus();
+    }
+  });
+  // 고른 뒤에는 마우스가 아직 위에 있어도 닫기 (다시 올리면 열림)
+  for (const it of items) it.addEventListener('click', () => { open(false); g.classList.add('picked'); it.blur(); });
+}
+document.addEventListener('click', (e) => { if (!e.target.closest('.nav-group')) closeMenus(); });
+
 function show(id) {
   if (!(id in TOOLS)) id = 'enhance';
-  for (const btn of tabs) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
+  for (const btn of tabs) btn.toggleAttribute('aria-current', btn.dataset.tab === id);
+  for (const g of groups) {
+    const cur = g.querySelector(`.nav-menu [data-tab="${id}"]`);
+    g.classList.toggle('active', !!cur);
+    g.querySelector('.nav-cur').textContent = cur ? cur.querySelector('b').textContent : '';
+  }
   for (const key of Object.keys(TOOLS)) document.getElementById(`tab-${key}`).hidden = key !== id;
   if (TOOLS[id] && !mounted.has(id)) { mounted.add(id); TOOLS[id](document.getElementById(`tab-${id}`)); }
 }

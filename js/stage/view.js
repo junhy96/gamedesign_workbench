@@ -4,6 +4,7 @@ import { statsAt as battleStatsAt } from '../battle/model.js';
 import { TEMPLATES as BATTLE_TEMPLATES } from '../battle/presets.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
+import { drawChart as liveChart } from '../lib/chart.js';
 
 const SCHEMA = 1;
 const STORE_KEY = 'stage:v1';
@@ -446,12 +447,11 @@ function drawChart(res) {
     hint = '로그 축 · 실제 = 이 스테이지를 열기까지 앞 스테이지에서 파밍한 시간 · 빨간 점 = 정체';
   }
   els.chartHint.textContent = hint;
-  chart?.destroy();
-  chart = new Chart(els.canvas, {
+  chart = liveChart('stage:chart', els.canvas, {
     type: 'line',
     data: { datasets },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       scales: {
         x: { type: 'linear', min: 1, max: state.chapters + 1, title: { display: true, text: '챕터', color: tick }, grid: { color: grid }, ticks: { color: tick, stepSize: 1, callback: (v) => (Number.isInteger(v) && v <= state.chapters ? v : '') } },

@@ -5,6 +5,7 @@ import { TEMPLATES } from './presets.js';
 import { isDark } from '../lib/mermaid.js';
 import { createDeck, renderSpecs, collectSvgShapes, fitShapes, FONT } from '../lib/pptx.js';
 import { h, store, encodeState, decodeState, toast, debounce, fmtMoney, fmtNum } from '../lib/util.js';
+import { drawChart, dropChart } from '../lib/chart.js';
 
 const SCHEMA = 2;
 const STORE_KEY = 'economy:v2';
@@ -258,12 +259,11 @@ function lineChart(key, canvas, res, pick, yFmt, extra = []) {
   if (typeof Chart === 'undefined') return;
   const grid = cssVar('--grid'), text = cssVar('--text-3');
   const labels = Array.from({ length: res.days + 1 }, (_, d) => d);
-  charts[key]?.destroy();
-  charts[key] = new Chart(canvas, {
+  charts[key] = drawChart(`economy:${key}`, canvas, {
     type: 'line',
     data: { labels, datasets: [...res.bySeg.map((r, i) => { const c = cssVar(SERIES[i % SERIES.length]); return { label: `${r.segment.name} (${r.segment.share}%)`, data: pick(r), borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, tension: 0.15 }; }), ...extra] },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       scales: {
         x: { grid: { display: false }, ticks: { color: text, maxTicksLimit: 10, callback: (v) => `${v}일` }, border: { color: grid } },
         y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: text, maxTicksLimit: 6, callback: yFmt } },
@@ -294,7 +294,7 @@ function renderRetention(res) {
   const any = res.bySeg.some(r => hasRetention(r.segment));
   els.retCard.hidden = false;
   if (!any) {
-    charts.ret?.destroy(); charts.ret = null;
+    dropChart('economy:ret'); charts.ret = null;
     els.retCanvas.parentElement.hidden = true;
     els.retHint.textContent = '';
     els.retBody.replaceChildren(h('p.muted', {}, '유저 세그먼트 표에 D1·D7·D30 잔존율을 넣으면, 콘텐츠가 열리는 날 몇 %가 남아 있는지와 설치당 기대 매출을 계산합니다.'));

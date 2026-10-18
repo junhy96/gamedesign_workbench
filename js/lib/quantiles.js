@@ -1,6 +1,7 @@
 // 분위수 표·그래프 — 강화·가챠가 같이 쓴다. "100명 중 몇 명이 이 안에 달성하나"를 0.1% ~ 99.9%로 펼쳐 보여준다.
 // 계산 부분(PCTS, quantile, pctDesc)은 DOM 없이 테스트에서도 쓴다.
 import { h } from './util.js';
+import { drawChart } from './chart.js';
 
 /** 보여줄 분위: 누적 비율 p = 이 값 안에 달성하는 유저 비율 */
 export const PCTS = [0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999];
@@ -28,7 +29,6 @@ export function pctDesc(p) {
 /** 시뮬레이션 꼬리 신뢰도: 가장 바깥 분위가 표본 몇 개로 정해지나 */
 export const tailSamples = (n) => Math.floor(n * Math.min(PCTS[0], 1 - PCTS.at(-1)));
 
-const charts = new WeakMap();
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 /**
@@ -59,8 +59,6 @@ export function renderQuantileCard(host, { title = '달성 분위별 수치', hi
 }
 
 function drawQuantileChart(host, canvas, m) {
-  charts.get(host)?.destroy();
-  if (typeof Chart === 'undefined') return;
   const bar = cssVar('--series-1'), grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
   const meanLine = {
     id: 'qMean',
@@ -77,11 +75,11 @@ function drawQuantileChart(host, canvas, m) {
       g.restore();
     },
   };
-  const chart = new Chart(canvas, {
+  drawChart(`quant:${host.closest('[role=tabpanel]')?.id ?? host.id}`, canvas, {
     type: 'bar',
     data: { labels: PCTS.map(pctLabel), datasets: [{ label: m.label, data: m.values.map(v => (Number.isFinite(v) ? v : null)), backgroundColor: bar, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 44 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
+      responsive: true, maintainAspectRatio: false,
       scales: {
         x: { grid: { display: false }, ticks: { color: tick }, title: { display: true, text: '누적 유저 비율 (이 안에 달성)', color: tick } },
         y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, callback: (v) => (m.short ?? m.fmt)(v) } },
@@ -93,5 +91,4 @@ function drawQuantileChart(host, canvas, m) {
     },
     plugins: [meanLine],
   });
-  charts.set(host, chart);
 }

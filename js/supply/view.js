@@ -3,6 +3,7 @@ import { design, PERIODS, targetLevel } from './model.js';
 import { importGrowthTable } from '../economy/view.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadText, toast, debounce, comma, fmtNum } from '../lib/util.js';
+import { drawChart as liveChart } from '../lib/chart.js';
 
 const SCHEMA = 1;
 const STORE_KEY = 'supply:v1';
@@ -267,12 +268,11 @@ function drawChart(res) {
     label: '마일스톤', type: 'scatter', data: g.milestones.map(m => ({ x: m.day, y: m.level })),
     pointRadius: 6, pointHoverRadius: 7, pointStyle: 'rectRot', backgroundColor: ink, borderColor: cssVar('--surface'), borderWidth: 2,
   });
-  chart?.destroy();
-  chart = new Chart(els.canvas, {
+  chart = liveChart('supply:chart', els.canvas, {
     type: 'line',
     data: { datasets },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       scales: {
         x: { type: 'linear', min: 0, max: maxDay, title: { display: true, text: '일차', color: tick }, grid: { color: grid }, ticks: { color: tick } },

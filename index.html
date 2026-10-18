@@ -22,20 +22,31 @@
         <span class="brand-sub">게임 시스템 기획 검증 도구</span>
       </div>
     </div>
-    <nav class="tabs" role="tablist" aria-label="도구">
-      <button role="tab" data-tab="enhance">강화 확률 설계</button>
-      <button role="tab" data-tab="gacha">가챠·수집 설계</button>
-      <button role="tab" data-tab="supply">성장 재화 수급</button>
-      <button role="tab" data-tab="stage">스테이지 성장</button>
-      <button role="tab" data-tab="battle">스탯·전투</button>
-      <button role="tab" data-tab="economy">재화 흐름</button>
-      <button role="tab" data-tab="frame">패턴 프레임 검증</button>
-      <button role="tab" data-tab="brief">브리핑</button>
+    <!-- 분류별 메뉴: 마우스를 올리거나(키보드는 포커스·↓) 누르면 그 분류의 도구 목록이 열린다 -->
+    <nav class="tabs" aria-label="도구">
+      <div class="nav-group" data-group="bm">
+        <button class="nav-trigger" type="button" aria-haspopup="true" aria-expanded="false">BM·성장<span class="nav-cur"></span><span class="nav-caret" aria-hidden="true"></span></button>
+        <div class="nav-menu">
+          <button type="button" data-tab="enhance"><b>강화 확률 설계</b><span>확률·비용·파괴, 보조 아이템 가격</span></button>
+          <button type="button" data-tab="gacha"><b>가챠·수집 설계</b><span>천장·픽업·마일리지, 확률 공시표</span></button>
+          <button type="button" data-tab="supply"><b>성장 재화 수급</b><span>공급량에서 레벨별 필요량 역산</span></button>
+          <button type="button" data-tab="economy"><b>재화 흐름</b><span>세그먼트별 성장·잔존·설치당 매출</span></button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="combat">
+        <button class="nav-trigger" type="button" aria-haspopup="true" aria-expanded="false">전투 밸런스<span class="nav-cur"></span><span class="nav-caret" aria-hidden="true"></span></button>
+        <div class="nav-menu">
+          <button type="button" data-tab="battle"><b>스탯·전투</b><span>레벨별 CP와 1:1 승률, 특성</span></button>
+          <button type="button" data-tab="stage"><b>스테이지 성장</b><span>방치형 체류 시간과 정체 원인</span></button>
+          <button type="button" data-tab="frame"><b>패턴 프레임 검증</b><span>회피 윈도우·반응·반격 판정</span></button>
+        </div>
+      </div>
+      <button class="nav-direct" type="button" data-tab="brief">브리핑</button>
       <span class="tab-sep" aria-hidden="true"></span>
-      <button role="tab" data-tab="diagram" class="tab-extra" title="부가 도구">다이어그램</button>
+      <button class="nav-direct tab-extra" type="button" data-tab="diagram" title="부가 도구 — 자연어로 다이어그램">다이어그램</button>
+      <a class="nav-direct tab-extra" href="pdf/" title="부가 도구 — 브라우저 안에서만 처리하는 PDF 편집">PDF</a>
     </nav>
     <a class="header-link extra-link" href="landing/" title="도구 소개 페이지 — 도구별 계산 방법·검증·사례">소개</a>
-    <a class="header-link extra-link" href="pdf/" title="부가 도구 — 브라우저 안에서만 처리하는 PDF 편집">PDF 도구</a>
     <div class="undo-group" role="group" aria-label="되돌리기">
       <button class="icon-btn" id="undo-btn" type="button" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
       <button class="icon-btn" id="redo-btn" type="button" title="다시 하기 (Ctrl+Shift+Z)" aria-label="다시 하기" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>

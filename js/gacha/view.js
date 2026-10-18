@@ -4,6 +4,7 @@ import { TEMPLATES } from './presets.js';
 import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma, fmtMoney, fmtPct } from '../lib/util.js';
+import { drawChart as liveChart } from '../lib/chart.js';
 
 const SCHEMA = 1;
 const STORE_KEY = 'gacha:v1';
@@ -377,8 +378,7 @@ function drawChart(res) {
   const xMax = Math.max(r.pct.p99 * 1.1, r.naive * 1.05);
   pts = pts.filter(p => p.x <= xMax);
   const vline = (x, label, color, dash) => ({ label, data: [{ x, y: 0 }, { x, y: 100 }], borderColor: color, borderDash: dash, borderWidth: 1.25, pointRadius: 0 });
-  chart?.destroy();
-  chart = new Chart(els.canvas, {
+  chart = liveChart('gacha:chart', els.canvas, {
     type: 'line',
     data: { datasets: [
       { label: '달성 확률', data: pts, borderColor: accent, backgroundColor: accent, borderWidth: 2.25, pointRadius: 0, stepped: !!r.exact },
@@ -386,7 +386,7 @@ function drawChart(res) {
       vline(r.naive, '단순 계산', cssVar('--st-warn'), [2, 3]),
     ] },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       scales: {
         x: { type: 'linear', min: 0, max: xMax, title: { display: true, text: '뽑기 수', color: tick }, grid: { color: grid }, ticks: { color: tick, callback: (v) => comma(v) } },

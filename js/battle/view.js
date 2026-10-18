@@ -8,6 +8,7 @@ import { unityFiles, unrealFiles } from './export.js';
 import { makeZip } from '../lib/zip.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
+import { drawChart } from '../lib/chart.js';
 
 const SCHEMA = 1;
 const STORE_KEY = 'battle:v1';
@@ -541,11 +542,10 @@ function drawCurves(res) {
     g.restore();
   } };
   els.curveHint.textContent = m === 'cp' ? `CP(전투력) 수식: ${state.rules.cp} · 승패 계산에는 쓰지 않음` : `${state.entities.find(e => e.id === state.ref)?.name ?? ''}(같은 레벨) 상대 · 변동 제외 기대값${cross.length ? ' · 세로 점선 = 역전 레벨' : ''}`;
-  chartCurve?.destroy();
-  chartCurve = new Chart(els.curveCanvas, {
+  chartCurve = drawChart('battle:chartCurve', els.curveCanvas, {
     type: 'line', data: { datasets: ds }, plugins: [marks],
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       scales: {
         x: { type: 'linear', min: 1, max: L, title: { display: true, text: '레벨', color: tick }, grid: { color: grid }, ticks: { color: tick, stepSize: Math.max(1, Math.round(L / 10)) } },
@@ -668,11 +668,10 @@ function drawPairCurve(res, A, B) {
   const ds = [{ label: `${A.name} 승률`, data: pts, borderColor: colorOf(ia), backgroundColor: colorOf(ia), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }];
   if (!exactAll) ds.push({ label: '95% 구간', data: hi, borderWidth: 0, pointRadius: 0, backgroundColor: 'transparent', fill: false, band: true }, { label: '95% 구간 하한', data: lo, borderWidth: 0, pointRadius: 0, backgroundColor: color(colorOf(ia), 0.15), fill: '-1', band: true });
   const half = { id: 'half', afterDatasetsDraw(c) { const { ctx: g, chartArea: a, scales: { y } } = c; const py = y.getPixelForValue(50); g.save(); g.strokeStyle = ink; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(a.left, py); g.lineTo(a.right, py); g.stroke(); g.restore(); } };
-  chartPair?.destroy();
-  chartPair = new Chart(els.pairCanvas, {
+  chartPair = drawChart('battle:chartPair', els.pairCanvas, {
     type: 'line', data: { datasets: ds }, plugins: [half],
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       scales: {
         x: { type: 'linear', min: 1, max: L, grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: '레벨 (두 엔티티 같은 레벨)', color: tick } },
@@ -747,7 +746,6 @@ function mcBlock(sim, d, A, B) {
 }
 
 function drawDuration(canvas, sim, A, B) {
-  chartDur?.destroy();
   if (typeof Chart === 'undefined') return;
   const turn = state.rules.mode === 'turn';
   const xs = sim.rawDur, w = sim.outcome, n = xs.length;
@@ -768,10 +766,10 @@ function drawDuration(canvas, sim, A, B) {
   const ds = [[`${A.name} 승`, colorOf(ia), 0], [`${B.name} 승`, colorOf(ib), 1], ['무승부', cssVar('--text-3'), 2]]
     .filter(([, , k]) => count[k].some(Boolean))
     .map(([label, c, k]) => ({ label, data: count[k].map(v => (v / n) * 100), backgroundColor: c, borderRadius: 2, stack: 's' }));
-  chartDur = new Chart(canvas, {
+  chartDur = drawChart('battle:chartDur', canvas, {
     type: 'bar', data: { labels, datasets: ds },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
+      responsive: true, maintainAspectRatio: false,
       scales: {
         x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8 }, title: { display: true, text: turn ? '전투 길이 (턴)' : '전투 길이 (초, 칸 시작값)', color: tick } },
         y: { stacked: true, grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` } },
@@ -786,7 +784,6 @@ function drawDuration(canvas, sim, A, B) {
 
 /** 고른 전투 한 번: 두 엔티티의 체력(최대 대비 %) 계단선 + 치명타(▲)·특성 발동(◆) 표시 */
 function drawHpTimeline(canvas, L, A, B) {
-  chartHp?.destroy();
   if (typeof Chart === 'undefined' || !L?.ev?.length) return;
   const turn = state.rules.mode === 'turn';
   const ia = state.entities.indexOf(A), ib = state.entities.indexOf(B);
@@ -804,10 +801,10 @@ function drawHpTimeline(canvas, L, A, B) {
   if (crits.length) ds.push({ type: 'scatter', label: '치명타', data: crits, pointStyle: 'triangle', pointRadius: 5, backgroundColor: ink, borderColor: cssVar('--surface'), borderWidth: 1 });
   // 매 공격마다 터지는 특성(흡혈·가시 등)은 표시가 선을 덮으므로, 드문 발동(12번 이하)일 때만 점으로
   if (procs.length && procs.length <= 12) ds.push({ type: 'scatter', label: '특성 발동', data: procs, pointStyle: 'rectRot', pointRadius: 5, backgroundColor: cssVar('--role-tool'), borderColor: cssVar('--surface'), borderWidth: 1 });
-  chartHp = new Chart(canvas, {
+  chartHp = drawChart('battle:chartHp', canvas, {
     type: 'line', data: { datasets: ds },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false },
       scales: {
         x: { type: 'linear', min: 0, grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: turn ? '턴' : '시간 (초)', color: tick } },
@@ -863,12 +860,11 @@ function renderPhase(sw, rep, ranges) {
     ranges.forEach((r, m) => { if (m % 2) { const x0 = x.getPixelForValue(r.from - 0.5), x1 = x.getPixelForValue(r.to + 0.5); g.fillRect(Math.max(a.left, x0), a.top, Math.min(a.right, x1) - Math.max(a.left, x0), a.bottom - a.top); } });
     g.restore();
   } };
-  chartPhase?.destroy();
-  chartPhase = new Chart(els.phaseCanvas, {
+  chartPhase = drawChart('battle:chartPhase', els.phaseCanvas, {
     type: 'line', plugins: [bands],
     data: { datasets: E.map((e, i) => ({ label: e.name, data: sw.levels.map((lv, k) => ({ x: lv, y: sw.score[k][i] * 100 })), borderColor: colorOf(i), backgroundColor: colorOf(i), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 })) },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       scales: {
         x: { type: 'linear', min: 1, max: state.maxLevel, grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: '레벨 (회색 띠 = 구간)', color: tick } },

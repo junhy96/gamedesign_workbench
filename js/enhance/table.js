@@ -20,9 +20,21 @@ export function renderTable(ctx, els, res) {
   ];
   const result = ['기대 시도', '돌파 전 파괴', '비용 비중', '민감도'];
   const th = (t, cls) => h('th', { title: HEAD_TIPS[t] || null, class: cls }, t);
+  // 성공·대성공을 고치면 파괴는 그대로 두고 실패(유지·하락)를 합 100%에 맞춘다. 유지:하락 비율은 입력을 시작할 때의 값을 따른다
   const probCell = (r, key) => h('td', {}, h('input', {
-    type: 'number', value: r[key], step: 0.01, min: 0, max: 100, 'aria-label': `+${r.stage} ${key}`,
-    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { r[key] = v; ctx.schedule(250); } },
+    type: 'number', value: r[key], step: 0.01, min: 0, max: 100, 'aria-label': `+${r.stage} ${key}`, dataset: { p: key },
+    onfocus: (e) => { e.target._fail = { k: r.k, d: r.d }; },
+    oninput: (e) => {
+      const v = parseFloat(e.target.value);
+      if (!Number.isFinite(v)) return;
+      r[key] = v;
+      if (key === 's' || key === 's2') {
+        const fail = fillFailure(r, s.double, e.target._fail);
+        const tr = e.target.closest('tr');
+        for (const k of ['k', 'd']) { const el = tr.querySelector(`input[data-p="${k}"]`); if (el) el.value = String(fail[k]); }
+      }
+      ctx.schedule(250);
+    },
   }));
   const costCell = (r, ri) => h('td', {}, h('input.cost', {
     type: 'number', value: r.costs[ri], step: 'any', min: 0, 'aria-label': `+${r.stage} ${s.resources[ri].name} 비용`,
@@ -31,7 +43,7 @@ export function renderTable(ctx, els, res) {
 
   els.table.replaceChildren(
     h('thead', {},
-      h('tr.group', {}, h('th', {}), h('th.group-in', { colspan: input.length }, '설계 입력 — 칸을 직접 수정'), h('th.group-out', { colspan: result.length }, '계산 결과')),
+      h('tr.group', {}, h('th', {}), h('th.group-in', { colspan: input.length }, '설계 입력 — 칸을 직접 수정 · 성공을 고치면 유지·하락이 합 100%로 맞춰짐'), h('th.group-out', { colspan: result.length }, '계산 결과')),
       h('tr', {}, th('단계', 'left'), ...input.map(t => th(t)), ...result.map((t, i) => th(t, i ? 'res' : 'res first')))),
     h('tbody', {}, ...rows.map(r => h(`tr${onPath(r.stage) ? '' : '.off'}`, { dataset: { stage: r.stage } },
       h('td.stage', {}, `+${r.stage} → +${r.stage + 1}`, h('span.sum-bad', { dataset: { k: 'sum' } })),
@@ -51,7 +63,7 @@ export function renderTable(ctx, els, res) {
     ...s.items.map(it => h('span.legend-item', {}, h('b', {}, abbr(s.items, it)), ` ${it.name}`)),
     s.items.some(isQty) ? h('span.muted', {}, ' · 숫자 칸 = 1회 투입 개수') : null,
     h('span.muted', {}, ' · * 상황별 사용'),
-  ] : []));
+  ].filter(Boolean) : []));
 
   els.rowBtns.replaceChildren(
     h('button.btn.small', { type: 'button', onclick: () => addRow(ctx) }, '+ 단계 추가'),
@@ -59,7 +71,22 @@ export function renderTable(ctx, els, res) {
   );
 }
 
+/**
+ * 성공 + 대성공 + 파괴를 뺀 나머지를 유지·하락에 나눠 합을 100%로. base = 비율 기준(없으면 지금 값), 둘 다 0이면 모두 유지.
+ * 나머지가 음수면 0 (합이 100%를 넘으면 표가 경고). r을 바꾸고 { k, d }를 돌려준다
+ */
+export function fillFailure(r, double, base = r) {
+  const round = (x) => Math.round(x * 1e4) / 1e4;
+  const fail = Math.max(0, round(100 - r.s - (double ? r.s2 || 0 : 0) - r.b));
+  const bk = Math.max(0, base.k || 0), bd = Math.max(0, base.d || 0);
+  const k = bk + bd > 0 ? round(fail * bk / (bk + bd)) : fail;
+  r.k = k; r.d = round(fail - k);
+  return { k: r.k, d: r.d };
+}
+
 const HEAD_TIPS = {
+  '성공 %': '고치면 파괴는 그대로 두고 유지·하락(실패)이 합 100%에 맞게 자동으로 바뀝니다. 유지와 하락은 원래 비율대로 나눕니다',
+  '대성공 %': '고치면 파괴는 그대로 두고 유지·하락(실패)이 합 100%에 맞게 자동으로 바뀝니다',
   '돌파 전 파괴': '이 단계에서 출발해 다음 단계에 닿기 전에 파괴될 확률. 하락해서 다시 올라오는 경로와 연속 보정까지 포함해 계산한 값',
   '기대 시도': '목표까지 가는 동안 이 단계에서 시도하는 평균 횟수',
   '비용 비중': '총 기대 비용 중 이 단계에서 쓰는 비율 (파괴 복구 비용 포함). 마우스를 올리면 기대 비용·1회 비용',
