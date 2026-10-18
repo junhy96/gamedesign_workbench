@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parse, compile } from '../js/battle/formula.js';
 import {
   analyze, validate, compileRules, statsAt, tableAt, killDist, duelExact, duelSim, prepare, matrix, wilson, spearman,
-  crossovers, cpVsWin, fromKalivra, josa, battleOnce, duel, traitWarnings, phaseRanges, levelSweep, sweepPlan, phaseReport, cycles, solveTarget, solveScale, minChanges, battleSensitivity, contributions, scoreOf, withScale, withParam, applyScale,
+  crossovers, cpVsWin, fromKalivra, josa, battleOnce, duel, traitWarnings, phaseRanges, levelSweep, sweepPlan, phaseReport, cycles, solveTarget, solveScale, minChanges, battleSensitivity, contributions, scoreOf, withScale, withParam, applyScale, compareBuilds,
 } from '../js/battle/model.js';
 import { TEMPLATES } from '../js/battle/presets.js';
 import { mulberry32 } from '../js/enhance/simulate.js';
@@ -461,4 +461,14 @@ test('민감도·효과 분해: 공격력 +10%면 오르고, 아이템을 빼면
   const all = scoreOf(cfg, f, 'e3', 'all', 10).score;
   const mx = matrix(cfg, f, 10);
   close(all, mx.score[2], 1e-12);
+});
+
+test('빌드 비교: 첫 줄 = 지금, 아이템을 뺀 빌드는 아이템 효과만큼 다르다', () => {
+  const cfg = TEMPLATES.classes.make();
+  const { f } = compileRules(cfg);
+  const rows = compareBuilds(cfg, f, [{ id: 'b1', name: '아이템 없음', items: [] }], 10);
+  assert.equal(rows[0].name, '지금');
+  close(rows[0].score[1], matrix(cfg, f, 10).score[1], 1e-12);
+  close(rows[1].score[1], matrix({ ...cfg, items: [] }, f, 10).score[1], 1e-12);
+  assert.ok(rows[0].score[1] > rows[1].score[1]); // 전설 활이 궁수를 강하게
 });

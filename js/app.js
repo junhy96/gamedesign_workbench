@@ -1,5 +1,6 @@
 // 앱 셸: 탭 전환(#해시), 테마 전환. 각 도구는 처음 열 때 한 번만 mount.
-import { store } from './lib/util.js';
+import { store, toast } from './lib/util.js';
+import { installUndo, undo, redo, canUndo, canRedo } from './lib/undo.js';
 import { mount as mountEnhance } from './enhance/view.js';
 import { mount as mountFrame } from './frame/view.js';
 import { mount as mountDiagram } from './diagram/view.js';
@@ -8,6 +9,7 @@ import { mount as mountSupply } from './supply/view.js';
 import { mount as mountGacha } from './gacha/view.js';
 import { mount as mountStage } from './stage/view.js';
 import { mount as mountBattle } from './battle/view.js';
+import { mount as mountBrief } from './brief/view.js';
 import { openSnapshots } from './lib/snapshot-view.js';
 
 const TOOLS = {
@@ -18,8 +20,32 @@ const TOOLS = {
   battle: mountBattle,
   economy: mountEconomy,
   frame: mountFrame,
+  brief: mountBrief,
   diagram: mountDiagram,
 };
+// 되돌리기: 탭이 처음 저장하기 전에 감싸야 하므로 탭을 열기 전에 시작
+const undoBtn = document.getElementById('undo-btn'), redoBtn = document.getElementById('redo-btn');
+const refreshUndo = () => {
+  const t = location.hash.slice(1).split('?')[0] || 'enhance';
+  const u = canUndo(t), r = canRedo(t);
+  if (undoBtn) { undoBtn.disabled = !u; undoBtn.title = u ? `되돌리기 (Ctrl+Z) — ${u}단계` : '되돌리기 (Ctrl+Z)'; }
+  if (redoBtn) { redoBtn.disabled = !r; redoBtn.title = r ? `다시 하기 (Ctrl+Shift+Z) — ${r}단계` : '다시 하기 (Ctrl+Shift+Z)'; }
+};
+installUndo(refreshUndo);
+const doUndo = (back) => { const t = location.hash.slice(1).split('?')[0] || 'enhance'; if (!(back ? undo(t) : redo(t))) toast(back ? '되돌릴 단계가 없습니다' : '다시 할 단계가 없습니다'); };
+undoBtn?.addEventListener('click', () => doUndo(true));
+redoBtn?.addEventListener('click', () => doUndo(false));
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k !== 'z' && k !== 'y') return;
+  const el = document.activeElement;
+  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return; // 입력칸 안에서는 브라우저 기본 되돌리기
+  e.preventDefault();
+  doUndo(k === 'z' && !e.shiftKey);
+});
+window.addEventListener('hashchange', refreshUndo);
+
 const mounted = new Set();
 const tabs = [...document.querySelectorAll('[data-tab]')];
 

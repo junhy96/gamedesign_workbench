@@ -46,6 +46,7 @@ function build() {
 }
 
 function render() {
+  document.dispatchEvent(new Event('snapshotschange'));
   const list = listSnapshots();
   put(els.list, list.length
     ? h('table.stages.snap-table', {},

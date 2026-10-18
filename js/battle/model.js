@@ -987,3 +987,13 @@ export function fromKalivra(doc, base) {
   notes.push('가져온 설정은 Kalivra와 같은 턴 교대 방식(최대 200턴, 명중 5~100%, 데미지 내림)입니다. 공격 속도를 공격 횟수로 반영하려면 "시간 기반"으로 바꾸세요.');
   return { cfg, notes };
 }
+
+// ── 아이템 세트 (빌드 비교) ──────────────────────────────
+/** 빌드(아이템 목록)마다 레벨 lv의 엔티티별 평균 점수. sets = [{ name, items }], 반환 [{ name, score[], exact }] (첫 줄 = 지금) */
+export function compareBuilds(cfg, f, sets, lv, { runs } = {}) {
+  const rows = [{ name: '지금', items: cfg.items || [] }, ...sets];
+  return rows.map(s => {
+    const mx = matrix({ ...cfg, items: s.items }, f, lv, { runs: runs ?? Math.max(500, Math.round((cfg.sim?.runs ?? 4000) / 2)) });
+    return { name: s.name, id: s.id, score: mx.score, exact: mx.allExact };
+  });
+}

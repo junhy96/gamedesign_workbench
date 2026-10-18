@@ -1,7 +1,7 @@
 // 스탯·전투 밸런스 — 화면: 왼쪽 규칙(템플릿·전투 방식·수식), 오른쪽 엔티티·아이템 표 → 레벨 곡선 → 승률 행렬 → 1:1 상세 → 검증
 import {
   analyze, compileRules, curves, matrix, duel, duelSim, prepare, killStats, statsAt, fromKalivra,
-  MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt, traitsOf, scoreOf, minChanges, battleSensitivity, contributions, solveTarget, applyScale,
+  MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt, traitsOf, scoreOf, compareBuilds, minChanges, battleSensitivity, contributions, solveTarget, applyScale,
 } from './model.js';
 import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS } from './presets.js';
 import { unityFiles, unrealFiles } from './export.js';
@@ -415,7 +415,43 @@ function renderItems() {
     )) : h('p.muted', {}, '아이템이 없습니다.'),
     ...I.filter(it => openTraits.has(`i:${it.id}`)).map(it => h('div.trait-panel', {}, traitEditor(it, `아이템 ${it.name}의 특성 (대상 엔티티에 붙음)`, renderItems))),
     h('div.table-foot', {}, h('button.btn.small', { type: 'button', onclick: () => { I.push({ id: uid('i', I), name: `아이템 ${I.length + 1}`, active: true, targets: 'all', mods: [{ stat: S[0].id, flat: 0 }] }); renderItems(); } }, '+ 아이템')),
+    buildsBlock(),
   );
+}
+
+// ── 아이템 세트 (빌드): 지금 아이템 목록을 이름 붙여 저장 → 적용·비교 ──
+function buildsBlock() {
+  const B = state.itemSets ??= [];
+  const name = h('input', { type: 'text', placeholder: `빌드 ${B.length + 1}`, 'aria-label': '빌드 이름' });
+  els.buildOut = h('div', {});
+  return h('div.builds', {},
+    h('div.diag-sub', {}, h('h3', {}, '아이템 세트 (빌드)'), h('span.hint', {}, '지금 아이템 목록(켜기·대상·수정자·특성)을 이름 붙여 저장하고, 빌드마다 엔티티 평균 승률을 비교')),
+    h('div.build-save', {}, name, h('button.btn.small', { type: 'button', onclick: () => { B.push({ id: uid('b', B), name: name.value.trim() || `빌드 ${B.length + 1}`, items: structuredClone(state.items) }); save(); renderItems(); toast('빌드를 저장했습니다'); } }, '지금 아이템을 빌드로 저장')),
+    B.length ? h('div.table-wrap', {}, h('table.stages.solve-table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, '빌드'), h('th', {}, '아이템'), h('th', {}, ''))),
+      h('tbody', {}, ...B.map((b, i) => h('tr', {},
+        h('td.lever', {}, b.name), h('td', {}, b.items.filter(it => it.active !== false).map(it => it.name).join(', ') || '없음'),
+        h('td', {},
+          h('button.btn.small', { type: 'button', onclick: () => { state.items = structuredClone(b.items); rebuild(); toast(`'${b.name}' 빌드를 적용했습니다`); } }, '적용'),
+          h('button.icon-x', { type: 'button', title: '빌드 삭제', onclick: () => { B.splice(i, 1); save(); renderItems(); } }, '×'))))),
+    )) : null,
+    B.length ? h('div.tool-actions', {}, h('button.btn.small.primary', { type: 'button', onclick: runBuilds }, `빌드 비교 (Lv${Math.min(state.level, state.maxLevel)})`)) : null,
+    els.buildOut,
+  );
+}
+function runBuilds() {
+  if (!last) { toast('먼저 오류를 고쳐 주세요'); return; }
+  put(els.buildOut, h('p.muted', {}, '계산 중…'));
+  setTimeout(() => {
+    const rows = compareBuilds(state, last.f, state.itemSets, last.lv);
+    const E = state.entities, base = rows[0];
+    put(els.buildOut, h('div.table-wrap', {}, h('table.stages.solve-table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, `Lv${last.lv} 평균 승률`), ...E.map((e, i) => h('th', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), e.name)))),
+      h('tbody', {}, ...rows.map((r, ri) => h(`tr${ri === 0 ? '.top' : ''}`, {},
+        h('td.lever', {}, r.name, r.exact ? null : h('small', {}, '시뮬레이션 포함')),
+        ...r.score.map((v, i) => { const d = v - base.score[i]; return h(`td${ri && Math.abs(d) >= 0.0005 ? (d > 0 ? '.up' : '.down') : ''}`, {}, pct(v), ri && Math.abs(d) >= 0.0005 ? h('small', {}, ` ${d > 0 ? '+' : '−'}${Math.abs(d * 100).toFixed(1)}%p`) : null); }))),
+    ))), h('p.muted.small', {}, '각 칸 = 그 엔티티가 다른 모든 엔티티와 1:1로 붙었을 때의 평균 점수(승 + 무/2) · 작은 숫자 = 지금 대비'));
+  }, 20);
 }
 
 // ── 계산·표시 ───────────────────────────────────────────

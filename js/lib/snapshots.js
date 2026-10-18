@@ -22,74 +22,75 @@ const ENH_KEYS = ['rows', 'resources', 'start', 'target', 'restore', 'destroyCos
 // fmt: money(원) / pct(0~1) / num / hours / frames, better: 'lower' | 'higher' | null (변화 색)
 const k = (label, value, fmt = 'num', better = null) => ({ label, value, fmt, better });
 
-/** 도구 목록: 저장 키, 기본 설정, 핵심 지표 계산 */
+/** 도구 목록: 저장 키, 기본 설정, run(설정) → { kpis: 핵심 지표, issues: 검증 문장 } */
+const iss = (xs) => (xs || []).map(w => ({ level: w.level, text: w.text }));
 export const TOOLS = [
   {
     id: 'enhance', label: '강화 확률 설계', key: 'enhance:v2',
     base: () => ({ v: ENH_SCHEMA, template: 'standard', ...ENH_T.standard.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const s = enhanceMigrate(st) ?? st;
       const r = enhanceAnalyze(Object.fromEntries(ENH_KEYS.map(x => [x, s[x]])));
       if (!r.ok) return null;
-      return [k('기대 총비용', r.expCost, 'money', 'lower'), k('기대 시도', r.attempts, 'num', 'lower'), k('기대 파괴', r.expDestroy, 'num', 'lower'), k('파괴 없이 도달', r.noDestroy, 'pct', 'higher')];
+      return { kpis: [k('기대 총비용', r.expCost, 'money', 'lower'), k('기대 시도', r.attempts, 'num', 'lower'), k('기대 파괴', r.expDestroy, 'num', 'lower'), k('파괴 없이 도달', r.noDestroy, 'pct', 'higher')], issues: [] };
     },
   },
   {
     id: 'gacha', label: '가챠·수집 설계', key: 'gacha:v1',
     base: () => ({ v: 1, template: 'idle', ...GACHA_T.idle.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const r = gachaAnalyze(st, { runs: 800 });
       if (!r.ok) return null;
-      return r.goals.slice(0, 4).map(g => (g.won > 0 ? k(`${g.goal.name} 기대 비용`, g.won, 'money', 'lower') : k(`${g.goal.name} 기대 뽑기`, g.mean, 'num', 'lower')));
+      return { kpis: r.goals.slice(0, 4).map(g => (g.won > 0 ? k(`${g.goal.name} 기대 비용`, g.won, 'money', 'lower') : k(`${g.goal.name} 기대 뽑기`, g.mean, 'num', 'lower'))), issues: iss(r.warnings) };
     },
   },
   {
     id: 'supply', label: '성장 재화 수급', key: 'supply:v1',
     base: () => ({ v: 1, template: 'stone', ...SUPPLY_T.stone.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const r = supplyDesign(st);
       if (!r.ok) return null;
-      return [...r.sinks.slice(0, 3).map(s => k(`${s.sink.name} 총 필요량`, s.total)), k('경고', r.warnings.length, 'num', 'lower')];
+      return { kpis: [...r.sinks.slice(0, 3).map(x => k(`${x.sink.name} 총 필요량`, x.total)), k('경고', r.warnings.length, 'num', 'lower')], issues: iss(r.warnings) };
     },
   },
   {
     id: 'stage', label: '스테이지 성장', key: 'stage:v1',
     base: () => ({ v: 1, template: 'idle', ...STAGE_T.idle.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const r = stageAnalyze(st);
       if (!r.ok) return null;
-      return [k('총 소요', r.totalSec / 3600, 'hours'), k('정체 스테이지', r.stagnant.length, 'num', 'lower'), k('최종 필요 레벨', r.finalLevel)];
+      return { kpis: [k('총 소요', r.totalSec / 3600, 'hours'), k('정체 스테이지', r.stagnant.length, 'num', 'lower'), k('최종 필요 레벨', r.finalLevel)], issues: iss(r.warnings) };
     },
   },
   {
     id: 'battle', label: '스탯·전투', key: 'battle:v1',
     base: () => ({ v: 1, template: 'classes', ...BATTLE_T.classes.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const r = battleAnalyze(st);
       if (!r.ok) return null;
-      return [
-        ...st.entities.slice(0, 6).map((e, i) => k(`Lv${r.lv} ${e.name} 평균 승률`, r.mx.score[i], 'pct')),
-        k('CP와 실제 순위 상관', r.cv.rho, 'num', 'higher'), k('CP가 높은데 지는 쌍', r.cv.pairs.length, 'num', 'lower'),
-      ];
+      return {
+        kpis: [...st.entities.slice(0, 6).map((e, i) => k(`Lv${r.lv} ${e.name} 평균 승률`, r.mx.score[i], 'pct')), k('CP와 실제 순위 상관', r.cv.rho, 'num', 'higher'), k('CP가 높은데 지는 쌍', r.cv.pairs.length, 'num', 'lower')],
+        issues: iss(r.findings),
+      };
     },
   },
   {
     id: 'economy', label: '재화 흐름', key: 'economy:v2',
     base: () => ({ v: 2, template: 'mobile', ...ECON_T.mobile.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const r = econSimulate({ ...st, variance: { ...(st.variance || {}), enabled: false } }); // 편차 띠는 빼고 평균 유저만 (빠르게)
       if (!r.ok) return null;
-      return [...r.bySeg.slice(0, 4).map(b => k(`${b.segment?.name ?? '세그먼트'} ${r.days}일 전투력`, b.finalPower, 'num', 'higher')), k('경고', r.warnings.length, 'num', 'lower')];
+      return { kpis: [...r.bySeg.slice(0, 4).map(b => k(`${b.segment?.name ?? '세그먼트'} ${r.days}일 전투력`, b.finalPower, 'num', 'higher')), k('경고', r.warnings.length, 'num', 'lower')], issues: iss(r.warnings) };
     },
   },
   {
     id: 'frame', label: '패턴 프레임 검증', key: 'frame:v1',
     base: () => ({ v: 1, template: 'basic', ...FRAME_T.basic.make() }),
-    kpis: (st) => {
+    run: (st) => {
       const r = frameAnalyze({ fps: st.fps, policy: st.policy, loop: st.loop, player: st.player, thresholds: st.thresholds, attacks: st.attacks });
       if (!r.ok) return null;
-      const s = r.summary;
-      return [k('가장 빡빡한 회피 윈도우', s.minWindow ?? NaN, 'frames', 'higher'), k('암기 필요 타격', s.memorize, 'num', 'lower'), k('회피 불가', s.impossible, 'num', 'lower'), k('반격 기회', s.counterChances, 'num', 'higher')];
+      const x = r.summary;
+      return { kpis: [k('가장 빡빡한 회피 윈도우', x.minWindow ?? NaN, 'frames', 'higher'), k('암기 필요 타격', x.memorize, 'num', 'lower'), k('회피 불가', x.impossible, 'num', 'lower'), k('반격 기회', x.counterChances, 'num', 'higher')], issues: iss(r.findings) };
     },
   },
 ];
@@ -100,9 +101,10 @@ export function currentStates() {
 }
 
 /** 한 도구의 지표 (설정이 없으면 기본 템플릿, 계산 실패면 null) */
-export function toolKpis(tool, raw) {
-  try { return tool.kpis(raw ?? tool.base()); } catch { return null; }
+export function toolReport(tool, raw) {
+  try { return tool.run(raw ?? tool.base()); } catch { return null; }
 }
+export const toolKpis = (tool, raw) => toolReport(tool, raw)?.kpis ?? null;
 
 /** 두 지표 목록을 이름으로 맞춰 비교 행 */
 export function compareKpis(a, b) {

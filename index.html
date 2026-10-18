@@ -30,10 +30,15 @@
       <button role="tab" data-tab="battle">스탯·전투</button>
       <button role="tab" data-tab="economy">재화 흐름</button>
       <button role="tab" data-tab="frame">패턴 프레임 검증</button>
+      <button role="tab" data-tab="brief">브리핑</button>
       <span class="tab-sep" aria-hidden="true"></span>
       <button role="tab" data-tab="diagram" class="tab-extra" title="부가 도구">다이어그램</button>
     </nav>
     <a class="header-link extra-link" href="pdf/" title="부가 도구 — 브라우저 안에서만 처리하는 PDF 편집">PDF 도구</a>
+    <div class="undo-group" role="group" aria-label="되돌리기">
+      <button class="icon-btn" id="undo-btn" type="button" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+      <button class="icon-btn" id="redo-btn" type="button" title="다시 하기 (Ctrl+Shift+Z)" aria-label="다시 하기" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    </div>
     <button class="btn small snap-btn" id="snap-open" type="button" title="모든 탭 설정을 저장·비교·되돌리기">스냅샷</button>
     <button class="icon-btn" id="theme-toggle" type="button" aria-label="테마 전환" title="테마 전환">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
@@ -48,6 +53,7 @@
     <section id="tab-battle" role="tabpanel" class="panel" hidden></section>
     <section id="tab-economy" role="tabpanel" class="panel" hidden></section>
     <section id="tab-frame" role="tabpanel" class="panel" hidden></section>
+    <section id="tab-brief" role="tabpanel" class="panel" hidden></section>
     <section id="tab-diagram" role="tabpanel" class="panel" hidden></section>
   </main>
 
