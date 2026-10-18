@@ -31,6 +31,7 @@
 
 import { mulberry32 } from '../enhance/simulate.js';
 import { PCTS, quantiles } from '../lib/quantiles.js';
+import { convergence } from '../lib/mcviz.js';
 
 export const GOAL_TYPES = { collect: '수집 (K종 × k장)', pickup: '픽업 유닛 k장', unit: '특정 캐릭터 k장' };
 const MAX_PULLS = 1e9; // 한 번 시행의 상한 (확률 0 등으로 닿지 못하는 목표)
@@ -207,6 +208,7 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
     out[r] = t;
     if (pityRuns) pityRuns[r] = pityHits;
   }
+  const conv = convergence(out); // 시행 순서대로의 누적 평균 뽑기 수 (끝나지 않은 시행이 있으면 null)
   out.sort();
   let pitySum = 0;
   if (pityRuns) { for (const v of pityRuns) pitySum += v; pityRuns.sort(); }
@@ -219,6 +221,7 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
     q: (p) => quantile(out, p),
     sources: { pull: per(src.pull), pity: per(src.pity), mileage: per(src.mileage), exchange: per(src.exchange) },
     pity: pityRuns ? { mean: pitySum / runs, quantiles: quantiles(pityRuns), from: softFrom } : null,
+    convergence: conv,
   };
 }
 

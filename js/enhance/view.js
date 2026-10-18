@@ -60,7 +60,7 @@ export function mount(root) {
   if (location.hash.startsWith('#enhance?')) history.replaceState(null, '', '#enhance');
   build(root);
   rebuild();
-  document.addEventListener('themechange', () => { if (ctx.lastMC) { drawChart(ctx, els, ctx.lastMC); renderQuantiles(ctx, els, ctx.lastMC, ctx.lastRes); } drawSweep(ctx, els); });
+  document.addEventListener('themechange', () => { if (ctx.lastMC) { renderMC(ctx, els, ctx.lastMC, ctx.lastRes); } drawSweep(ctx, els); });
   window.addEventListener('hashchange', () => {
     const st = readHash();
     if (!st) return;
@@ -106,6 +106,7 @@ function build(root) {
 
         section('enh-analysis', '결과 분석', '총비용 분포 · 달성 분위 · 재화별 소모 · 계산 검증', 'out'),
         buildDist(ctx, els),
+        els.pathCard = h('div.card.role-out'),
         els.quantCard = h('div.card.role-out'),
         h('div.two-col', {}, els.resources = h('div.card.role-out'), els.verify = h('div.card.role-check')),
 

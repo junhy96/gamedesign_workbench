@@ -2,6 +2,10 @@
 // 시드 고정 난수(mulberry32)라 같은 설정이면 항상 같은 결과가 나온다.
 import { buildChain } from './model.js';
 import { quantiles } from '../lib/quantiles.js';
+import { convergence } from '../lib/mcviz.js';
+
+export const PATH_RUNS = 12;   // 단계 경로를 남길 시행 수 (그래프용)
+const PATH_MAX = 3000;         // 경로 하나에 남길 최대 시도 수
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -32,8 +36,11 @@ export function simulate(cfg, trials = 20000, seed = 20261013) {
   const attempts = new Uint32Array(trials);
   let truncated = 0;
 
+  const stageOf = chain.states.map(st => st.stage);
+  const paths = [];
   for (let n = 0; n < trials; n++) {
     let s = chain.S, a = 0, d = 0, c = 0;
+    const path = n < PATH_RUNS ? { stages: [stageOf[s]], destroys: [] } : null;
     while (s !== -1) {
       if (++a > MAX_ATTEMPTS_PER_RUN) { truncated++; break; }
       const st = table[s];
@@ -42,9 +49,11 @@ export function simulate(cfg, trials = 20000, seed = 20261013) {
       let i = 0;
       while (i < st.edges.length - 1 && u >= st.edges[i].cum) i++;
       const e = st.edges[i];
-      if (e.destroy) { d++; c += chain.destroyCost; }
+      if (e.destroy) { d++; c += chain.destroyCost; if (path && path.stages.length <= PATH_MAX) path.destroys.push(path.stages.length); }
       s = e.to;
+      if (path && path.stages.length <= PATH_MAX) path.stages.push(s === -1 ? cfg.target : stageOf[s]);
     }
+    if (path) paths.push({ ...path, attempts: a, cut: a > PATH_MAX });
     costs[n] = c; destroys[n] = d; attempts[n] = a;
   }
 
@@ -65,6 +74,8 @@ export function simulate(cfg, trials = 20000, seed = 20261013) {
     },
     // 분위수 표 (PCTS 순서): 총비용·시도·파괴 각각의 분위
     quantiles: { cost: quantiles(sortedCost), attempts: quantiles(sortedAtt), destroys: quantiles(sortedDes) },
+    convergence: convergence(costs), // 시행 순서대로의 누적 평균 총비용과 95% 범위
+    paths,                           // 앞 12번 시행의 시도별 단계 (파괴 위치 포함)
     sortedCost, // 예산별 도달 확률 계산용
     histogram: histogram(sortedCost, 36),
   };

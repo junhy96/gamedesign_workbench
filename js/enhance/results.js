@@ -2,6 +2,7 @@
 import { optimizeItems, solveForCost, priceSweep, specUnits, isQty, MAX_SWEEP_POINTS } from './model.js';
 import { reachProbability } from './simulate.js';
 import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
+import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, fmtMoney, fmtMoneyShort, fmtPct, fmtNum, comma, toast } from '../lib/util.js';
 import { money as won, moneyShort as wonShort, currency, toDisplay, fromDisplay } from './currency.js';
 export { won };
@@ -103,7 +104,50 @@ export function renderMC(ctx, els, mc, res) {
   renderBudget(ctx, els);
   drawChart(ctx, els, mc);
   renderQuantiles(ctx, els, mc, res);
+  renderPaths(ctx, els, mc, res);
   renderVerify(els, res, mc);
+}
+
+/** 강화 경로 예시: 앞 12번 시행의 시도별 단계 — 하락·파괴로 떨어지는 모습, 중간 시행과 가장 오래 걸린 시행을 강조 */
+export function renderPaths(ctx, els, mc, res) {
+  const P = mc.paths || [];
+  if (!P.length) { els.pathCard.replaceChildren(); return; }
+  const order = P.map((p, i) => [p.attempts, i]).sort((a, b) => a[0] - b[0]);
+  const mid = order[Math.floor(order.length / 2)][1], worst = order.at(-1)[1];
+  const canvas = h('canvas', { role: 'img', 'aria-label': `강화 시행 ${P.length}개의 시도별 단계` });
+  els.pathCard.replaceChildren(
+    h('div.card-head', {}, h('h2', {}, '강화 경로 예시'), h('span.hint', {}, `시뮬레이션 앞 ${P.length}번 · 시도 ${comma(order[0][0])}~${comma(order.at(-1)[0])}회 (기대 ${fmtNum(res.attempts, 1)}회)`)),
+    h('div.chart-box', {}, canvas),
+    h('p.muted.small', {}, '회색 = 다른 시행 · 파란 선 = 시도 횟수가 중간인 시행 · 주황 선 = 가장 오래 걸린 시행 · 빨간 × = 두 시행에서 파괴된 단계'),
+  );
+  if (typeof Chart === 'undefined') return;
+  ctx.pathChart?.destroy();
+  const grid = cssVar('--grid'), text = cssVar('--text-3'), ink = cssVar('--text-2'), main = cssVar('--series-1'), bad = cssVar('--bad'), slow = cssVar('--tor-down');
+  const line = (p, i) => {
+    const hl = i === mid ? main : i === worst ? slow : null;
+    return { label: i === mid ? '중간 시행' : i === worst ? '가장 오래 걸린 시행' : '', data: p.stages.map((y, x) => ({ x, y })), stepped: 'after', borderColor: hl ?? text, borderWidth: hl ? 2 : 1, pointRadius: 0, order: hl ? 0 : 1, hl: !!hl, others: !hl };
+  };
+  const ds = P.map(line);
+  // 다른 시행은 옅게 (그리기 전에 색을 투명하게)
+  for (const d of ds) if (d.others) d.borderColor = text + '66';
+  // 파괴는 강조한 두 시행에만, 파괴된 그 단계에 표시 (모든 시행에 찍으면 복구 단계에 겹쳐 선을 가림)
+  const dest = [mid, worst].filter((v, k, a) => a.indexOf(v) === k).flatMap(i => P[i].destroys.map(x => ({ x: x - 1, y: P[i].stages[x - 1] ?? 0 })));
+  if (dest.length) ds.push({ type: 'scatter', label: '파괴', data: dest, pointStyle: 'crossRot', pointRadius: 5, borderColor: bad, borderWidth: 2, order: -1 });
+  ctx.pathChart = new Chart(canvas, {
+    type: 'line', data: { datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      interaction: { mode: 'nearest', intersect: false },
+      scales: {
+        x: { type: 'linear', min: 0, grid: { color: grid }, ticks: { color: text }, title: { display: true, text: '시도 횟수', color: text } },
+        y: { min: Math.min(...P.flatMap(p => p.stages)), max: ctx.state.target, grid: { color: grid }, ticks: { color: text, stepSize: 1, callback: (v) => `+${v}` }, title: { display: true, text: '단계', color: text } },
+      },
+      plugins: {
+        legend: { labels: { color: ink, boxWidth: 14, boxHeight: 2, filter: (it, data) => !!data.datasets[it.datasetIndex].label } },
+        tooltip: { filter: (it) => it.dataset.hl || it.dataset.type === 'scatter', callbacks: { title: (it) => `${it[0].raw.x}번째 시도`, label: (it) => `${it.dataset.label}: +${it.raw.y}` } },
+      },
+    },
+  });
 }
 
 /** 달성 분위별 수치: 총비용·시도·파괴를 0.1% ~ 99.9%로 (평균은 정확해) */
@@ -133,6 +177,7 @@ export function renderMCSkipped(ctx, els, res) {
   els.budgetOut.replaceChildren(h('span.muted', {}, '시뮬레이션 생략'));
   els.quantCard.replaceChildren(h('div.card-head', {}, h('h2', {}, '달성 분위별 수치')), h('p.muted', {}, '기대 시도 횟수가 너무 커서 시뮬레이션을 생략했습니다.'));
   ctx.chart?.destroy(); ctx.chart = null;
+  ctx.pathChart?.destroy(); ctx.pathChart = null; els.pathCard.replaceChildren();
   renderVerify(els, res, null);
 }
 
@@ -236,7 +281,11 @@ export function renderVerify(els, res, mc) {
       h('span.h', {}, ''), h('span.h', {}, '공식 계산'), h('span.h', {}, mc ? `시뮬레이션 ${comma(mc.trials)}회` : '시뮬레이션 생략'),
       ...rows.flatMap(([k, a, b]) => [h('span', {}, k), h('b', {}, a), h('span', {}, b ?? '—')]),
     ),
+    mc?.convergence ? h('h3.sub', {}, '시뮬레이션 수렴 — 기대 총비용') : null,
+    mc?.convergence ? h('p.muted.small', {}, `${comma(mc.trials)}회까지 평균 ${wonShort(mc.mean.cost)} ± ${wonShort(halfWidth(mc.convergence))} (95%) · 점선 = 공식 계산값`) : null,
+    mc?.convergence ? (els.convCanvas = h('div.chart-box.short', {}, h('canvas', { role: 'img', 'aria-label': '시뮬레이션 횟수에 따른 기대 총비용 누적 평균' }))) : null,
   ].filter(Boolean));
+  if (mc?.convergence) drawConvergence(els.convCanvas.firstChild, { series: mc.convergence, exact: res.expCost, fmt: wonShort, label: '누적 평균 총비용' });
 }
 
 // ── 보조 아이템 최적 사용 정책 ──────────────

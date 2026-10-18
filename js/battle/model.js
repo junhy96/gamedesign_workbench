@@ -20,6 +20,7 @@
 
 import { compile } from './formula.js';
 import { mulberry32 } from '../enhance/simulate.js';
+import { convergence } from '../lib/mcviz.js';
 
 export const MODES = { time: '시간 기반 (공격 속도 = 초당 공격)', turn: '턴 교대 (Kalivra 방식)' };
 export const TIES = { coin: '동전 (반반)', simul: '무승부' };
@@ -449,17 +450,19 @@ export function duelSim(cfg, f, A, B, lv, runs = 20000, seed = 20261018, prep = 
   const rnd = mulberry32(seed);
   let wa = 0, wb = 0, dr = 0;
   const dur = new Float64Array(runs), hpLeft = [];
+  const outcome = new Uint8Array(runs); // 시행 순서대로 1 A 승 · 2 B 승 · 3 무승부 (수렴 그래프·전투 길이 분포용)
   const cnt = { attacks: 0, hits: 0, crits: 0 };
   const procs = { A: new Map(), B: new Map() };
   const logList = [];
   for (let i = 0; i < runs; i++) {
     const res = battleOnce(cfg, f, A, B, lv, rnd, i < logs);
     if (res.w === 1) { wa++; hpLeft.push(res.hpA); } else if (res.w === 2) wb++; else dr++;
-    dur[i] = res.t;
+    dur[i] = res.t; outcome[i] = res.w;
     cnt.attacks += res.A.attacks; cnt.hits += res.A.hits; cnt.crits += res.A.crits;
     for (const [side, X] of [['A', res.A], ['B', res.B]]) for (const [tr, c] of X.procs) procs[side].set(tr.name, (procs[side].get(tr.name) || 0) + c);
     if (res.ev) logList.push({ w: res.w, t: res.t, ev: res.ev });
   }
+  const rawDur = Float64Array.from(dur);
   dur.sort();
   const per = (m) => [...m].map(([name, c]) => ({ name, perBattle: c / runs }));
   return {
@@ -467,6 +470,7 @@ export function duelSim(cfg, f, A, B, lv, runs = 20000, seed = 20261018, prep = 
     ciA: wilson(wa, runs), duration: dur, hpLeftA: Float64Array.from(hpLeft).sort(),
     realized: { hit: cnt.attacks ? cnt.hits / cnt.attacks : NaN, crit: cnt.hits ? cnt.crits / cnt.hits : NaN },
     procs: { A: per(procs.A), B: per(procs.B) }, logs: logList,
+    outcome, rawDur, convergence: convergence(Array.from(outcome, w => (w === 1 ? 1 : 0)), { binary: true }),
   };
 }
 

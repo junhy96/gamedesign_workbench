@@ -6,6 +6,7 @@ import {
 import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS } from './presets.js';
 import { unityFiles, unrealFiles } from './export.js';
 import { makeZip } from '../lib/zip.js';
+import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -638,6 +639,7 @@ function renderPair(res) {
       h('span', {}, `${A.name} 실현 명중·치명`), h('span', {}, `${pct(prep.pa.hit)} · ${pct(prep.pa.crit)}`), h('span', {}, `${pct(sim.realized.hit)} · ${pct(sim.realized.crit)}`),
       h('span', {}, '평균 전투 길이'), h('span', {}, '—'), h('span', {}, mode === 'time' ? sec(mean(sim.duration)) : `${num(mean(sim.duration), 1)}턴`)),
     d.exact ? h('p', {}, h('span', { class: `status ${(sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? 'good' : 'warn'}` }, (sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? '계산값이 시뮬레이션 95% 범위 안에 있습니다' : '계산값이 시뮬레이션 95% 범위를 벗어났습니다. 반복 횟수를 늘려 다시 확인하세요')) : null,
+    mcBlock(sim, d, A, B),
     procBlock(sim, A, B),
     logBlock(logRun, A, B),
     h('h3.sub', {}, '레벨별 승률'),
@@ -699,9 +701,11 @@ function procBlock(sim, A, B) {
 function logBlock(run, A, B) {
   const mode = state.rules.mode;
   const box = h('div.battle-log', {});
+  const hpCanvas = h('canvas', { role: 'img', 'aria-label': '고른 전투의 두 엔티티 체력 변화' });
   const show = () => {
     const L = run.logs[logPick] ?? run.logs[0];
     if (!L) { put(box); return; }
+    setTimeout(() => drawHpTimeline(hpCanvas, L, A, B), 0);
     const name = (w) => (w === 'A' ? A.name : w === 'B' ? B.name : '');
     const tFmt = (t) => (mode === 'turn' ? `${t}턴` : `${(+t.toFixed(2)).toLocaleString('ko-KR')}초`);
     const lines = L.ev.slice(0, 400).map(e => h(`div.log-line.${e.type}`, {},
@@ -714,7 +718,105 @@ function logBlock(run, A, B) {
   const res = (w) => (w === 1 ? `${A.name} 승` : w === 2 ? `${B.name} 승` : '무승부');
   const pick = select(run.logs.map((L, i) => [i, `전투 ${i + 1} — ${res(L.w)} (${mode === 'turn' ? `${L.t}턴` : `${(+L.t.toFixed(1))}초`})`]), logPick, (v) => { logPick = +v; show(); }, '전투 로그 고르기');
   show();
-  return h('div', {}, h('div.log-head', {}, h('h3.sub', {}, '전투 로그'), pick, h('span.muted.small', {}, `같은 규칙의 시뮬레이션 ${run.logs.length}전투`)), box);
+  return h('div', {}, h('div.log-head', {}, h('h3.sub', {}, '전투 로그'), pick, h('span.muted.small', {}, `같은 규칙의 시뮬레이션 ${run.logs.length}전투`)),
+    h('div.chart-box.short', {}, hpCanvas), box);
+}
+
+// ── 몬테카를로 시각화: 승률 수렴 · 전투 길이 분포 · 체력 타임라인 ──────────
+let chartDur, chartHp;
+function mcBlock(sim, d, A, B) {
+  const ia = state.entities.indexOf(A);
+  const conv = h('canvas', { role: 'img', 'aria-label': `${A.name} 승률이 시뮬레이션 횟수에 따라 안정되는 모습` });
+  const hist = h('canvas', { role: 'img', 'aria-label': '전투 길이 분포 (이긴 쪽별)' });
+  const hw = halfWidth(sim.convergence);
+  const half = sim.convergence?.find(p => (p.hi - p.lo) / 2 <= 0.01);
+  setTimeout(() => {
+    drawConvergence(conv, { series: sim.convergence, exact: d.exact ? d.winA : null, fmt: (v) => `${(v * 100).toFixed(0)}%`, label: `${A.name} 승률 (누적)`, color: colorOf(ia) });
+    drawDuration(hist, sim, A, B);
+  }, 0);
+  return h('div.two-col.mc-row', {},
+    h('div', {}, h('h3.sub', {}, '시뮬레이션 수렴'),
+      h('p.muted.small', {}, `${comma(sim.runs)}회까지 ${A.name} 승률 ${pct(sim.winA)} ± ${(hw * 100).toFixed(1)}%p${half ? ` · ±1%p 안으로 들어온 건 ${comma(half.n)}회부터` : ' · 아직 ±1%p보다 넓음'}${d.exact ? ' · 점선 = 공식 계산값' : ''}`),
+      h('div.chart-box.short', {}, conv)),
+    h('div', {}, h('h3.sub', {}, '전투 길이 분포'),
+      h('p.muted.small', {}, `이긴 쪽별로 나눔 · ${state.rules.mode === 'turn' ? '턴' : '초'} 단위`),
+      h('div.chart-box.short', {}, hist)),
+  );
+}
+
+function drawDuration(canvas, sim, A, B) {
+  chartDur?.destroy();
+  if (typeof Chart === 'undefined') return;
+  const turn = state.rules.mode === 'turn';
+  const xs = sim.rawDur, w = sim.outcome, n = xs.length;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) { if (xs[i] < lo) lo = xs[i]; if (xs[i] > hi) hi = xs[i]; }
+  // 턴은 정수 단위(최대 40칸), 시간은 24칸
+  let bins, width;
+  if (turn) { width = Math.max(1, Math.ceil((hi - lo + 1) / 40)); bins = Math.max(1, Math.ceil((hi - lo + 1) / width)); }
+  else { bins = 24; width = (hi - lo) / bins || 1; }
+  const count = [new Array(bins).fill(0), new Array(bins).fill(0), new Array(bins).fill(0)];
+  for (let i = 0; i < n; i++) { const b = Math.min(bins - 1, Math.floor((xs[i] - lo) / width)); count[w[i] - 1][b]++; }
+  const labels = Array.from({ length: bins }, (_, b) => {
+    const a = lo + b * width;
+    return turn ? (width === 1 ? `${a}` : `${a}~${a + width - 1}`) : `${(+a.toFixed(1))}`;
+  });
+  const ia = state.entities.indexOf(A), ib = state.entities.indexOf(B);
+  const grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
+  const ds = [[`${A.name} 승`, colorOf(ia), 0], [`${B.name} 승`, colorOf(ib), 1], ['무승부', cssVar('--text-3'), 2]]
+    .filter(([, , k]) => count[k].some(Boolean))
+    .map(([label, c, k]) => ({ label, data: count[k].map(v => (v / n) * 100), backgroundColor: c, borderRadius: 2, stack: 's' }));
+  chartDur = new Chart(canvas, {
+    type: 'bar', data: { labels, datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { color: tick, maxTicksLimit: 8 }, title: { display: true, text: turn ? '전투 길이 (턴)' : '전투 길이 (초, 칸 시작값)', color: tick } },
+        y: { stacked: true, grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` } },
+      },
+      plugins: {
+        legend: { labels: { color: ink, boxWidth: 12, boxHeight: 8 } },
+        tooltip: { callbacks: { title: (it) => (turn ? `${it[0].label}턴` : `${it[0].label}~${(+(+it[0].label + width).toFixed(1))}초`), label: (it) => `${it.dataset.label}: ${it.raw.toFixed(1)}%` } },
+      },
+    },
+  });
+}
+
+/** 고른 전투 한 번: 두 엔티티의 체력(최대 대비 %) 계단선 + 치명타(▲)·특성 발동(◆) 표시 */
+function drawHpTimeline(canvas, L, A, B) {
+  chartHp?.destroy();
+  if (typeof Chart === 'undefined' || !L?.ev?.length) return;
+  const turn = state.rules.mode === 'turn';
+  const ia = state.entities.indexOf(A), ib = state.entities.indexOf(B);
+  const maxA = Math.max(1, ...L.ev.map(e => e.hpA)), maxB = Math.max(1, ...L.ev.map(e => e.hpB));
+  const lineOf = (key, max) => [{ x: 0, y: 100 }, ...L.ev.map(e => ({ x: e.t, y: (e[key] / max) * 100 }))];
+  const mark = (pred, sideOf) => L.ev.filter(pred).map(e => { const side = sideOf(e); return { x: e.t, y: (side === 'A' ? e.hpA / maxA : e.hpB / maxB) * 100, side, text: e.text }; });
+  const other = (w) => (w === 'A' ? 'B' : 'A');
+  const crits = mark(e => e.type === 'crit', e => other(e.who));
+  const procs = mark(e => ['heal', 'buff', 'trait'].includes(e.type), e => (e.type === 'trait' ? other(e.who) : e.who));
+  const grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
+  const ds = [
+    { label: A.name, data: lineOf('hpA', maxA), borderColor: colorOf(ia), backgroundColor: colorOf(ia), borderWidth: 2, pointRadius: 0, stepped: 'after' },
+    { label: B.name, data: lineOf('hpB', maxB), borderColor: colorOf(ib), backgroundColor: colorOf(ib), borderWidth: 2, pointRadius: 0, stepped: 'after' },
+  ];
+  if (crits.length) ds.push({ type: 'scatter', label: '치명타', data: crits, pointStyle: 'triangle', pointRadius: 5, backgroundColor: ink, borderColor: cssVar('--surface'), borderWidth: 1 });
+  // 매 공격마다 터지는 특성(흡혈·가시 등)은 표시가 선을 덮으므로, 드문 발동(12번 이하)일 때만 점으로
+  if (procs.length && procs.length <= 12) ds.push({ type: 'scatter', label: '특성 발동', data: procs, pointStyle: 'rectRot', pointRadius: 5, backgroundColor: cssVar('--role-tool'), borderColor: cssVar('--surface'), borderWidth: 1 });
+  chartHp = new Chart(canvas, {
+    type: 'line', data: { datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      interaction: { mode: 'nearest', intersect: false },
+      scales: {
+        x: { type: 'linear', min: 0, grid: { color: grid }, ticks: { color: tick }, title: { display: true, text: turn ? '턴' : '시간 (초)', color: tick } },
+        y: { min: 0, max: 100, grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` }, title: { display: true, text: '체력 (전투 중 최대 대비)', color: tick } },
+      },
+      plugins: {
+        legend: { labels: { color: ink, boxWidth: 12, boxHeight: 3 } },
+        tooltip: { callbacks: { title: (it) => (turn ? `${it[0].raw.x}턴` : `${(+it[0].raw.x.toFixed(2))}초`), label: (it) => (it.raw.text ? `${it.dataset.label}: ${it.raw.text}` : `${it.dataset.label}: ${it.raw.y.toFixed(0)}%`) } },
+      },
+    },
+  });
 }
 
 // ── 구간 리포트 (레벨마다 행렬 → 구간 평균) — 레벨을 나눠 비동기로 계산 ─────
@@ -785,7 +887,8 @@ function renderCheck(res) {
       h('thead', {}, h('tr', {}, h('th', {}, '실제 순위'), h('th.left', {}, '엔티티'), h('th', {}, '평균 승률'), h('th', {}, 'CP'), h('th', {}, 'CP 순위'))),
       h('tbody', {}, ...order.map((i, r) => {
         const cpRank = [...cv.cp].sort((a, b) => b - a).indexOf(cv.cp[i]) + 1;
-        return h(`tr${cpRank !== r + 1 ? '.bad' : ''}`, {}, h('td', {}, String(r + 1)), h('td.left', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), E[i].name), h('td', {}, pct(res.mx.score[i])), h('td', {}, num(cv.cp[i], 0)), h('td', {}, String(cpRank)));
+        const over = cv.pairs.some(pr => pr.hi === E[i]);
+        return h(`tr${over ? '.bad' : ''}`, { title: over ? 'CP가 더 낮은 상대에게 지는 쌍이 있음' : '' }, h('td', {}, String(r + 1)), h('td.left', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), E[i].name), h('td', {}, pct(res.mx.score[i])), h('td', {}, num(cv.cp[i], 0)), h('td', {}, String(cpRank)));
       })),
     )) : null,
     res.findings.length

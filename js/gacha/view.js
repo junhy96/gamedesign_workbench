@@ -2,6 +2,7 @@
 import { analyze, helpers, GOAL_TYPES, disclosure, unitExpectations } from './model.js';
 import { TEMPLATES } from './presets.js';
 import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
+import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma, fmtMoney, fmtPct } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -225,7 +226,7 @@ function renderGoals() {
         const o = els.goalOut[goal.id] = { mean: h('td.res', {}), cost: h('td.res', {}), p90: h('td.res', {}), ratio: h('td.res', {}), free: h('td.res', {}), paid: h('td.res', {}), how: h('td.res', {}) };
         const isPickup = goal.type === 'pickup', isCollect = goal.type === 'collect';
         return h(`tr${i === s.view ? '.sel' : ''}`, {},
-          h('td', {}, h('label.radio', { title: '분석에 표시' }, h('input', { type: 'radio', name: 'gacha-view', checked: i === s.view, onchange: () => { s.view = i; save(); renderGoals(); if (last) showSelected(last); } }))),
+          h('td', {}, h('label.radio', { title: '분석에 표시' }, h('input', { type: 'radio', name: 'gacha-view', checked: i === s.view, onchange: () => { s.view = i; save(); renderGoals(); if (last) { showSelected(last); renderVerify(last); } } }))),
           h('td', {}, text(goal, 'name', '목표 이름')),
           h('td', {}, select(Object.entries(GOAL_TYPES), goal.type, (v) => { goal.type = v; if (v !== 'pickup' && !s.grades.some(g => g.id === goal.grade)) goal.grade = s.grades.at(-1).id; goal.kinds = Math.max(1, goal.kinds || 1); rebuild(); })),
           h('td', {}, isPickup ? h('span.muted', {}, s.grades.at(-1).name) : select(gradeOpts, goal.grade, (v) => { goal.grade = v; const g = s.grades.find(x => x.id === v); goal.kinds = Math.min(goal.kinds || 1, g.kinds); rebuild(); })),
@@ -434,7 +435,22 @@ function renderVerify(res) {
       h('span.h', {}, ''), h('span.h', {}, '공식 계산'), h('span.h', {}, `시뮬레이션 ${comma(rows[0].sim.runs)}회`),
       ...rows.flatMap(r => [h('span', {}, r.goal.name), h('b', {}, `${(r.exactMean).toFixed(1)}회`), h('span', {}, `${r.sim.mean.toFixed(1)}회`)]),
     ) : h('p.muted', {}, '이 설정에는 공식으로 풀 수 있는 목표가 없습니다 (소환 레벨이 여러 개거나 교환이 있는 수집 목표). 시뮬레이션 결과만 표시합니다.'),
+    ...convBlock(res),
   );
+  const g = res.goals[state.view];
+  if (els.gConv && g?.sim.convergence) drawConvergence(els.gConv, { series: g.sim.convergence, exact: g.exactMean ?? null, fmt: (v) => comma(v), label: '누적 평균 뽑기' });
+}
+/** 고른 목표의 시뮬레이션 수렴 (끝나지 않는 시행이 있으면 생략) */
+function convBlock(res) {
+  const g = res.goals[state.view];
+  els.gConv = null;
+  if (!g?.sim.convergence) return [];
+  els.gConv = h('canvas', { role: 'img', 'aria-label': `${g.goal.name}: 시뮬레이션 횟수에 따른 평균 뽑기 수` });
+  return [
+    h('h3.sub', {}, `시뮬레이션 수렴 — ${g.goal.name}`),
+    h('p.muted.small', {}, `${comma(g.sim.runs)}회까지 평균 ${comma(g.sim.mean)}회 ± ${comma(halfWidth(g.sim.convergence))}회 (95%)${g.exactMean != null ? ' · 점선 = 공식 계산값' : ''} · 위 목표 표에서 다른 목표를 고르면 바뀜`),
+    h('div.chart-box.short', {}, els.gConv),
+  ];
 }
 
 function renderWarnings(res) {
