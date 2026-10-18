@@ -143,7 +143,7 @@ function renderSide() {
       field('기준 과금 유저 월 과금 (원)', num(s.user, 'monthlyWon', { min: 0, label: '월 과금' }), '무과금 획득 + 월 과금 ÷ 30 ÷ 단가 만큼 매일 생긴다고 봅니다'),
     ),
     section('calc', '계산', `시뮬레이션 ${comma(s.runs)}회`,
-      field('목표당 시뮬레이션 횟수', num(s, 'runs', { int: true, min: 200, label: '시뮬레이션 횟수' }), '정확해가 있는 목표는 분포도 정확해를 씁니다. 나머지는 시드 고정 시뮬레이션'),
+      field('목표당 시뮬레이션 횟수', num(s, 'runs', { int: true, min: 200, label: '시뮬레이션 횟수' }), '공식으로 풀 수 있는 목표는 분포까지 공식으로 계산하고, 나머지는 시드를 고정한 시뮬레이션으로 계산합니다'),
     ),
   );
 }
@@ -269,7 +269,7 @@ function recompute() {
     o.ratio.title = `단순 계산 ${comma(r.naive)}회`;
     o.free.textContent = days(r.daysFree);
     o.paid.textContent = days(r.daysPaid);
-    o.how.textContent = r.exactMean != null ? '정확해' : '시뮬레이션';
+    o.how.textContent = r.exactMean != null ? '공식 계산' : '시뮬레이션';
   }
   renderKPIs(res);
   showSelected(res);
@@ -282,7 +282,7 @@ function showSelected(res) {
   const r = res.goals[state.view];
   renderKPIs(res);
   els.distTitle.textContent = `달성 확률과 예산 — ${r.goal.name}`;
-  els.distHint.textContent = r.exact ? '정확한 분포 (동적 계획법)' : `시뮬레이션 ${comma(r.sim.runs)}회${r.exactMean != null ? ' · 평균은 정확해' : ''}`;
+  els.distHint.textContent = r.exact ? '정확한 분포 (동적 계획법)' : `시뮬레이션 ${comma(r.sim.runs)}회${r.exactMean != null ? ' · 평균은 공식 계산값' : ''}`;
   if (!(state.budgetWon > 0)) state.budgetWon = Math.round(pullsToMoney(r.mean));
   const row = (dt, dd) => h('div', {}, h('dt', {}, dt), h('dd', {}, dd));
   els.pct.replaceChildren(
@@ -318,7 +318,7 @@ function renderQuantiles(res) {
   if (pity) notes.push(`천장 구간 당첨 = 마지막 최상위 이후 ${comma(pity.from)}번째 뽑기부터(${pity.from < state.pity.hard ? '확률 상승 구간 ~ ' : ''}확정 천장 ${comma(state.pity.hard)}번째) 최상위가 나온 횟수 — 목표가 아닌 캐릭터도 셈.`);
   renderQuantileCard(els.quantCard, {
     title: `달성 분위별 수치 — ${r.goal.name}`,
-    hint: r.exact ? '정확한 분포' : `시뮬레이션 ${comma(r.sim.runs)}회${r.exactMean != null ? ' · 평균은 정확해' : ''}`,
+    hint: r.exact ? '정확한 분포' : `시뮬레이션 ${comma(r.sim.runs)}회${r.exactMean != null ? ' · 평균은 공식 계산값' : ''}`,
     metrics, selected: state.quantMetric ?? 'pulls',
     onSelect: (id) => { state.quantMetric = id; save(); renderQuantiles(last); },
     note: notes.join(' '),
@@ -336,7 +336,7 @@ function renderKPIs(res) {
     h('div.card.kpi', {},
       h('div.kpi-label', {}, '기대 뽑기 수'),
       h('div.kpi-value', {}, Number.isFinite(r.mean) ? `${comma(r.mean)}회` : '불가'),
-      h('div.kpi-sub', {}, `${comma(r.mean * state.pullCost)} ${state.gemName} · ${r.exactMean != null ? '정확해' : '시뮬레이션'}`)),
+      h('div.kpi-sub', {}, `${comma(r.mean * state.pullCost)} ${state.gemName} · ${r.exactMean != null ? '공식 계산' : '시뮬레이션'}`)),
     h('div.card.kpi', {},
       h('div.kpi-label', {}, '단순 계산 대비'),
       h(`div.kpi-value${ratio >= 1.2 ? '.bad-text' : ''}`, {}, Number.isFinite(ratio) ? `×${ratio.toFixed(2)}` : '—'),
@@ -431,9 +431,9 @@ function renderVerify(res) {
       rows.length ? h(`span.status.${ok ? 'good' : 'warn'}`, {}, ok ? `✓ 일치 (오차 ${(maxDiff * 100).toFixed(1)}%)` : `! 오차 ${(maxDiff * 100).toFixed(1)}% — 표본 부족 가능`) : null),
     h('p.muted.small', {}, '수집 목표는 포아송화 적분(확률 고정·교환 없음일 때), 픽업 목표는 (모은 장수 × 천장 카운터 × 보장) 상태 분포를 뽑기마다 전진시키는 동적 계획법으로 정확히 풀고, 시드 고정 시뮬레이션과 비교합니다.'),
     rows.length ? h('div.verify-grid', {},
-      h('span.h', {}, ''), h('span.h', {}, '정확해'), h('span.h', {}, `시뮬레이션 ${comma(rows[0].sim.runs)}회`),
+      h('span.h', {}, ''), h('span.h', {}, '공식 계산'), h('span.h', {}, `시뮬레이션 ${comma(rows[0].sim.runs)}회`),
       ...rows.flatMap(r => [h('span', {}, r.goal.name), h('b', {}, `${(r.exactMean).toFixed(1)}회`), h('span', {}, `${r.sim.mean.toFixed(1)}회`)]),
-    ) : h('p.muted', {}, '이 설정에는 정확해를 쓸 수 있는 목표가 없습니다 (소환 레벨이 여러 개거나 교환이 있는 수집 목표). 시뮬레이션 결과만 표시합니다.'),
+    ) : h('p.muted', {}, '이 설정에는 공식으로 풀 수 있는 목표가 없습니다 (소환 레벨이 여러 개거나 교환이 있는 수집 목표). 시뮬레이션 결과만 표시합니다.'),
   );
 }
 
@@ -479,7 +479,7 @@ function renderDisclosure() {
       h('td.left', {}, i === 0 ? g.name : ''),
       h('td.left', {}, u.name, u.featured ? h('span.disc-tag', {}, '픽업') : null),
       h('td', {}, pct(u.prob)),
-      h('td', { title: e?.exact ? '정확해' : '시뮬레이션' }, e && Number.isFinite(e.mean) ? `${comma(e.mean)}회` : '—'),
+      h('td', { title: e?.exact ? '공식 계산' : '시뮬레이션' }, e && Number.isFinite(e.mean) ? `${comma(e.mean)}회` : '—'),
       h('td', {}, e && Number.isFinite(e.mean) ? pullsMoney(e.mean) : '—'),
     );
   }));
@@ -571,7 +571,7 @@ function exportCSV() {
     lines.push([esc(r.goal.name), esc(GOAL_TYPES[r.goal.type]), esc(state.grades[r.spec.g].name), r.spec.K, r.spec.k,
       r.mean.toFixed(1), r.naive.toFixed(1), r.noDup != null ? r.noDup.toFixed(1) : '',
       Math.round(pullsToMoney(r.mean)), Math.round(pullsToMoney(r.pct.p50)), Math.round(pullsToMoney(r.pct.p90)), Math.round(pullsToMoney(r.pct.p99)),
-      Math.ceil(r.daysFree), Math.ceil(r.daysPaid), esc(r.exactMean != null ? '정확해' : '시뮬레이션')].join(','));
+      Math.ceil(r.daysFree), Math.ceil(r.daysPaid), esc(r.exactMean != null ? '공식 계산' : '시뮬레이션')].join(','));
   }
   downloadText(`gacha-${state.template}.csv`, '﻿' + lines.join('\r\n'), 'text/csv');
 }

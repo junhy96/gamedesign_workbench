@@ -47,7 +47,7 @@ function build(root) {
     h('div.tool-head', {},
       h('div', {},
         h('h1', {}, '스탯·전투 밸런스'),
-        h('p', {}, '엔티티 × 스탯 × 규칙 수식으로 레벨별 전투력과 1:1 승률을 계산합니다. 데미지 변동이 없으면 승률은 시뮬레이션이 아니라 정확해(오차 0)이고, 공격 속도는 같은 시간 동안의 공격 횟수로 반영합니다. Kalivra 프로젝트(.kal)를 그대로 불러올 수 있습니다.'),
+        h('p', {}, '엔티티 × 스탯 × 규칙 수식으로 레벨별 전투력과 1:1 승률을 계산합니다. 데미지 변동이 없으면 승률을 시뮬레이션 없이 공식으로 바로 계산하고, 공격 속도는 같은 시간 동안의 공격 횟수로 반영합니다. Kalivra 프로젝트(.kal)를 그대로 불러올 수 있습니다.'),
       ),
       els.head = h('div.tool-actions', {}),
     ),
@@ -448,7 +448,7 @@ function runBuilds() {
     put(els.buildOut, h('div.table-wrap', {}, h('table.stages.solve-table', {},
       h('thead', {}, h('tr', {}, h('th', {}, `Lv${last.lv} 평균 승률`), ...E.map((e, i) => h('th', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), e.name)))),
       h('tbody', {}, ...rows.map((r, ri) => h(`tr${ri === 0 ? '.top' : ''}`, {},
-        h('td.lever', {}, r.name, r.exact ? null : h('small', {}, '시뮬레이션 포함')),
+        h('td.lever', {}, r.name, r.exact ? null : h('small', {}, '일부 시뮬레이션')),
         ...r.score.map((v, i) => { const d = v - base.score[i]; return h(`td${ri && Math.abs(d) >= 0.0005 ? (d > 0 ? '.up' : '.down') : ''}`, {}, pct(v), ri && Math.abs(d) >= 0.0005 ? h('small', {}, ` ${d > 0 ? '+' : '−'}${Math.abs(d * 100).toFixed(1)}%p`) : null); }))),
     ))), h('p.muted.small', {}, '각 칸 = 그 엔티티가 다른 모든 엔티티와 1:1로 붙었을 때의 평균 점수(승 + 무/2) · 작은 숫자 = 지금 대비'));
   }, 20);
@@ -506,7 +506,7 @@ function renderKPIs(res) {
     kpi(`Lv${res.lv} 가장 강한 엔티티`, E.length > 1 ? E[best].name : '—', E.length > 1 ? [`상대 평균 승률 ${pct(mx.score[best])} (무승부 절반)`] : ['엔티티를 2개 이상 넣으세요'], '.hero'),
     kpi('CP와 실제 강함의 순위 상관', Number.isFinite(res.cv.rho) ? res.cv.rho.toFixed(2) : '—', [E.length >= 3 ? '1 = CP 순서와 승률 순서가 같음' : '엔티티 3개 이상일 때'], Number.isFinite(res.cv.rho) && res.cv.rho < 0.5 ? '.bad' : ''),
     kpi('CP가 높은데 지는 쌍', `${inv}쌍`, inv ? [`${res.cv.pairs[0].hi.name} → ${res.cv.pairs[0].lo.name} 승률 ${pct(res.cv.pairs[0].win)}`] : ['없음'], inv ? '.bad' : ''),
-    kpi('계산', mx.allExact ? '정확해' : '시뮬레이션 포함', [mx.allExact ? '모든 쌍 오차 0' : `변동이 있는 쌍은 ${comma(state.sim.runs)}회 · 95% 구간 표시`, MODES[state.rules.mode].split(' (')[0]]),
+    kpi('계산 방식', mx.allExact ? '공식 계산' : '일부 시뮬레이션', [mx.allExact ? '모든 대결을 공식으로 계산해 매번 같은 값이 나옵니다' : `변동·특성이 있는 대결은 ${comma(state.sim.runs)}번 시뮬레이션 (95% 범위 표시)`, MODES[state.rules.mode].split(' (')[0]]),
   );
 }
 
@@ -576,7 +576,7 @@ function renderMatrix(res) {
     const sig = c.exact ? Math.abs(c.win - c.lose) > 1e-9 : (c.ci[0] > 0.5 || c.ci[1] < 0.5 - c.draw); // 시뮬레이션이 50%를 걸치면 흐리게
     return h(`td.mx-cell${sig ? '' : '.mx-unsure'}`, {
       style: `background: color-mix(in srgb, var(${tone}) ${Math.round(8 + t * 42)}%, transparent)`,
-      title: `${E[i].name} 대 ${E[j].name}: 승 ${pct(c.win)} · 패 ${pct(c.lose)} · 무 ${pct(c.draw)}${c.exact ? ' (정확해)' : ` · 95% 구간 ${pct(c.ci[0])}~${pct(c.ci[1])}`}`,
+      title: `${E[i].name} 대 ${E[j].name}: 승 ${pct(c.win)} · 패 ${pct(c.lose)} · 무 ${pct(c.draw)}${c.exact ? ' (공식 계산)' : ` · 95% 구간 ${pct(c.ci[0])}~${pct(c.ci[1])}`}`,
       onclick: () => { state.pairA = i; state.pairB = j; renderPair(last); els.pairCard.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     },
     h('b', {}, pct(c.win)),
@@ -585,7 +585,7 @@ function renderMatrix(res) {
     d != null && Math.abs(d) >= 0.0005 ? h(`small.${d > 0 ? 'up' : 'down'}`, {}, `${d > 0 ? '▲' : '▼'}${(Math.abs(d) * 100).toFixed(1)}`) : null);
   };
   put(els.mxCard, 
-    h('div.card-head', {}, h('h2', {}, `승률 행렬 — Lv${res.lv}`), h('span.hint', {}, `왼쪽 엔티티가 위 엔티티를 이길 확률 · ${mx.allExact ? '모든 칸 정확해' : `시뮬레이션 칸은 ±95% 구간, 50%를 걸치면 흐리게`} · 칸을 누르면 아래 상세${bm ? ' · ▲▼ = 기준안 대비 %p' : ''}`)),
+    h('div.card-head', {}, h('h2', {}, `승률 행렬 — Lv${res.lv}`), h('span.hint', {}, `왼쪽 엔티티가 위 엔티티를 이길 확률 · ${mx.allExact ? '모든 칸을 공식으로 계산' : `시뮬레이션 칸은 ±95% 구간, 50%를 걸치면 흐리게`} · 칸을 누르면 아래 상세${bm ? ' · ▲▼ = 기준안 대비 %p' : ''}`)),
     h('div.table-wrap', {}, h('table.mx-table', {},
       h('thead', {}, h('tr', {}, h('th', {}, ''), ...E.map((e, j) => h('th', {}, h('span.swatch', { style: `background:${colorOf(j)}` }), e.name)), h('th', { title: '상대들에 대한 (승 + 무/2)의 평균' }, '평균'))),
       h('tbody', {}, ...E.map((e, i) => h('tr', {},
@@ -618,7 +618,7 @@ function renderPair(res) {
   const kA = d.exact ? ks(d.ex.killA, prep.pa.speed) : null, kB = d.exact ? ks(d.ex.killB, prep.pb.speed) : null;
   const killLine = (k, who, other) => (k ? `${josa(who, '이', '가')} ${josa(other, '을', '를')} 쓰러뜨리는 공격: 평균 ${num(k.attacks, 1)}회${mode === 'time' ? ` (${sec(k.time)})` : ''} · 중앙값 ${k.q(0.5)}회 · 운 나쁜 1% ${k.q(0.99)}회${k.never > 1e-6 ? ` · ${mode === 'time' ? `${state.rules.maxTime}초` : `${state.rules.maxTurns}턴`} 안에 못 쓰러뜨림 ${pct(k.never)}` : ''}` : null);
   put(els.pairCard, 
-    h('div.card-head', {}, h('h2', {}, '1:1 상세'), h('span.hint', {}, d.exact ? '정확해 (동적 계획법) + 시뮬레이션 검증' : `시뮬레이션 ${comma(sim.runs)}회 (${d.reason})`)),
+    h('div.card-head', {}, h('h2', {}, '1:1 상세'), h('span.hint', {}, d.exact ? '동적 계획법으로 계산하고 시뮬레이션으로 확인' : `시뮬레이션 ${comma(sim.runs)}회 (${d.reason})`)),
     h('div.pair-pick', {},
       select(E.map((e, i) => [i, e.name]), ia, (v) => { state.pairA = +v; save(); renderPair(last); }, '공격 쪽'),
       h('span.muted', {}, '대'),
@@ -632,12 +632,12 @@ function renderPair(res) {
       h('div', {}, h('h3.sub', {}, `${B.name} → ${A.name}`), h('dl.pct-list', {}, ...prof(prep.pb, prep.hpA).map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v)))))),
     ...[killLine(kA, A.name, B.name), killLine(kB, B.name, A.name)].filter(Boolean).map(t => h('p.muted.small', {}, t)),
     h('div.verify-grid', {},
-      h('span.h', {}, ''), h('span.h', {}, d.exact ? '정확해' : '—'), h('span.h', {}, `시뮬레이션 ${comma(sim.runs)}회`),
+      h('span.h', {}, ''), h('span.h', {}, d.exact ? '공식 계산' : '—'), h('span.h', {}, `시뮬레이션 ${comma(sim.runs)}회`),
       h('span', {}, `${A.name} 승`), h('span', {}, d.exact ? pct(d.winA, 2) : '—'), h('span', {}, `${pct(sim.winA, 2)} (95% ${pct(sim.ciA[0])}~${pct(sim.ciA[1])})`),
       h('span', {}, '무승부'), h('span', {}, d.exact ? pct(d.draw, 2) : '—'), h('span', {}, pct(sim.draw, 2)),
       h('span', {}, `${A.name} 실현 명중·치명`), h('span', {}, `${pct(prep.pa.hit)} · ${pct(prep.pa.crit)}`), h('span', {}, `${pct(sim.realized.hit)} · ${pct(sim.realized.crit)}`),
       h('span', {}, '평균 전투 길이'), h('span', {}, '—'), h('span', {}, mode === 'time' ? sec(mean(sim.duration)) : `${num(mean(sim.duration), 1)}턴`)),
-    d.exact ? h('p', {}, h('span', { class: `status ${(sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? 'good' : 'warn'}` }, (sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? '정확해가 시뮬레이션 95% 구간 안' : '정확해가 시뮬레이션 95% 구간 밖 — 반복 수를 늘려 다시 확인')) : null,
+    d.exact ? h('p', {}, h('span', { class: `status ${(sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? 'good' : 'warn'}` }, (sim.ciA[0] - 1e-9 <= d.winA && d.winA <= sim.ciA[1] + 1e-9) ? '계산값이 시뮬레이션 95% 범위 안에 있습니다' : '계산값이 시뮬레이션 95% 범위를 벗어났습니다. 반복 횟수를 늘려 다시 확인하세요')) : null,
     procBlock(sim, A, B),
     logBlock(logRun, A, B),
     h('h3.sub', {}, '레벨별 승률'),
@@ -741,7 +741,7 @@ function startPhase(res) {
 function renderPhase(sw, rep, ranges) {
   const E = state.entities, LV = { serious: '불가', warn: '주의', info: '참고' };
   put(els.phaseCard,
-    h('div.card-head', {}, h('h2', {}, '구간 리포트'), h('span.hint', {}, `${ranges.map(r => `Lv${r.from}~${r.to}`).join(' · ')} · ${sw.exact ? '정확해' : `시뮬레이션 쌍마다 ${comma(sw.runs)}회${sw.stride > 1 ? ` · ${sw.stride}레벨마다` : ''}`} · 경계는 왼쪽 '템플릿 · 레벨'에서`)),
+    h('div.card-head', {}, h('h2', {}, '구간 리포트'), h('span.hint', {}, `${ranges.map(r => `Lv${r.from}~${r.to}`).join(' · ')} · ${sw.exact ? '공식 계산' : `시뮬레이션 쌍마다 ${comma(sw.runs)}회${sw.stride > 1 ? ` · ${sw.stride}레벨마다` : ''}`} · 경계는 왼쪽 '템플릿 · 레벨'에서`)),
     h('div.chart-box', {}, els.phaseCanvas = h('canvas', { role: 'img', 'aria-label': '레벨별 엔티티 평균 승률' })),
     h('div.table-wrap', {}, h('table.stages.phase-table', {},
       h('thead', {}, h('tr', {}, h('th.left', {}, '엔티티'), ...rep.phases.map(p => h('th', {}, `Lv${p.from}~${p.to}`)))),
@@ -824,7 +824,7 @@ function renderTools(res) {
   const rerun = () => { save(); renderTools(last); };
   els.toolOut = { min: h('div', {}), sens: h('div', {}), contrib: h('div', {}), goal: h('div', {}) };
   put(els.toolCard,
-    h('div.card-head', {}, h('h2', {}, '밸런스 도구'), h('span.hint', {}, `점수 = 승 + 무승부 ÷ 2 · ${sim ? `시뮬레이션 쌍은 같은 시드 ${comma(Math.max(500, Math.round(state.sim.runs / 2)))}회` : '정확해'}`)),
+    h('div.card-head', {}, h('h2', {}, '밸런스 도구'), h('span.hint', {}, `점수 = 승 + 무승부 ÷ 2 · ${sim ? `시뮬레이션 쌍은 같은 시드 ${comma(Math.max(500, Math.round(state.sim.runs / 2)))}회` : '공식 계산'}`)),
     h('div.tool-pick', {},
       field('대상', select(E.map(e => [e.id, e.name]), t.a, (v) => { t.a = v; rerun(); }, '대상 엔티티')),
       field('상대', select([['all', '모든 상대 평균'], ...E.filter(e => e.id !== t.a).map(e => [e.id, e.name])], t.b, (v) => { t.b = v; rerun(); }, '상대')),

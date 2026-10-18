@@ -9,7 +9,7 @@ export { won };
 // ── KPI ────────────────────────────────────────────────
 const KPI_DEFS = [
   { key: 'expCost', label: '기대 총비용', hero: true, fmt: won, better: 'lower' },
-  { key: 'std', label: '표준편차 (정확해)', fmt: wonShort, better: 'lower' },
+  { key: 'std', label: '표준편차 (계산값)', fmt: wonShort, better: 'lower' },
   { key: 'noDestroy', label: '파괴 없이 도달할 확률', fmt: (v) => fmtPct(v, v < 0.01 ? 2 : 1), better: 'higher' },
   { key: 'expDestroy', label: '기대 파괴 횟수', fmt: (v) => `${fmtNum(v, 2)}회`, better: 'lower' },
   { key: 'attempts', label: '기대 시도 횟수', fmt: (v) => `${fmtNum(v, 1)}회`, better: 'lower' },
@@ -27,7 +27,7 @@ export function buildKPIs(els) {
 /** 상단 고정 띠의 간단한 지표 (설계 입력·밸런스 도구 화면에서 입력을 바꾸며 바로 확인) */
 export function buildStrip(els) {
   return h('div.kpi-strip', {}, ...KPI_DEFS.map(d => h(`div.mini-kpi${d.hero ? '.hero' : ''}`, {},
-    h('span.mini-label', {}, d.label.replace(' (정확해)', '')),
+    h('span.mini-label', {}, d.label.replace(' (계산값)', '')),
     els[d.key + 'Mini'] = h('b.mini-value', {}, '—'),
     els[d.key + 'MiniDelta'] = h('span.mini-delta', {}),
   )));
@@ -112,7 +112,7 @@ export function renderQuantiles(ctx, els, mc, res) {
   const times = (v) => `${comma(v)}회`;
   renderQuantileCard(els.quantCard, {
     title: '달성 분위별 수치',
-    hint: `목표까지 — 시뮬레이션 ${comma(mc.trials)}회 · 평균은 정확해`,
+    hint: `목표까지 — 시뮬레이션 ${comma(mc.trials)}회 · 평균은 공식 계산값`,
     metrics: [
       { id: 'cost', label: '총비용', values: Array.from(q.cost), mean: res.expCost, fmt: won, short: wonShort },
       { id: 'attempts', label: '시도', values: Array.from(q.attempts), mean: res.attempts, fmt: times, short: comma },
@@ -126,7 +126,7 @@ export function renderQuantiles(ctx, els, mc, res) {
 
 export function renderMCSkipped(ctx, els, res) {
   ctx.lastMC = null;
-  els.distHint.textContent = '기대 시도 횟수가 너무 커서 시뮬레이션을 생략했습니다 (정확해만 표시)';
+  els.distHint.textContent = '기대 시도 횟수가 너무 커서 시뮬레이션을 생략했습니다 (공식 계산값만 표시)';
   els.expCostSub.textContent = '분포는 시뮬레이션 생략으로 표시하지 않습니다';
   els.attemptsSub.textContent = '';
   els.pct.replaceChildren();
@@ -233,7 +233,7 @@ export function renderVerify(els, res, mc) {
       mc ? h(`span.status.${ok ? 'good' : 'warn'}`, {}, ok ? `✓ 일치 (오차 ${(maxDiff * 100).toFixed(1)}%)` : `! 오차 ${(maxDiff * 100).toFixed(1)}% — 표본 부족 가능`) : null),
     h('p.muted.small', {}, `상태 ${comma(res.meta.states)}개(연속 카운터 ${res.meta.counter + 1}단계)의 흡수 마르코프 체인을 띠 행렬 LU + Sherman–Morrison으로 정확히 풀고, 시드 고정 시뮬레이션과 비교합니다.`),
     h('div.verify-grid', {},
-      h('span.h', {}, ''), h('span.h', {}, '정확해'), h('span.h', {}, mc ? `시뮬레이션 ${comma(mc.trials)}회` : '시뮬레이션 생략'),
+      h('span.h', {}, ''), h('span.h', {}, '공식 계산'), h('span.h', {}, mc ? `시뮬레이션 ${comma(mc.trials)}회` : '시뮬레이션 생략'),
       ...rows.flatMap(([k, a, b]) => [h('span', {}, k), h('b', {}, a), h('span', {}, b ?? '—')]),
     ),
   ].filter(Boolean));
