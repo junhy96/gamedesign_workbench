@@ -30,7 +30,9 @@ export function drawChart(key, canvas, config) {
   const options = { ...config.options, animation: motion };
   const plugins = config.plugins || [];
   const prev = key ? live.get(key) : null;
-  if (prev && prev.canvas === canvas && shapeOf(prev.config) === shapeOf(config)) {
+  // 캔버스가 문서에서 빠졌다 들어오면 Chart.js가 크기를 0으로 줄여 둘 수 있다 — 그런 그래프는 이어 쓰지 않고 새로 그린다
+  const healthy = prev && prev.attached !== false && canvas.isConnected && prev.width > 0;
+  if (prev && healthy && prev.canvas === canvas && shapeOf(prev.config) === shapeOf(config)) {
     prev.options = options;
     prev.$live = plugins;
     setData(prev, config.data);
@@ -61,6 +63,15 @@ export function drawChart(key, canvas, config) {
   }
   if (key) live.set(key, chart);
   return chart;
+}
+
+/** 숨어 있던 탭이 보일 때: 그 안의 그래프 크기를 다시 맞추고 다시 그린다 */
+export function refreshCharts(root) {
+  if (typeof Chart === 'undefined') return;
+  for (const cv of root.querySelectorAll('canvas')) {
+    const c = Chart.getChart(cv);
+    if (c) { c.resize(); c.update('none'); }
+  }
 }
 
 /** 그래프 지우기 (오류 화면 등) */

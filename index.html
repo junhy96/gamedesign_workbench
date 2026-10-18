@@ -9,19 +9,19 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="css/style.css">
   <script>
-    // 테마를 첫 렌더 전에 적용해 깜빡임 방지
-    try { const t = localStorage.getItem('planwb:theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
+    // 테마를 첫 렌더 전에 적용해 깜빡임 방지. 처음에는 라이트, 버튼으로 고른 적이 있으면 그 테마
+    try { const t = localStorage.getItem('planwb:theme'); document.documentElement.dataset.theme = t ? JSON.parse(t) : 'light'; } catch {}
   </script>
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">
+    <a class="brand" href="#enhance" id="brand-home" title="처음 화면으로">
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
         <strong>기획 워크벤치</strong>
         <span class="brand-sub">게임 시스템 기획 검증 도구</span>
       </div>
-    </div>
+    </a>
     <!-- 분류별 메뉴: 마우스를 올리거나(키보드는 포커스·↓) 누르면 그 분류의 도구 목록이 열린다 -->
     <nav class="tabs" aria-label="도구">
       <div class="nav-group" data-group="bm">

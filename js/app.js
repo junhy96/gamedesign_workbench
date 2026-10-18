@@ -11,6 +11,7 @@ import { mount as mountStage } from './stage/view.js';
 import { mount as mountBattle } from './battle/view.js';
 import { mount as mountBrief } from './brief/view.js';
 import { openSnapshots } from './lib/snapshot-view.js';
+import { refreshCharts } from './lib/chart.js';
 
 const TOOLS = {
   enhance: mountEnhance,
@@ -81,7 +82,9 @@ function show(id) {
     g.querySelector('.nav-cur').textContent = cur ? cur.querySelector('b').textContent : '';
   }
   for (const key of Object.keys(TOOLS)) document.getElementById(`tab-${key}`).hidden = key !== id;
-  if (TOOLS[id] && !mounted.has(id)) { mounted.add(id); TOOLS[id](document.getElementById(`tab-${id}`)); }
+  const panel = document.getElementById(`tab-${id}`);
+  if (TOOLS[id] && !mounted.has(id)) { mounted.add(id); TOOLS[id](panel); }
+  else requestAnimationFrame(() => refreshCharts(panel)); // 숨어 있는 동안 크기를 못 잡은 그래프를 다시 그림
 }
 
 const currentTab = () => location.hash.slice(1).split('?')[0];
@@ -93,6 +96,14 @@ for (const btn of tabs) {
   });
 }
 window.addEventListener('hashchange', () => show(currentTab()));
+// 로고: 처음 화면(첫 도구, 맨 위)으로
+document.getElementById('brand-home')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  closeMenus();
+  if (currentTab() !== 'enhance') history.replaceState(null, '', '#enhance');
+  show('enhance');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
 show(currentTab());
 
 // 테마: OS 설정을 따르되, 버튼으로 명시 선택 가능
