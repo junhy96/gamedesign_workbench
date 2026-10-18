@@ -49,6 +49,7 @@ function build(root) {
       h('div', {},
         h('h1', {}, '스탯·전투 밸런스'),
         h('p', {}, '엔티티 × 스탯 × 규칙 수식으로 레벨별 전투력과 1:1 승률을 계산합니다. 데미지 변동이 없으면 승률을 시뮬레이션 없이 공식으로 바로 계산하고, 공격 속도는 같은 시간 동안의 공격 횟수로 반영합니다. Kalivra 프로젝트(.kal)를 그대로 불러올 수 있습니다.'),
+        h('p.muted.small.cp-note', {}, 'CP(Combat Power, 전투력)는 스탯을 CP 수식으로 합친 숫자 하나로, 게임 화면에 보여 주는 "전투력"에 해당합니다. 승패 계산에는 쓰지 않고, CP 순서가 실제 1:1 승률 순서와 맞는지 비교하는 데만 씁니다.'),
       ),
       els.head = h('div.tool-actions', {}),
     ),
@@ -132,6 +133,7 @@ function renderSide() {
       h('span', {}, label, h('span.muted.small', {}, kind === 'self' ? ' · 자기 스탯' : ' · a 공격 / b 방어')),
       input,
       presets ? select([['', '프리셋 고르기…'], ...presets.map(([l, v]) => [v, l])], '', (v) => { if (v) { r[key] = v; input.value = v; schedule(0); } }, `${label} 프리셋`) : null,
+      key === 'cp' ? h('small', {}, '게임에 보여 줄 전투력 숫자. 승패 계산에는 쓰이지 않고, 아래 "CP와 실제 승률"에서 실제 강함과 순서를 비교합니다.') : null,
       els.fErr[key]);
   };
   put(els.side, 
@@ -505,7 +507,7 @@ function renderKPIs(res) {
   const inv = res.cv.pairs.length;
   put(els.kpis, 
     kpi(`Lv${res.lv} 가장 강한 엔티티`, E.length > 1 ? E[best].name : '—', E.length > 1 ? [`상대 평균 승률 ${pct(mx.score[best])} (무승부 절반)`] : ['엔티티를 2개 이상 넣으세요'], '.hero'),
-    kpi('CP와 실제 강함의 순위 상관', Number.isFinite(res.cv.rho) ? res.cv.rho.toFixed(2) : '—', [E.length >= 3 ? '1 = CP 순서와 승률 순서가 같음' : '엔티티 3개 이상일 때'], Number.isFinite(res.cv.rho) && res.cv.rho < 0.5 ? '.bad' : ''),
+    kpi('CP와 실제 강함의 순위 상관', Number.isFinite(res.cv.rho) ? res.cv.rho.toFixed(2) : '—', [E.length >= 3 ? 'CP(전투력 숫자) 순서와 실제 승률 순서가 같으면 1, 반대면 −1' : '엔티티 3개 이상일 때'], Number.isFinite(res.cv.rho) && res.cv.rho < 0.5 ? '.bad' : ''),
     kpi('CP가 높은데 지는 쌍', `${inv}쌍`, inv ? [`${res.cv.pairs[0].hi.name} → ${res.cv.pairs[0].lo.name} 승률 ${pct(res.cv.pairs[0].win)}`] : ['없음'], inv ? '.bad' : ''),
     kpi('계산 방식', mx.allExact ? '공식 계산' : '일부 시뮬레이션', [mx.allExact ? '모든 대결을 공식으로 계산해 매번 같은 값이 나옵니다' : `변동·특성이 있는 대결은 ${comma(state.sim.runs)}번 시뮬레이션 (95% 범위 표시)`, MODES[state.rules.mode].split(' (')[0]]),
   );
@@ -538,7 +540,7 @@ function drawCurves(res) {
     for (const lv of new Set(cross.map(cc => cc.lv))) { const px = x.getPixelForValue(lv); if (px >= a.left && px <= a.right) { g.beginPath(); g.moveTo(px, a.top); g.lineTo(px, a.bottom); g.stroke(); } }
     g.restore();
   } };
-  els.curveHint.textContent = m === 'cp' ? `CP 수식: ${state.rules.cp}` : `${state.entities.find(e => e.id === state.ref)?.name ?? ''}(같은 레벨) 상대 · 변동 제외 기대값${cross.length ? ' · 세로 점선 = 역전 레벨' : ''}`;
+  els.curveHint.textContent = m === 'cp' ? `CP(전투력) 수식: ${state.rules.cp} · 승패 계산에는 쓰지 않음` : `${state.entities.find(e => e.id === state.ref)?.name ?? ''}(같은 레벨) 상대 · 변동 제외 기대값${cross.length ? ' · 세로 점선 = 역전 레벨' : ''}`;
   chartCurve?.destroy();
   chartCurve = new Chart(els.curveCanvas, {
     type: 'line', data: { datasets: ds }, plugins: [marks],
@@ -883,6 +885,7 @@ function renderCheck(res) {
   const order = E.map((e, i) => i).sort((a, b) => res.mx.score[b] - res.mx.score[a]);
   put(els.checkCard, 
     h('div.card-head', {}, h('h2', {}, 'CP와 실제 승률 · 검증 결과'), h('span.hint', {}, `Lv${res.lv}`)),
+    h('p.muted.small', {}, 'CP는 스탯을 합친 전투력 숫자이고, 실제 순위는 모든 상대와 1:1로 붙인 평균 승률입니다. 둘이 어긋나면 유저는 "전투력은 높은데 진다"고 느낍니다. 빨간 줄 = CP가 더 낮은 상대에게 지는 엔티티.'),
     E.length >= 2 ? h('div.table-wrap', {}, h('table.stages.rank-table', {},
       h('thead', {}, h('tr', {}, h('th', {}, '실제 순위'), h('th.left', {}, '엔티티'), h('th', {}, '평균 승률'), h('th', {}, 'CP'), h('th', {}, 'CP 순위'))),
       h('tbody', {}, ...order.map((i, r) => {
