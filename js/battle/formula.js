@@ -186,3 +186,56 @@ function findPos(ast, n) {
   }
   return -1;
 }
+
+// ── 코드로 옮기기 (엔진 내보내기) ─────────────────────────
+// 같은 AST를 C#(Unity)·C++(Unreal)·JS(테스트 검증용) 식으로. 참·거짓은 이 파서처럼 1·0이 되도록 도우미 함수를 쓴다:
+//   B(bool) → 1/0, T(x) → x ≠ 0, And(l, r) = T(l) ? r : 0, Or(l, r) = T(l) ? l : r, Round(x) = floor(x + 0.5) (JS Math.round와 같게 — C#의 Mathf.Round는 짝수 반올림)
+const LANGS = {
+  cs: { num: (v) => `${fmtNum(v)}f`, fn: { min: 'Mathf.Min', max: 'Mathf.Max', clamp: 'Mathf.Clamp', floor: 'Mathf.Floor', ceil: 'Mathf.Ceil', round: 'Round', abs: 'Mathf.Abs', sqrt: 'Mathf.Sqrt', pow: 'Mathf.Pow', log: 'Mathf.Log', exp: 'Mathf.Exp' }, mod: (l, r) => `(${l} % ${r})`, variadic: true },
+  cpp: { num: (v) => `${fmtNum(v)}f`, fn: { min: 'FMath::Min', max: 'FMath::Max', clamp: 'FMath::Clamp', floor: 'FMath::FloorToFloat', ceil: 'FMath::CeilToFloat', round: 'Round', abs: 'FMath::Abs', sqrt: 'FMath::Sqrt', pow: 'FMath::Pow', log: 'FMath::Loge', exp: 'FMath::Exp' }, mod: (l, r) => `FMath::Fmod(${l}, ${r})`, variadic: false },
+  js: { num: (v) => fmtNum(v), fn: { min: 'Math.min', max: 'Math.max', clamp: 'clamp', floor: 'Math.floor', ceil: 'Math.ceil', round: 'Round', abs: 'Math.abs', sqrt: 'Math.sqrt', pow: 'Math.pow', log: 'Math.log', exp: 'Math.exp' }, mod: (l, r) => `(${l} % ${r})`, variadic: true },
+};
+function fmtNum(v) { const s = String(v); return /[.eE]/.test(s) ? s : `${s}.0`; }
+
+/**
+ * 수식 → 코드 문자열. varName(name) = 이름을 그 언어의 식으로 (예: 'a.atk' → 'a["atk"]').
+ * 반환 { ok, code } 또는 { ok: false, error }
+ */
+export function toCode(src, lang, varName) {
+  const L = LANGS[lang];
+  try {
+    const ast = parse(src);
+    const go = (n) => {
+      switch (n.k) {
+        case 'num': return L.num(n.v);
+        case 'var': return varName(n.name);
+        case 'un': return n.op === '-' ? `(-${go(n.e)})` : n.op === '!' ? `B(!T(${go(n.e)}))` : go(n.e);
+        case 'call': {
+          const f = L.fn[n.f], args = n.args.map(go);
+          if ((n.f === 'min' || n.f === 'max') && !L.variadic) return args.reduce((a, b) => `${f}(${a}, ${b})`);
+          if ((n.f === 'min' || n.f === 'max') && args.length === 1) return args[0];
+          return `${f}(${args.join(', ')})`;
+        }
+        case 'cond': return `(T(${go(n.c)}) ? ${go(n.a)} : ${go(n.b)})`;
+        case 'bin': {
+          const l = go(n.l), r = go(n.r);
+          switch (n.op) {
+            case '^': return `${L.fn.pow}(${l}, ${r})`;
+            case '%': return L.mod(l, r);
+            case '&&': return `And(${l}, ${r})`;
+            case '||': return `Or(${l}, ${r})`;
+            case '==': case '===': return `B(${l} == ${r})`;
+            case '!=': case '!==': return `B(${l} != ${r})`;
+            case '<': case '<=': case '>': case '>=': return `B(${l} ${n.op} ${r})`;
+            default: return `(${l} ${n.op} ${r})`;
+          }
+        }
+      }
+      throw new FormulaError('알 수 없는 식입니다.', n.pos ?? 0);
+    };
+    return { ok: true, code: go(ast) };
+  } catch (e) {
+    if (e instanceof FormulaError) return { ok: false, error: e.message };
+    throw e;
+  }
+}

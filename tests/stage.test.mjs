@@ -214,3 +214,16 @@ test('큰 수·시간 표시', () => {
   assert.equal(fmtDur(12990), '3시간 37분');
   assert.equal(fmtDur(282273), '3일 6시간');
 });
+
+test('스탯·전투에서 가져오기: 선형 공격력·등비 체력은 정확히, 선형 체력은 등비 근사 + 안내', async () => {
+  const { fitFromBattle } = await import('../js/stage/model.js');
+  const r = fitFromBattle({ playerVals: (lv) => 10 + 2 * (lv - 1), monsterVals: (lv) => 100 * 1.04 ** (lv - 1), maxLevel: 300, levelPerStage: 1, stagesTotal: 200 });
+  close(r.atk0, 10, 1e-12); close(r.atkPerLevel, 2, 1e-12); close(r.hp0, 100, 1e-9); close(r.hpGrowth, 1.04, 1e-12);
+  assert.equal(r.notes.length, 0);
+  // 스테이지당 레벨 2: 스테이지 s = Lv 1 + 2(s−1) → 증가율은 1.04²
+  const r2 = fitFromBattle({ playerVals: (lv) => lv, monsterVals: (lv) => 100 * 1.04 ** (lv - 1), maxLevel: 300, levelPerStage: 2, stagesTotal: 100 });
+  close(r2.hpGrowth, 1.04 ** 2, 1e-12);
+  const lin = fitFromBattle({ playerVals: (lv) => lv, monsterVals: (lv) => 600 + 40 * (lv - 1), maxLevel: 30, stagesTotal: 200 });
+  assert.ok(lin.hpFit > 0.05 && lin.notes.some(n => /등비/.test(n)) && lin.notes.some(n => /30개로/.test(n)));
+  assert.equal(fitFromBattle({ playerVals: (lv) => lv, monsterVals: () => 100, maxLevel: 1, stagesTotal: 10 }).ok, false);
+});

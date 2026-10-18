@@ -4,6 +4,8 @@ import {
   MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt, traitsOf, scoreOf, minChanges, battleSensitivity, contributions, solveTarget, applyScale,
 } from './model.js';
 import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS } from './presets.js';
+import { unityFiles, unrealFiles } from './export.js';
+import { makeZip } from '../lib/zip.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
 
 const SCHEMA = 1;
@@ -83,6 +85,8 @@ function renderHead() {
     h('button.btn', { type: 'button', onclick: importKalivra, title: 'Kalivra 프로젝트 파일(.kal 또는 JSON)을 불러옵니다' }, 'Kalivra 가져오기'),
     h('button.btn', { type: 'button', onclick: exportStatsCSV }, '레벨별 스탯 CSV'),
     h('button.btn', { type: 'button', onclick: exportMatrixCSV }, '승률 행렬 CSV'),
+    h('button.btn', { type: 'button', onclick: () => exportEngine('unity'), title: 'BattleData.json + ScriptableObject·가져오기 메뉴·규칙 수식 C# (zip)' }, 'Unity 내보내기'),
+    h('button.btn', { type: 'button', onclick: () => exportEngine('unreal'), title: 'DataTable CSV·JSON + 행 구조체·규칙 수식 C++ (zip)' }, 'Unreal 내보내기'),
     h('button.btn', { type: 'button', onclick: saveJSON }, 'JSON 저장'),
     h('button.btn', { type: 'button', onclick: importJSON }, '불러오기'),
   ].filter(Boolean));
@@ -957,6 +961,11 @@ function exportStatsCSV() {
     lines.push([JSON.stringify(e.name), lv, ...S.map(d => +s[d.id].toFixed(4)), +last.f.cp(s, lv).toFixed(4)].join(','));
   }
   downloadText(`battle-stats-${state.template}.csv`, '﻿' + lines.join('\r\n'), 'text/csv');
+}
+function exportEngine(kind) {
+  const files = kind === 'unity' ? unityFiles(state) : unrealFiles(state);
+  downloadText(`battle-${kind}-${state.template}.zip`, makeZip(files), 'application/zip');
+  toast(last ? `${kind === 'unity' ? 'Unity' : 'Unreal'} 파일 ${files.length}개를 zip으로 저장했습니다 — README.txt에 넣는 방법` : '수식 오류가 있는 칸은 코드에 주석으로 남겼습니다');
 }
 function exportMatrixCSV() {
   if (!last) { toast('먼저 오류를 고쳐 주세요'); return; }

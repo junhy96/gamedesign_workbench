@@ -939,3 +939,23 @@ h3.sub { font-size: 14px; margin: 14px 0 8px; }
 .solve-table td.up { color: var(--good); font-weight: 600; }
 .solve-table td.down { color: var(--bad); font-weight: 600; }
 .goal-out { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13.5px; margin-top: 6px; }
+
+/* 스냅샷 창 (전 탭 공통) */
+.snap-btn { margin-left: auto; margin-right: 8px; }
+.snap-dialog { width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line-strong); border-radius: 14px; padding: 18px 20px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.snap-dialog::backdrop { background: rgb(0 0 0 / .35); }
+.snap-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.snap-head h2 { margin: 0; font-size: 17px; }
+.snap-save { display: flex; gap: 8px; margin: 12px 0; }
+.snap-save input { flex: 1; }
+.stages.snap-table, .stages.snap-kpi { min-width: 0; }
+.snap-table td:last-child { white-space: nowrap; text-align: right; }
+.snap-table td:last-child .btn { margin-left: 4px; }
+.snap-table tr.on td { background: var(--accent-soft); }
+.snap-cmp { margin-top: 12px; display: grid; gap: 12px; }
+.snap-cmp-title { margin: 6px 0 0; font-size: 15px; }
+.snap-tool h3 { font-size: 13.5px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+.snap-kpi td.up { color: var(--good); font-weight: 600; }
+.snap-kpi td.down { color: var(--bad); font-weight: 600; }
+.snap-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+@media (max-width: 640px) { .snap-btn { margin-left: 0; } .snap-table td:last-child { white-space: normal; } }

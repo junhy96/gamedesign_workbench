@@ -531,3 +531,45 @@ export function parseIntervalsCSV(text, mapping) {
 export function intervalsToCSV(ivs) {
   return ['LV_MIN,LV_MAX,INIT_COST,STEP', ...ivs.map(iv => `${iv.lvMin},${iv.lvMax ?? ''},${iv.initCost},${iv.step}`)].join('\r\n') + '\r\n';
 }
+
+// ── 스탯·전투 탭에서 가져오기 ──────────────────────────────
+// 플레이어 공격력: 강화 레벨 L(0부터) = 전투 레벨 L + 1. 전투 쪽 값 v(lv)에 직선을 맞춰 atk(L) = atk0 + atkPerLevel × L
+// 몬스터 체력: 스테이지 s = 전투 레벨 1 + (s − 1) × k (k = 스테이지당 레벨). log v에 직선을 맞춰 hp(s) = hp0 × hpGrowth^(s − 1)
+/** 최소제곱 직선 y = a + b·x. 반환 { a, b, maxRel(가장 큰 상대 오차) } */
+export function fitLine(xs, ys) {
+  const n = xs.length, mx = xs.reduce((s, x) => s + x, 0) / n, my = ys.reduce((s, y) => s + y, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
+  const b = sxx ? sxy / sxx : 0, a = my - b * mx;
+  const maxRel = Math.max(0, ...ys.map((y, i) => (y ? Math.abs(a + b * xs[i] - y) / Math.abs(y) : 0)));
+  return { a, b, maxRel };
+}
+
+/**
+ * vals(lv) = 전투 탭 엔티티의 레벨별 스탯 값을 돌려주는 함수, maxLevel = 전투 탭 최대 레벨
+ * 반환 { atk0, atkPerLevel, atkFit, hp0, hpGrowth, hpFit, stages(맞춘 스테이지 수), notes }
+ */
+export function fitFromBattle({ playerVals, monsterVals, maxLevel, levelPerStage = 1, stagesTotal }) {
+  const notes = [];
+  const lvs = Array.from({ length: maxLevel }, (_, i) => i + 1);
+  const pv = lvs.map(playerVals);
+  const lf = fitLine(lvs, pv); // v ≈ a + b·lv → atk(L) = a + b(L + 1)
+  const atk0 = lf.a + lf.b, atkPerLevel = lf.b;
+  if (lf.maxRel > 0.02) notes.push(`플레이어 공격력이 레벨에 정비례하지 않아 직선으로 맞췄습니다 (최대 오차 ${(lf.maxRel * 100).toFixed(1)}%).`);
+  const k = levelPerStage > 0 ? levelPerStage : 1;
+  const ss = [], hv = [];
+  for (let s = 1; s <= stagesTotal; s++) {
+    const lv = 1 + (s - 1) * k;
+    if (lv > maxLevel + 1e-9) break;
+    const v = monsterVals(lv);
+    if (!(v > 0)) continue;
+    ss.push(s - 1); hv.push(Math.log(v));
+  }
+  if (ss.length < 2) return { ok: false, notes: [...notes, '몬스터 체력을 맞출 점이 2개 미만입니다 (스테이지당 레벨을 줄이거나 전투 탭 최대 레벨을 늘리세요).'] };
+  const gf = fitLine(ss, hv);
+  const hp0 = Math.exp(gf.a), hpGrowth = Math.exp(gf.b);
+  const maxRel = Math.max(...ss.map((x, i) => Math.abs(Math.exp(gf.a + gf.b * x) / Math.exp(hv[i]) - 1)));
+  if (maxRel > 0.05) notes.push(`몬스터 체력이 스테이지마다 일정한 비율로 늘지 않습니다 (등비로 맞춘 최대 오차 ${(maxRel * 100).toFixed(1)}%). 전투 탭에서 체력 성장을 '등비'로 두면 정확히 옮겨집니다.`);
+  if (ss.length < stagesTotal) notes.push(`전투 탭 최대 레벨(Lv${maxLevel})까지의 스테이지 ${ss.length}개로 맞췄고, 그 뒤 ${stagesTotal - ss.length}개 스테이지는 같은 비율로 이어진다고 봅니다.`);
+  return { ok: true, atk0, atkPerLevel, atkFit: lf.maxRel, hp0, hpGrowth, hpFit: maxRel, stages: ss.length, notes };
+}

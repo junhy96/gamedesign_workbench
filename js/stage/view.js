@@ -1,5 +1,7 @@
 // 방치형 스테이지 성장 — 화면: 왼쪽 설정(구조·몬스터·골드·의도 체류), 오른쪽 체류 그래프 → 강화 비용 구간 표 → 챕터 표·검증
-import { analyze, fmtBig, fmtBigShort, fmtDur, continuedInit, parseIntervalsCSV, intervalsToCSV, CSV_FIELDS, sensitivity, solveLevers } from './model.js';
+import { analyze, fmtBig, fmtBigShort, fmtDur, continuedInit, parseIntervalsCSV, intervalsToCSV, CSV_FIELDS, sensitivity, solveLevers, fitFromBattle } from './model.js';
+import { statsAt as battleStatsAt } from '../battle/model.js';
+import { TEMPLATES as BATTLE_TEMPLATES } from '../battle/presets.js';
 import { TEMPLATES } from './presets.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
 
@@ -49,6 +51,7 @@ function build(root) {
         h('p', {}, '챕터-스테이지별 몬스터 체력·웨이브 골드와 골드 강화 구간 비용 공식으로, 스테이지마다 실제로 얼마나 머무는지 계산해 의도한 체류 시간과 비교합니다. 레벨이 수십만까지 가므로 레벨별 표 대신 구간(LV_MIN~LV_MAX, 시작 비용 + 증가폭) 단위로 다룹니다.'),
       ),
       h('div.tool-actions', {},
+        h('button.btn', { type: 'button', onclick: toggleBattle, title: '스탯·전투 탭의 플레이어 공격력·몬스터 체력 곡선을 이 탭의 공식으로 옮깁니다' }, '스탯·전투에서 가져오기'),
         h('button.btn', { type: 'button', onclick: copyShareLink }, '공유 링크'),
         h('button.btn', { type: 'button', onclick: exportStagesCSV }, '스테이지 CSV'),
         h('button.btn', { type: 'button', onclick: saveJSON }, 'JSON 저장'),
@@ -58,6 +61,7 @@ function build(root) {
     h('div.enh-layout', {},
       els.side = h('aside.enh-side', { 'aria-label': '설정' }),
       h('div.enh-main', {},
+        els.battleBox = h('div.csv-import', { hidden: true }),
         els.errors = h('ul.errors', { hidden: true }),
         els.kpis = h('div.kpis.econ-kpis'),
         h('div.card.role-out', {},
@@ -277,6 +281,63 @@ function renderImportResult() {
 }
 
 function rebuild() { renderSide(); renderIntervals(); recompute(); }
+
+// ── 스탯·전투 탭에서 가져오기 ───────────────────────────
+// 스탯·전투 탭이 저장한 설정(없으면 그 탭 기본 템플릿)을 읽어, 플레이어 공격력은 직선, 몬스터 체력은 등비로 맞춘다
+const link = { player: null, atk: 'atk', monster: null, hp: 'hp', k: 1 };
+function battleCfg() {
+  const saved = store.get('battle:v1');
+  return saved?.entities?.length && saved?.stats?.length ? saved : BATTLE_TEMPLATES.classes.make();
+}
+function toggleBattle() {
+  els.battleBox.hidden = !els.battleBox.hidden;
+  if (!els.battleBox.hidden) renderBattleLink();
+}
+function renderBattleLink() {
+  const bc = battleCfg(), E = bc.entities, S = bc.stats;
+  if (!E.some(e => e.id === link.player)) link.player = E[0].id;
+  if (!E.some(e => e.id === link.monster)) link.monster = (E[1] ?? E[0]).id;
+  if (!S.some(x => x.id === link.atk)) link.atk = S[0].id;
+  if (!S.some(x => x.id === link.hp)) link.hp = S[0].id;
+  const sel = (opts, v, on, label) => h('select', { 'aria-label': label, onchange: (e) => { on(e.target.value); renderBattleLink(); } }, ...opts.map(([k, l]) => h('option', { value: k, selected: k === v }, l)));
+  const ents = E.map(e => [e.id, e.name]), stats = S.map(x => [x.id, x.name ? `${x.name} (${x.id})` : x.id]);
+  const valOf = (id, stat) => (lv) => battleStatsAt(bc, E.find(e => e.id === id), lv)[stat];
+  const fit = fitFromBattle({ playerVals: valOf(link.player, link.atk), monsterVals: valOf(link.monster, link.hp), maxLevel: bc.maxLevel, levelPerStage: link.k, stagesTotal: state.chapters * state.stagesPerChapter });
+  const now = (k) => (Number.isInteger(state[k]) ? comma(state[k]) : +(+state[k]).toPrecision(6));
+  els.battleBox.replaceChildren(
+    h('div.csv-head', {}, h('b', {}, '스탯·전투 탭에서 가져오기'), h('span.muted.small', {}, `스탯·전투 탭에 저장된 설정 (엔티티 ${E.length}개, Lv1~${bc.maxLevel}) · 아이템 포함 값`)),
+    h('div.csv-map', {},
+      h('label.mini-field', {}, h('span', {}, '플레이어'), sel(ents, link.player, (v) => { link.player = v; }, '플레이어 엔티티')),
+      h('label.mini-field', {}, h('span', {}, '공격력 스탯'), sel(stats, link.atk, (v) => { link.atk = v; }, '공격력 스탯')),
+      h('label.mini-field', {}, h('span', {}, '몬스터'), sel(ents, link.monster, (v) => { link.monster = v; }, '몬스터 엔티티')),
+      h('label.mini-field', {}, h('span', {}, '체력 스탯'), sel(stats, link.hp, (v) => { link.hp = v; }, '체력 스탯')),
+      h('label.mini-field', {}, h('span', {}, '스테이지당 레벨'), h('input', { type: 'number', min: 0.01, step: 'any', value: link.k, 'aria-label': '스테이지당 전투 레벨', onchange: (e) => { const v = parseFloat(e.target.value); if (v > 0) { link.k = v; renderBattleLink(); } } })),
+    ),
+    h('p.muted.small', {}, '강화 레벨 L = 플레이어의 전투 레벨 L + 1 (강화 0 = Lv1). 스테이지 s = 몬스터의 전투 레벨 1 + (s − 1) × 스테이지당 레벨. 이 탭의 공격력은 초당 데미지처럼 쓰이므로(공격력 × 제한 시간 ≥ 몬스터 수 × 체력) 필요하면 전투 탭에서 초당 데미지에 맞춘 스탯을 고르세요.'),
+    fit.ok ? h('div.table-wrap', {}, h('table.stages.solve-table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, '이 탭 값'), h('th', {}, '지금'), h('th', {}, '가져올 값'), h('th', {}, '맞춘 오차'))),
+      h('tbody', {},
+        h('tr', {}, h('td.lever', {}, '기본 공격력'), h('td', {}, now('atk0')), h('td', {}, +fit.atk0.toPrecision(6)), h('td', { rowspan: 2 }, `${(fit.atkFit * 100).toFixed(2)}%`)),
+        h('tr', {}, h('td.lever', {}, '레벨당 공격력'), h('td', {}, now('atkPerLevel')), h('td', {}, +fit.atkPerLevel.toPrecision(6))),
+        h('tr', {}, h('td.lever', {}, '첫 몬스터 체력'), h('td', {}, now('hp0')), h('td', {}, +fit.hp0.toPrecision(6)), h('td', { rowspan: 2 }, `${(fit.hpFit * 100).toFixed(2)}% (스테이지 ${fit.stages}개)`)),
+        h('tr', {}, h('td.lever', {}, '체력 증가 (%/스테이지)'), h('td', {}, `${+((state.hpGrowth - 1) * 100).toPrecision(6)}%`), h('td', {}, `${+((fit.hpGrowth - 1) * 100).toPrecision(6)}%`)),
+      ))) : null,
+    fit.notes.length ? h('div.import-notes', {}, h('ul', {}, ...fit.notes.map(n => h('li', {}, n)))) : null,
+    h('div.tool-actions', {},
+      fit.ok ? h('button.btn.small.primary', { type: 'button', onclick: () => applyBattle(fit, 'both') }, '모두 적용') : null,
+      fit.ok ? h('button.btn.small', { type: 'button', onclick: () => applyBattle(fit, 'atk') }, '공격력만') : null,
+      fit.ok ? h('button.btn.small', { type: 'button', onclick: () => applyBattle(fit, 'hp') }, '몬스터 체력만') : null,
+      h('button.btn.small', { type: 'button', onclick: toggleBattle }, '닫기')),
+  );
+}
+function applyBattle(fit, what) {
+  const r = (x) => +x.toPrecision(6);
+  if (what !== 'hp') { state.atk0 = r(fit.atk0); state.atkPerLevel = r(fit.atkPerLevel); }
+  if (what !== 'atk') { state.hp0 = r(fit.hp0); state.hpGrowth = r(fit.hpGrowth); }
+  els.battleBox.hidden = true;
+  rebuild();
+  toast(what === 'atk' ? '플레이어 공격력을 가져왔습니다' : what === 'hp' ? '몬스터 체력을 가져왔습니다' : '공격력과 몬스터 체력을 가져왔습니다');
+}
 
 // ── 계산·표시 ───────────────────────────────────────────
 function recompute() {

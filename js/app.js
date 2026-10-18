@@ -8,6 +8,7 @@ import { mount as mountSupply } from './supply/view.js';
 import { mount as mountGacha } from './gacha/view.js';
 import { mount as mountStage } from './stage/view.js';
 import { mount as mountBattle } from './battle/view.js';
+import { openSnapshots } from './lib/snapshot-view.js';
 
 const TOOLS = {
   enhance: mountEnhance,
@@ -54,3 +55,6 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 // 고정 헤더 높이 → CSS 변수 (도구 안의 고정 띠가 헤더 바로 아래에 붙도록)
 const header = document.querySelector('.app-header');
 if (header) new ResizeObserver(() => document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`)).observe(header);
+
+// 스냅샷: 모든 탭 설정 저장·비교·되돌리기
+document.getElementById('snap-open')?.addEventListener('click', openSnapshots);
