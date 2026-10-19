@@ -1,18 +1,13 @@
 // 전 탭 공통 스냅샷 — 모든 도구의 설정을 한 번에 저장하고, 지금 설정과 핵심 지표를 비교하고, 되돌린다 (계산 부분은 DOM 없음)
 // 각 탭은 자기 설정을 localStorage(planwb:키)에 저장하므로 스냅샷 = 그 키들의 값 묶음. 한 번도 열지 않은 탭은 기본 템플릿으로 계산한다.
+// 예전 스냅샷·프로젝트 파일에 지금 없는 탭(수급·스테이지·재화 흐름)의 설정이 있어도 TOOLS에 없는 키는 읽지도 쓰지도 않는다.
 import { store } from './util.js';
 import { analyze as enhanceAnalyze, migrate as enhanceMigrate, SCHEMA as ENH_SCHEMA } from '../enhance/model.js';
 import { TEMPLATES as ENH_T } from '../enhance/presets.js';
 import { analyze as gachaAnalyze } from '../gacha/model.js';
 import { TEMPLATES as GACHA_T } from '../gacha/presets.js';
-import { design as supplyDesign } from '../supply/model.js';
-import { TEMPLATES as SUPPLY_T } from '../supply/presets.js';
-import { analyze as stageAnalyze } from '../stage/model.js';
-import { TEMPLATES as STAGE_T } from '../stage/presets.js';
 import { analyze as battleAnalyze } from '../battle/model.js';
 import { TEMPLATES as BATTLE_T } from '../battle/presets.js';
-import { simulate as econSimulate } from '../economy/model.js';
-import { TEMPLATES as ECON_T } from '../economy/presets.js';
 import { analyze as frameAnalyze } from '../frame/model.js';
 import { TEMPLATES as FRAME_T } from '../frame/presets.js';
 
@@ -45,24 +40,6 @@ export const TOOLS = [
     },
   },
   {
-    id: 'supply', label: '성장 재화 수급', key: 'supply:v1',
-    base: () => ({ v: 1, template: 'stone', ...SUPPLY_T.stone.make() }),
-    run: (st) => {
-      const r = supplyDesign(st);
-      if (!r.ok) return null;
-      return { kpis: [...r.sinks.slice(0, 3).map(x => k(`${x.sink.name} 총 필요량`, x.total)), k('경고', r.warnings.length, 'num', 'lower')], issues: iss(r.warnings) };
-    },
-  },
-  {
-    id: 'stage', label: '스테이지 성장', key: 'stage:v1',
-    base: () => ({ v: 1, template: 'idle', ...STAGE_T.idle.make() }),
-    run: (st) => {
-      const r = stageAnalyze(st);
-      if (!r.ok) return null;
-      return { kpis: [k('총 소요', r.totalSec / 3600, 'hours'), k('정체 스테이지', r.stagnant.length, 'num', 'lower'), k('최종 필요 레벨', r.finalLevel)], issues: iss(r.warnings) };
-    },
-  },
-  {
     id: 'battle', label: '스탯·전투', key: 'battle:v1',
     base: () => ({ v: 1, template: 'classes', ...BATTLE_T.classes.make() }),
     run: (st) => {
@@ -72,15 +49,6 @@ export const TOOLS = [
         kpis: [...st.entities.slice(0, 6).map((e, i) => k(`Lv${r.lv} ${e.name} 평균 승률`, r.mx.score[i], 'pct')), k('CP와 실제 순위 상관', r.cv.rho, 'num', 'higher'), k('CP가 높은데 지는 쌍', r.cv.pairs.length, 'num', 'lower')],
         issues: iss(r.findings),
       };
-    },
-  },
-  {
-    id: 'economy', label: '재화 흐름', key: 'economy:v2',
-    base: () => ({ v: 2, template: 'mobile', ...ECON_T.mobile.make() }),
-    run: (st) => {
-      const r = econSimulate({ ...st, variance: { ...(st.variance || {}), enabled: false } }); // 편차 띠는 빼고 평균 유저만 (빠르게)
-      if (!r.ok) return null;
-      return { kpis: [...r.bySeg.slice(0, 4).map(b => k(`${b.segment?.name ?? '세그먼트'} ${r.days}일 전투력`, b.finalPower, 'num', 'higher')), k('경고', r.warnings.length, 'num', 'lower')], issues: iss(r.warnings) };
     },
   },
   {

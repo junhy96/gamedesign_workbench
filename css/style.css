@@ -443,21 +443,13 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.5; tab
 .diagram-preview svg { max-width: 100%; height: auto; }
 .offscreen-render { position: fixed; left: -100000px; top: 0; pointer-events: none; }
 
-/* ── 재화 흐름 ─────────────────────────────────────── */
+/* ── 공용: 그래프 계열 색 · 넓은 KPI 격자 ────────────────── */
 :root { --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; }
 @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; } }
 :root[data-theme="dark"] { --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; }
 .kpis.econ-kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .chart-box.tall { height: 320px; }
-.chart-ctrl { display: flex; align-items: center; gap: 8px; }
-.chart-ctrl select { width: auto; }
-.econ-table { min-width: 760px; }
-.econ-table input[type="number"] { width: 90px; }
-.econ-table input.name { border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 4px 6px; font-size: 13px; }
-.econ-table input.name:hover { border-color: var(--line); }
-.econ-table input.name:focus { border-color: var(--accent); background: var(--surface); outline: none; }
-.econ-table td.left, .econ-table th.left { text-align: left; }
-.cell-select { width: auto; padding: 4px 6px; font-size: 13px; }
+
 .header-link { flex: none; }
 /* 부가 도구(다이어그램·PDF)는 핵심 검증 도구와 구분해 한 단계 낮춰 보여준다 */
 .tab-sep { flex: none; width: 1px; margin: 6px 6px; background: var(--line); }
@@ -490,9 +482,6 @@ body.tl-dragging, body.tl-dragging * { cursor: ew-resize !important; user-select
 .rate-row input { min-width: 0; }
 .rate-row .eq { font-weight: 700; color: var(--text-2); }
 .res-block .res-row { grid-template-columns: minmax(0, 1fr) 28px; }
-.seg-kpi .seg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--seg); margin-right: 6px; vertical-align: 0; }
-.seg-kpi .kpi-sub + .kpi-sub { margin-top: 2px; }
-.flow-tables { display: grid; gap: 10px; }
 
 /* ── 강화 설계: 왼쪽 설정 메뉴 + 오른쪽 결과 ─────────────── */
 body:has(#tab-enhance:not([hidden])) main { max-width: 1680px; }
@@ -604,37 +593,23 @@ body:has(#tab-enhance:not([hidden])) main { max-width: 1680px; }
   #tab-enhance .kpi.hero { grid-column: auto; }
 }
 
-/* ── 성장 재화 수급 설계 ─────────────────────────────── */
-body:has(#tab-supply:not([hidden])) main { max-width: 1680px; }
-#tab-supply .kpis.econ-kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-#tab-supply .kpi.hero .kpi-value { font-size: 26px; }
-.seg-row { grid-template-columns: 22px minmax(0, 1fr) 28px; }
+/* ── 공용: 고르기 동그라미 · 편집 표 ──────────────────── */
+
 .radio { display: grid; place-items: center; cursor: pointer; }
 .radio input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .edit-table th.ref, .stages th.ref { color: var(--accent-ink); }
 .edit-table td.res { text-align: right; font-size: 12.5px; color: var(--text-2); white-space: nowrap; background: color-mix(in srgb, var(--accent-soft) 35%, transparent); }
 .edit-table td.res.fit { font-variant-numeric: tabular-nums; }
 .edit-table td.left { text-align: left; }
-.edit-table input.tiny { width: 52px; padding: 4px 5px; }
-.milestones { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
 .ms { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); font-size: 12px; color: var(--text-3); white-space: nowrap; }
-.ms-x, .ms-add { border: 0; background: none; cursor: pointer; color: var(--text-3); font-size: 14px; line-height: 1; padding: 2px 5px; border-radius: 999px; }
-.ms-x:hover:not(:disabled) { color: var(--bad); }
-.ms-x:disabled { opacity: .3; cursor: default; }
-.ms-add { border: 1px dashed var(--line-strong); width: 26px; height: 26px; }
-.ms-add:hover { color: var(--accent-ink); border-color: var(--accent); }
+
 .bad-text { color: var(--bad) !important; font-weight: 700; }
 .seg-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
 .seg-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--text-2); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
 .seg-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-.supply-out { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; }
-.level-wrap { max-height: 520px; overflow-y: auto; }
-.level-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
-.level-table tr.ms-row td { font-weight: 700; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
-.level-table td { padding: 6px; }
+
 .supply-howto { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
-@media (max-width: 1180px) { .supply-out { grid-template-columns: minmax(0, 1fr); } }
-/* 편집 표 (수급 설계 공급원·성장 항목) */
 table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .edit-table th { font-size: 12px; font-weight: 600; color: var(--text-3); text-align: right; padding: 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .edit-table th.left { text-align: left; }
@@ -644,11 +619,6 @@ table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .edit-table input.short { width: 60px; }
 .edit-table input.name { width: 100%; min-width: 110px; padding: 5px 8px; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .edit-table select { width: auto; padding: 5px 8px; font-size: 13px; }
-#tab-supply table.stages.level-table { min-width: 0; }
-.fit-err { display: block; font-size: 11px; color: var(--text-3); }
-.note-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
-.note-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); }
-.note-list li .btn { margin-left: auto; }
 
 /* ── 자연어 다이어그램: 범례·스타일 설정 ────────────────── */
 .dg-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: 12.5px; color: var(--text-2); }
@@ -663,7 +633,6 @@ table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .syntax-help li { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center; font-size: 12.5px; }
 .syntax-help li .icon { grid-row: span 2; }
 .syntax-help code { font-size: 11.5px; color: var(--text-3); }
-.econ-tables { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; }
 
 /* ── 가챠·수집 설계 ────────────────────────────────────── */
 .gacha-table tr.lv-from th { font-weight: 500; color: var(--text-3); background: var(--surface-2); }
@@ -698,41 +667,12 @@ table.edit-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .sweep-charts { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ── 방치형 스테이지 성장 ──────────────────────────────── */
-body:has(#tab-stage:not([hidden])) main { max-width: 1680px; }
-#tab-stage .kpis.econ-kpis { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-#tab-stage .kpi.hero .kpi-value { font-size: 26px; }
-#tab-stage .kpi.bad .kpi-value { color: var(--bad); }
-.iv-table { min-width: 860px; }
-.iv-table input[type="number"] { width: 92px; }
-.iv-table input.cost { width: 104px; }
-.iv-table input.short { width: 64px; }
-.iv-table td.res.left { text-align: left; white-space: normal; min-width: 180px; }
-.iv-table tr.stag-row td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
-.iv-min { display: inline-block; min-width: 76px; padding: 5px 7px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.iv-stag { color: var(--bad); font-weight: 700; white-space: nowrap; }
 .csv-import { margin-top: 14px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; display: grid; gap: 10px; background: var(--surface-2); }
 .csv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
 .csv-text { width: 100%; min-height: 110px; resize: vertical; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
 .csv-text:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 .csv-result { display: grid; gap: 10px; }
 .csv-result:empty { display: none; }
-.csv-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-items: end; }
-.csv-map select { width: 100%; padding: 5px 8px; font-size: 13px; }
-.csv-map .check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); padding-bottom: 6px; cursor: pointer; }
-.csv-ok { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--good); }
-#tab-stage table.stages.chapter-table { min-width: 680px; }
-.chapter-table tr.ch-row { cursor: pointer; }
-.chapter-table tr.ch-row:hover td { background: var(--surface-2); }
-.chapter-table tr.ch-row.stag-row td.stage { color: var(--bad); }
-.chapter-table tr.st-row td { font-size: 12.5px; }
-.chapter-table tr.st-row td:first-child { padding-left: 24px; }
-.ch-caret { display: inline-block; width: 16px; color: var(--text-3); }
-#tab-stage .findings li .btn { margin-left: auto; flex: none; }
-
-/* 재화 흐름: 성장 루프 — 좁은 화면에서는 글자가 읽히는 크기를 지키고 카드 안에서만 가로 스크롤 */
-#tab-economy .diagram-preview { justify-content: flex-start; }
-#tab-economy .diagram-preview svg { min-width: 760px; margin: 0 auto; }
 
 /* ── 역할 색 프레임: 입력(파랑) · 결과(초록) · 검증(주황) · 도구(보라) ───────────
    카드에 .role-in / .role-out / .role-check / .role-tool 을 붙이면 테두리·위쪽 띠·제목 배지가 생긴다.
@@ -816,8 +756,8 @@ main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), s
 .disc-eff { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .disc-notes { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--text-2); }
 
-/* ── 스테이지 성장: 정체 원인 · 민감도(토네이도) ─────────────
-   막대 색 = 입력을 어느 쪽으로 바꿨나(값 내림 / 값 올림), 위치 = 총 소요가 짧아짐(왼쪽) / 길어짐(오른쪽). 길이는 로그 배율 */
+/* ── 민감도(토네이도) · 도구 소제목 — 스탯·전투 밸런스 도구가 씀 ─────────
+   막대 색 = 입력을 어느 쪽으로 바꿨나(값 내림 / 값 올림), 위치 = 결과가 줄어듦(왼쪽) / 늘어남(오른쪽) */
 :root { --tor-down: #eb6834; --tor-up: #2a78d6; }
 @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { --tor-down: #d95926; --tor-up: #3987e5; } }
 :root[data-theme="dark"] { --tor-down: #d95926; --tor-up: #3987e5; }

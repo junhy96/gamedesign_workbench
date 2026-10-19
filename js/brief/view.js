@@ -9,7 +9,7 @@ let state, root;
 const els = {};
 const save = debounce(() => store.set(STORE_KEY, state), 300);
 const put = (el, ...kids) => el.replaceChildren(...kids.flat().filter(x => x != null && x !== false));
-const MEMOS = [['conclusion', '결론', '이번 수정으로 무엇이 좋아졌고 무엇을 결정해야 하는지 한두 문장'], ['basis', '근거·바뀐 것', '어떤 수치를 어떻게 바꿨는지 (예: 스테이지 체력 증가 4% → 3.97%)'], ['risk', '리스크', '아직 확인하지 못한 것, 다른 시스템에 미치는 영향'], ['ask', '결정 요청', '회의에서 정해야 할 것 (예: 궁수 공격 속도 +15% 적용 여부)']];
+const MEMOS = [['conclusion', '결론', '이번 수정으로 무엇이 좋아졌고 무엇을 결정해야 하는지 한두 문장'], ['basis', '근거·바뀐 것', '어떤 수치를 어떻게 바꿨는지 (예: +12 성공률 30% → 33%)'], ['risk', '리스크', '아직 확인하지 못한 것, 다른 시스템에 미치는 영향'], ['ask', '결정 요청', '회의에서 정해야 할 것 (예: 궁수 공격 속도 +15% 적용 여부)']];
 
 function defaults() {
   return { v: 1, title: '밸런스 브리핑', author: '', baseline: null, include: Object.fromEntries(TOOLS.map(t => [t.id, true])), goals: {}, memo: {} };
@@ -99,7 +99,7 @@ function renderSummary(rep, base) {
   const goals = s.pass + s.fail;
   put(els.summary,
     kpi('목표 통과', goals ? `${s.pass} / ${goals}` : '—', [goals ? (s.fail ? `미달: ${s.failed.slice(0, 3).join(', ')}${s.failed.length > 3 ? ' …' : ''}` : '모든 목표 통과') : '지표 표의 "목표" 칸에 넣으면 판정'], s.fail ? '.bad' : '.hero'),
-    kpi('심각한 검증 문장', `${s.serious}건`, ['각 탭의 "불가·정체" 등급 경고'], s.serious ? '.bad' : ''),
+    kpi('심각한 검증 문장', `${s.serious}건`, ['각 탭의 "불가·심각" 등급 경고'], s.serious ? '.bad' : ''),
     kpi(base ? `'${base.name}' 대비 바뀐 탭` : '기준', base ? `${s.changed}개` : '없음', [base ? '설정이 다른 탭 수' : '스냅샷을 기준으로 고르면 변화 표시']),
   );
 }

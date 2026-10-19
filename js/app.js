@@ -4,10 +4,7 @@ import { installUndo, undo, redo, canUndo, canRedo } from './lib/undo.js';
 import { mount as mountEnhance } from './enhance/view.js';
 import { mount as mountFrame } from './frame/view.js';
 import { mount as mountDiagram } from './diagram/view.js';
-import { mount as mountEconomy } from './economy/view.js';
-import { mount as mountSupply } from './supply/view.js';
 import { mount as mountGacha } from './gacha/view.js';
-import { mount as mountStage } from './stage/view.js';
 import { mount as mountBattle } from './battle/view.js';
 import { mount as mountBrief } from './brief/view.js';
 import { openSnapshots } from './lib/snapshot-view.js';
@@ -16,10 +13,7 @@ import { refreshCharts } from './lib/chart.js';
 const TOOLS = {
   enhance: mountEnhance,
   gacha: mountGacha,
-  supply: mountSupply,
-  stage: mountStage,
   battle: mountBattle,
-  economy: mountEconomy,
   frame: mountFrame,
   brief: mountBrief,
   diagram: mountDiagram,

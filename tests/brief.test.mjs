@@ -14,24 +14,26 @@ test('목표 판정: ≤·≥, 목표 없음', () => {
 });
 
 test('브리핑: 기준 대비 바뀐 탭·변화, % 지표 목표는 % 단위, 미달 목록, 제외한 탭', () => {
-  const stage = TOOLS.find(t => t.id === 'stage'), battle = TOOLS.find(t => t.id === 'battle');
-  const base = { [stage.key]: stage.base() };
-  const now = { [stage.key]: { ...stage.base(), hpGrowth: 1.045 } };
+  const frame = TOOLS.find(t => t.id === 'frame'), battle = TOOLS.find(t => t.id === 'battle');
+  const fb = frame.base();
+  const base = { [frame.key]: fb };
+  const now = { [frame.key]: { ...fb, player: { ...fb.player, dodgeInv: fb.player.dodgeInv + 4 } } };
   const brief = {
-    include: { gacha: false, economy: false },
-    goals: { [goalKey('stage', '총 소요')]: { op: '<=', value: 100 }, [goalKey('battle', 'Lv10 암살자 평균 승률')]: { op: '<=', value: 60 } },
+    include: { gacha: false, economy: false }, // 없앤 탭 id가 남아 있어도 무시
+    goals: { [goalKey('frame', '회피 불가')]: { op: '<=', value: 0 }, [goalKey('battle', 'Lv10 암살자 평균 승률')]: { op: '<=', value: 60 } },
   };
   const rep = buildReport(brief, now, base);
-  assert.ok(!rep.tools.some(t => t.tool.id === 'gacha' || t.tool.id === 'economy'));
-  const st = rep.tools.find(t => t.tool.id === 'stage');
-  assert.equal(st.changed, true);
-  const total = st.rows.find(r => r.label === '총 소요');
-  assert.ok(total.after > total.before);
-  assert.equal(total.verdict, total.after <= 100 ? 'pass' : 'fail');
+  assert.ok(!rep.tools.some(t => t.tool.id === 'gacha'));
+  assert.deepEqual(rep.tools.map(t => t.tool.id), ['enhance', 'battle', 'frame']);
+  const fr = rep.tools.find(t => t.tool.id === 'frame');
+  assert.equal(fr.changed, true);
+  const tight = fr.rows.find(r => r.label === '회피 불가');
+  assert.ok(tight.after < tight.before);
+  assert.equal(tight.verdict, tight.after <= 0 ? 'pass' : 'fail');
   const bt = rep.tools.find(t => t.tool.id === 'battle');
   assert.equal(bt.changed, false);
   assert.equal(bt.rows.find(r => r.label === 'Lv10 암살자 평균 승률').verdict, 'fail'); // 77% > 60%
   assert.ok(rep.summary.failed.includes('스탯·전투 · Lv10 암살자 평균 승률'));
-  assert.ok(st.issues.length <= 4 && st.issues.every(x => x.text));
+  assert.ok(fr.issues.length <= 4 && fr.issues.every(x => x.text));
   assert.ok(rep.summary.serious >= 1);
 });

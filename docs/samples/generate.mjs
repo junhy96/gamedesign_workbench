@@ -1,9 +1,9 @@
 // 제안 기능용 더미 저장 파일 생성기 — `node docs/samples/generate.mjs`
 //
-// 아직 없는 두 기능을 "도구에서 JSON 저장을 누른 결과"라고 가정한 샘플을 만든다.
-//   1) enhance-quantity-items.json : 강화 탭 + 수량형 보조 재료 + 아이템 가격 곡선
-//   2) stage-idle-growth.json      : 방치형 스테이지 성장 탭 (+ stage-cost-intervals.csv 가져오기 샘플)
-// 수치는 모두 가상의 설계 예시다. 각 파일의 expected는 아래의 독립 구현(전수 탐색·직접 합산)으로 구한
+// 기능을 "도구에서 JSON 저장을 누른 결과"라고 가정한 샘플을 만든다.
+//   enhance-quantity-items.json : 강화 탭 + 수량형 보조 재료 + 아이템 가격 곡선
+// (방치형 스테이지 성장 샘플은 탭을 없애면서 지움)
+// 수치는 모두 가상의 설계 예시다. 파일의 expected는 아래의 독립 구현(전수 탐색)으로 구한
 // 정답이라, 기능을 구현할 때 테스트 기대값으로 그대로 쓴다.
 import { writeFileSync } from 'node:fs';
 
@@ -95,94 +95,4 @@ const r = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
   };
   save('enhance-quantity-items.json', JSON.stringify(file, null, 2) + '\n');
   console.log('enhance:', file.expected.noItemsExpCost, '→', file.expected.optimal.expCost, file.expected.optimal.policy, 'BM 최대', bmMax.price, '15% 이하', firstUnder?.price);
-}
-
-// ── 2) 방치형 스테이지 성장 ──────────────────────────────
-// 모델(제안):
-//   스테이지 s(1..N)의 몬스터 체력 hp(s) = hp0 × hpGrowth^(s−1), 웨이브 골드 g(s) = gold0 × goldGrowth^(s−1)
-//   공격력 atk(L) = atk0 + atkPerLevel × L (골드 강화 레벨 L)
-//   돌파 조건: 웨이브 제한 시간 안에 몬스터 m마리 처치 → atk × waveLimit ≥ m × hp(s)
-//   레벨 L → L+1 비용: 구간 [lvMin, lvMax)에서 initCost + step × (L − lvMin)
-//   s−1에서 s로 가려면 필요한 골드 = 누적비용(L_req(s)) − 누적비용(L_req(s−1)), s−1에서 웨이브당 g(s−1)씩 번다
-//   실제 체류 시간(s−1) = 필요한 골드 ÷ (g(s−1) ÷ waveSeconds) 과 돌파 시간(wavesPerStage × waveSeconds) 중 큰 값
-{
-  const cfg = {
-    chapters: 20, stagesPerChapter: 10,
-    waveSeconds: 10, wavesPerStage: 3, monstersPerWave: 5, waveLimit: 10,
-    hp0: 100, hpGrowth: 1.04, gold0: 40, goldGrowth: 1.06,
-    atk0: 10, atkPerLevel: 2,
-    intendedDwell: { baseSeconds: 30, perChapterMult: 1.3, note: '챕터 c의 의도 체류 시간 = 30초 × 1.3^(c−1)' },
-    stagnationRatio: 2,
-  };
-  // 5,000~20,000 구간의 증가폭(30)을 일부러 가파르게 둔 설계 실수 → 챕터 후반 정체가 나와야 한다
-  const bounds = [0, 200, 1000, 5000, 20000, 100000, null];
-  const steps = [4.5, 9, 8, 30, 15, 15];
-  const intervals = [];
-  let init = 50;
-  for (let i = 0; i < steps.length; i++) {
-    intervals.push({ lvMin: bounds[i], lvMax: bounds[i + 1], initCost: init, step: steps[i] }); // lvMax null = 끝 없음
-    if (bounds[i + 1] != null) init = init + steps[i] * (bounds[i + 1] - bounds[i]); // 다음 구간 시작 비용 = 이 구간 마지막 + step (끊김 없이)
-  }
-  const top = (iv) => iv.lvMax ?? Infinity;
-  const stepCost = (L) => { const iv = intervals.find(x => L >= x.lvMin && L < top(x)); return iv.initCost + iv.step * (L - iv.lvMin); };
-  // 누적 비용(0 → L): 구간마다 등차수열 합
-  const cumCost = (L) => {
-    let sum = 0;
-    for (const iv of intervals) {
-      if (L <= iv.lvMin) break;
-      const n = Math.min(L, top(iv)) - iv.lvMin;
-      sum += n * iv.initCost + iv.step * n * (n - 1) / 2;
-    }
-    return sum;
-  };
-  // 독립 검산: 직접 합산
-  let brute = 0; for (let L = 0; L < 150000; L++) brute += stepCost(L);
-  if (Math.abs(brute - cumCost(150000)) > 1e-9 * brute) throw new Error('누적 비용 공식 불일치');
-
-  const N = cfg.chapters * cfg.stagesPerChapter;
-  const hp = (s) => cfg.hp0 * cfg.hpGrowth ** (s - 1);
-  const gold = (s) => cfg.gold0 * cfg.goldGrowth ** (s - 1);
-  const levelReq = (s) => Math.max(0, Math.ceil((cfg.monstersPerWave * hp(s) / cfg.waveLimit - cfg.atk0) / cfg.atkPerLevel));
-  const label = (s) => `${Math.floor((s - 1) / cfg.stagesPerChapter) + 1}-${((s - 1) % cfg.stagesPerChapter) + 1}`;
-  const intended = (s) => cfg.intendedDwell.baseSeconds * cfg.intendedDwell.perChapterMult ** Math.floor((s - 1) / cfg.stagesPerChapter);
-
-  const stages = [];
-  let elapsed = 0;
-  for (let s = 1; s <= N; s++) {
-    const L = levelReq(s), Lprev = s > 1 ? levelReq(s - 1) : 0;
-    const need = cumCost(L) - cumCost(Lprev);
-    const farm = s > 1 ? need / (gold(s - 1) / cfg.waveSeconds) : 0;
-    const dwell = Math.max(farm, cfg.wavesPerStage * cfg.waveSeconds);
-    elapsed += dwell;
-    stages.push({ stage: label(s), levelReq: L, goldNeeded: need, dwellSec: dwell, intendedSec: intended(s), elapsedSec: elapsed });
-  }
-  const pick = (lbl) => { const x = stages.find(y => y.stage === lbl); return { ...x, goldNeeded: r(x.goldNeeded, 0), dwellSec: r(x.dwellSec, 1), intendedSec: r(x.intendedSec, 1), elapsedHours: r(x.elapsedSec / 3600, 2) }; };
-  const stagnant = stages.filter(x => x.dwellSec > cfg.stagnationRatio * x.intendedSec).map(x => x.stage);
-
-  const file = {
-    schemaVersion: 1,
-    tool: 'stage',
-    description: '[더미] 방치형 스테이지 성장 — 챕터 20 × 스테이지 10, 골드 강화 구간 비용, 의도 체류 시간. 수치는 가상의 예시.',
-    model: [
-      '몬스터 체력 hp(s) = hp0 × hpGrowth^(s−1), 웨이브 골드 g(s) = gold0 × goldGrowth^(s−1)',
-      '공격력 atk(L) = atk0 + atkPerLevel × L,  돌파 조건 atk × waveLimit ≥ monstersPerWave × hp(s)',
-      '레벨 L → L+1 비용 = 구간 initCost + step × (L − lvMin),  누적 비용은 구간별 등차수열 합',
-      '실제 체류(s−1) = max((누적비용(L_req(s)) − 누적비용(L_req(s−1))) ÷ (g(s−1) ÷ waveSeconds), wavesPerStage × waveSeconds)',
-      '정체 = 실제 체류 > stagnationRatio × 의도 체류',
-    ],
-    state: { v: 1, template: 'idle', ...cfg, costIntervals: intervals, csvSource: 'stage-cost-intervals.csv' },
-    expected: {
-      note: '같은 파일의 generate.mjs가 위 모델을 직접 합산해 구한 정답 (누적 비용 공식은 0~150,000레벨 직접 합산과 일치 확인)',
-      cumCost: { L1000: cumCost(1000), L10000: cumCost(10000), L100000: cumCost(100000) },
-      checkpoints: ['1-10', '5-10', '10-10', '15-10', '20-10'].map(pick),
-      totalHours: r(elapsed / 3600, 2),
-      stagnantStages: stagnant,
-      stagnantCount: stagnant.length,
-      finding: '5,000~20,000레벨 구간의 증가폭(30)이 앞뒤 구간(8, 15)보다 가팔라, 그 레벨대가 필요한 16~17챕터에서 실제 체류가 의도의 2배를 넘는다',
-    },
-  };
-  save('stage-idle-growth.json', JSON.stringify(file, null, 2) + '\n');
-  const csv = ['LV_MIN,LV_MAX,INIT_COST,STEP', ...intervals.map(iv => `${iv.lvMin},${iv.lvMax ?? ''},${iv.initCost},${iv.step}`)].join('\r\n') + '\r\n';
-  save('stage-cost-intervals.csv', csv);
-  console.log('stage: 총', file.expected.totalHours, '시간, 정체', stagnant.length, stagnant.slice(0, 8), file.expected.checkpoints.map(c => `${c.stage} Lv${c.levelReq} ${c.dwellSec}s/${c.intendedSec}s`).join(' | '));
 }

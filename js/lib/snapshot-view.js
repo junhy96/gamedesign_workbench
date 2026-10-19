@@ -34,7 +34,7 @@ function build() {
   els.name = h('input', { type: 'text', placeholder: '이름 (예: 1차 밸런스안)', 'aria-label': '스냅샷 이름' });
   dlg.append(
     h('div.snap-head', {}, h('h2', {}, '스냅샷 — 모든 탭 설정'), h('button.icon-x', { type: 'button', title: '닫기', onclick: () => dlg.close() }, '×')),
-    h('p.muted.small', {}, '강화·가챠·수급·스테이지·스탯 전투·재화 흐름·프레임 탭의 지금 설정을 한 번에 저장하고, 나중에 지금 설정과 핵심 지표를 비교하거나 되돌립니다. 이 브라우저에만 저장되므로 팀과 나누려면 프로젝트 파일로 저장하세요.'),
+    h('p.muted.small', {}, '강화·가챠·스탯 전투·프레임 탭의 지금 설정을 한 번에 저장하고, 나중에 지금 설정과 핵심 지표를 비교하거나 되돌립니다. 이 브라우저에만 저장되므로 팀과 나누려면 프로젝트 파일로 저장하세요.'),
     h('div.snap-save', {}, els.name, h('button.btn.primary', { type: 'button', onclick: doSave }, '지금 설정 저장')),
     els.list = h('div.snap-list', {}),
     els.cmp = h('div.snap-cmp', {}),
