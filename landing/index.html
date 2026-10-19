@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>기획 워크벤치 — 게임 시스템·BM 밸런스 검증 도구</title>
-  <meta name="description" content="강화 확률, 가챠 천장, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.">
+  <meta name="description" content="강화 확률, 가챠 천장, 성장 표, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.">
   <meta property="og:title" content="기획 워크벤치 — 게임 시스템·BM 밸런스 검증 도구">
-  <meta property="og:description" content="강화 확률, 가챠 천장, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.">
+  <meta property="og:description" content="강화 확률, 가챠 천장, 성장 표, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.">
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#09090b">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2310b981'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='%23052e1f' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
@@ -89,7 +89,7 @@
       <div class="reveal">
         <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent"><iconify-icon icon="solar:cpu-bolt-linear" class="text-sm" aria-hidden="true"></iconify-icon>게임 시스템 · BM 기획</span>
         <h1 class="ko mt-7 text-4xl font-bold leading-tight tracking-tight text-zinc-50 md:text-6xl lg:text-[4.25rem] lg:leading-[1.12]">엑셀로 못 푸는<br>밸런스 계산을<br><span class="text-accent">링크 하나</span>로 확인합니다</h1>
-        <p class="ko mt-7 max-w-[54ch] text-base leading-relaxed text-zinc-400 md:text-lg">강화 확률, 가챠 천장, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제가 생기는 구간과 그 원인을 바로 보여 줍니다. 설치·로그인 없이 열리고, 넣은 숫자는 서버로 가지 않습니다.</p>
+        <p class="ko mt-7 max-w-[54ch] text-base leading-relaxed text-zinc-400 md:text-lg">강화 확률, 가챠 천장, 성장 표, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제가 생기는 구간과 그 원인을 바로 보여 줍니다. 설치·로그인 없이 열리고, 넣은 숫자는 서버로 가지 않습니다.</p>
         <div class="mt-10 flex flex-wrap gap-3">
           <a href="../index.html#enhance" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">워크벤치 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a>
           <a href="#tools" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] py-2 pl-7 pr-2 text-base font-medium text-zinc-200 hover:scale-[1.02] hover:bg-white/[0.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 md:text-lg">도구 둘러보기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-white/5 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a>
@@ -97,7 +97,7 @@
         <ul class="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-500">
           <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>브라우저 안에서만 계산</li>
           <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>공식 계산 + 시뮬레이션 비교</li>
-          <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>자동 테스트 111개</li>
+          <li class="flex items-center gap-2"><iconify-icon icon="solar:check-circle-linear" class="text-accent" aria-hidden="true"></iconify-icon>자동 테스트 120개</li>
         </ul>
       </div>
       <div class="reveal relative" style="--i:2">
@@ -125,10 +125,10 @@
   <!-- 숫자 띠 -->
   <section class="border-y border-white/5 bg-zinc-950/60">
     <div class="mx-auto grid max-w-7xl grid-cols-2 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-4 lg:px-8">
-      <div class="reveal"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="5">5</p><p class="ko mt-2 text-sm text-zinc-500">기획 도구 (다이어그램·PDF 부가 도구 별도)</p></div>
-      <div class="reveal" style="--i:1"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="111">111</p><p class="ko mt-2 text-sm text-zinc-500">계산 모듈 자동 테스트</p></div>
+      <div class="reveal"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="6">6</p><p class="ko mt-2 text-sm text-zinc-500">기획 도구 (다이어그램·PDF 부가 도구 별도)</p></div>
+      <div class="reveal" style="--i:1"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="120">120</p><p class="ko mt-2 text-sm text-zinc-500">계산 모듈 자동 테스트</p></div>
       <div class="reveal" style="--i:2"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="1400000">1,400,000</p><p class="ko mt-2 text-sm text-zinc-500">Kalivra 엔진 대조에 쓴 전투 횟수</p></div>
-      <div class="reveal" style="--i:3"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl">0<span class="text-zinc-500">B</span></p><p class="ko mt-2 text-sm text-zinc-500">5개 도구가 서버로 보내는 데이터</p></div>
+      <div class="reveal" style="--i:3"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl">0<span class="text-zinc-500">B</span></p><p class="ko mt-2 text-sm text-zinc-500">6개 도구가 서버로 보내는 데이터</p></div>
     </div>
   </section>
 
@@ -144,8 +144,8 @@
         <div class="reveal bezel md:-rotate-1" style="--i:0">
           <div class="core p-7 md:p-9">
             <div class="flex items-center gap-4"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:widget-5-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span><h3 class="text-xl font-semibold text-zinc-50 md:text-2xl">시스템 기획자</h3></div>
-            <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400">강화 확률을 바꾸면 기대 비용과 파괴 위험이 어떻게 달라지는지, 어느 단계를 손봐야 효과가 큰지, 수치를 바꾼 결과를 회의에 어떻게 가져갈지 봅니다.</p>
-            <div class="mt-6 flex flex-wrap gap-2"><a href="enhance.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:magic-stick-3-linear" class="text-base" aria-hidden="true"></iconify-icon>강화</a><a href="brief.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:clipboard-check-linear" class="text-base" aria-hidden="true"></iconify-icon>브리핑</a></div>
+            <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400">레벨 곡선과 콘텐츠 공급으로 세그먼트마다 언제 몇 레벨인지, 강화 확률을 바꾸면 기대 비용과 파괴 위험이 어떻게 달라지는지 보고, 결과를 엑셀·회의 자료로 가져갑니다.</p>
+            <div class="mt-6 flex flex-wrap gap-2"><a href="growth.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:graph-up-linear" class="text-base" aria-hidden="true"></iconify-icon>성장 표</a><a href="enhance.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:magic-stick-3-linear" class="text-base" aria-hidden="true"></iconify-icon>강화</a><a href="brief.html" class="t-spring inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-zinc-300 hover:border-accent/40 hover:text-accent"><iconify-icon icon="solar:clipboard-check-linear" class="text-base" aria-hidden="true"></iconify-icon>브리핑</a></div>
           </div>
         </div>
         <div class="reveal bezel md:translate-x-8 md:rotate-[0.6deg]" style="--i:1">
@@ -172,7 +172,7 @@
       <div class="reveal flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div>
           <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">도구</span>
-          <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">검증 도구 다섯 가지</h2>
+          <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">기획 도구 여섯 가지</h2>
         </div>
         <p class="ko max-w-[44ch] text-base leading-relaxed text-zinc-400">카드의 숫자는 각 도구의 템플릿을 실제로 돌린 결과입니다. 누르면 계산 방법과 검증, 실제 화면을 볼 수 있습니다.</p>
       </div>
@@ -219,20 +219,20 @@
           </div>
         </div>
       </a>
-        <a href="battle.html" style="--i:2" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <a href="growth.html" style="--i:2" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
         <div class="core flex h-full flex-col p-7 md:p-8">
           <div class="flex items-start justify-between gap-4">
-            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:gamepad-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
-            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">전투 · 스탯</span>
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:graph-up-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">성장 · 엑셀</span>
           </div>
-          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">스탯·전투 밸런스</h3>
-          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">엔티티 × 스탯 × 수식으로 레벨별 CP와 1:1 승률, 특성까지</p>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">성장 표 템플릿 (엑셀)</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">레벨 곡선·공급원·세그먼트로 일차별 진행을 미리 보고, 수식이 살아 있는 .xlsx로</p>
           
           <div class="mt-auto pt-8">
             <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
               <div>
-                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">24.8%</p>
-                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">CP 2위 궁수의 전사 상대 승률 (4직업 템플릿)</p>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">14 · 60일차</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">MMO 프리셋 코어 유저의 Lv30·Lv50 도달 (두 마일스톤에 맞춰 푼 값)</p>
               </div>
               <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
             </div>
@@ -240,7 +240,28 @@
           </div>
         </div>
       </a>
-        <a href="frame.html" style="--i:3" class="reveal t-spring bezel group block lg:col-span-6 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <a href="battle.html" style="--i:3" class="reveal t-spring bezel group block lg:col-span-7 lg:row-span-2 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <div class="core flex h-full flex-col p-7 md:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:gamepad-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+            <span class="text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-500">전투 · 스탯</span>
+          </div>
+          <h3 class="ko mt-6 text-xl font-semibold leading-snug text-zinc-50 md:text-2xl">스탯·전투 밸런스</h3>
+          <p class="ko mt-3 max-w-[48ch] text-sm leading-relaxed text-zinc-400 md:text-base">엔티티 × 스탯 × 수식으로 레벨별 CP와 1:1 승률, 특성까지</p>
+          <ul class="mt-8 hidden gap-2.5 md:grid"><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>CP가 높은데 실제로는 지는 캐릭터가 있나요?</li><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>레벨 구간마다 누가 메타를 지배하나요?</li><li class="ko flex items-start gap-3 text-sm leading-relaxed text-zinc-300"><iconify-icon icon="solar:arrow-right-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>이 상성을 50%로 맞추려면 어느 스탯을 얼마나 바꿔야 하나요?</li></ul>
+          <div class="mt-auto pt-8">
+            <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
+              <div>
+                <p class="font-display text-4xl md:text-5xl font-semibold tracking-tight text-zinc-50">24.8%</p>
+                <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">CP 2위 궁수의 전사 상대 승률 (4직업 템플릿)</p>
+              </div>
+              <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
+            </div>
+            <ul class="mt-5 grid gap-2 text-sm text-zinc-400 sm:grid-cols-2"><li class="ko rounded-2xl bg-white/[0.03] p-4"><span class="block font-display text-lg font-semibold text-zinc-200">2.6% → 75.1%</span>공격 속도를 공격 횟수로 반영하면 바뀌는 승률</li><li class="ko rounded-2xl bg-white/[0.03] p-4"><span class="block font-display text-lg font-semibold text-zinc-200">0.72643</span>Kalivra 엔진 140만 회 결과(0.72676)와 맞는 공식 계산</li></ul>
+          </div>
+        </div>
+      </a>
+        <a href="frame.html" style="--i:0" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
         <div class="core flex h-full flex-col p-7 md:p-8">
           <div class="flex items-start justify-between gap-4">
             <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:stopwatch-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
@@ -261,7 +282,7 @@
           </div>
         </div>
       </a>
-        <a href="brief.html" style="--i:0" class="reveal t-spring bezel group block lg:col-span-6 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        <a href="brief.html" style="--i:1" class="reveal t-spring bezel group block lg:col-span-5 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
         <div class="core flex h-full flex-col p-7 md:p-8">
           <div class="flex items-start justify-between gap-4">
             <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:clipboard-check-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
@@ -273,7 +294,7 @@
           <div class="mt-auto pt-8">
             <div class="flex items-end justify-between gap-4 border-t border-white/5 pt-5">
               <div>
-                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">4개 탭</p>
+                <p class="font-display text-3xl font-semibold tracking-tight text-zinc-50">5개 탭</p>
                 <p class="ko mt-1 text-xs leading-relaxed text-zinc-500 md:text-sm">핵심 지표와 검증 문장을 한 장에</p>
               </div>
               <span class="t-spring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/5 text-zinc-300 group-hover:translate-x-1 group-hover:bg-accent group-hover:text-ink"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span>
@@ -323,7 +344,7 @@
       <div class="reveal">
         <span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">검증</span>
         <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">계산이 맞다는 근거를<br>함께 둡니다</h2>
-        <p class="ko mt-6 max-w-[48ch] text-base leading-relaxed text-zinc-400 md:text-lg">공식으로 풀 수 있는 곳은 공식으로 풀고, 같은 규칙의 시뮬레이션과 화면에서 바로 비교합니다. 계산 모듈은 화면과 분리해 자동 테스트 111개로 확인합니다.</p>
+        <p class="ko mt-6 max-w-[48ch] text-base leading-relaxed text-zinc-400 md:text-lg">공식으로 풀 수 있는 곳은 공식으로 풀고, 같은 규칙의 시뮬레이션과 화면에서 바로 비교합니다. 계산 모듈은 화면과 분리해 자동 테스트 120개로 확인합니다.</p>
         <div class="mt-10 bezel max-w-md"><div class="core p-7">
           <p class="text-sm text-zinc-500">턴 교대 공식 계산 vs Kalivra 엔진 140만 회</p>
           <div class="mt-4 grid grid-cols-2 gap-4">
@@ -407,7 +428,7 @@
   <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
     <div class="max-w-md">
       <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10b981"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#052e1f" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
-      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 5개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 6개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
     </div>
     <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
       <a href="../index.html#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>

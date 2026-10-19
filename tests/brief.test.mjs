@@ -24,7 +24,7 @@ test('브리핑: 기준 대비 바뀐 탭·변화, % 지표 목표는 % 단위, 
   };
   const rep = buildReport(brief, now, base);
   assert.ok(!rep.tools.some(t => t.tool.id === 'gacha'));
-  assert.deepEqual(rep.tools.map(t => t.tool.id), ['enhance', 'battle', 'frame']);
+  assert.deepEqual(rep.tools.map(t => t.tool.id), ['enhance', 'growth', 'battle', 'frame']);
   const fr = rep.tools.find(t => t.tool.id === 'frame');
   assert.equal(fr.changed, true);
   const tight = fr.rows.find(r => r.label === '회피 불가');

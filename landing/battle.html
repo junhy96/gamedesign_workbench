@@ -231,7 +231,7 @@
         <div class="reveal bezel lg:col-span-5" style="--i:1"><div class="core flex h-full flex-col p-7 md:p-9">
           <p class="flex items-center gap-2 text-sm font-semibold text-zinc-200"><iconify-icon icon="solar:test-tube-linear" class="text-lg text-accent" aria-hidden="true"></iconify-icon>검증</p>
           <ul class="mt-6 grid gap-4"><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>턴 교대 공식 계산 = Kalivra v1.0.1 엔진을 그대로 돌린 결과 (40만~140만 회, 3σ 안)</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>특성(흡혈·공격 직전 배율)도 Kalivra 60만 회와 일치</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>시간 기반 공식 계산 = 자체 시뮬레이션 (무작위 설정 12개 × 두 방식)</li></ul>
-          <div class="mt-auto flex items-end gap-3 border-t border-white/5 pt-6"><span class="font-display text-5xl font-semibold tracking-tight text-zinc-50">36</span><span class="ko pb-1.5 text-sm text-zinc-500">이 도구의 자동 테스트 (전체 111개)</span></div>
+          <div class="mt-auto flex items-end gap-3 border-t border-white/5 pt-6"><span class="font-display text-5xl font-semibold tracking-tight text-zinc-50">36</span><span class="ko pb-1.5 text-sm text-zinc-500">이 도구의 자동 테스트 (전체 120개)</span></div>
         </div></div>
       </div>
     </div>
@@ -290,7 +290,7 @@
         <div class="mt-10 flex flex-wrap gap-3"><a href="../index.html#battle" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(52,211,153,0.2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">스탯·전투 도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
       </div>
       <nav class="reveal grid grid-cols-2 gap-3" style="--i:1" aria-label="다른 도구">
-        <a href="gacha.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center gap-1.5 text-xs text-zinc-500"><iconify-icon icon="solar:arrow-left-linear" class="" aria-hidden="true"></iconify-icon>이전 도구</span><span class="ko mt-2 block text-base font-semibold text-zinc-100">가챠·수집 설계</span></a>
+        <a href="growth.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center gap-1.5 text-xs text-zinc-500"><iconify-icon icon="solar:arrow-left-linear" class="" aria-hidden="true"></iconify-icon>이전 도구</span><span class="ko mt-2 block text-base font-semibold text-zinc-100">성장 표 템플릿 (엑셀)</span></a>
         <a href="frame.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 text-right hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center justify-end gap-1.5 text-xs text-zinc-500">다음 도구<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></span><span class="ko mt-2 block text-base font-semibold text-zinc-100">패턴 프레임 검증기</span></a>
       </nav>
     </div>
@@ -300,7 +300,7 @@
   <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
     <div class="max-w-md">
       <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10b981"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#052e1f" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
-      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 5개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 6개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
     </div>
     <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
       <a href="../index.html#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>

@@ -983,3 +983,16 @@ h3.sub { font-size: 14px; margin: 14px 0 8px; }
 .mc-row .sub { margin-top: 8px; }
 
 .cp-note { margin: 2px 0 6px; }
+
+/* 성장 표 템플릿 (엑셀) */
+.band-row { display: grid; grid-template-columns: 1fr 1fr 28px; gap: 8px; align-items: end; }
+.band-row .icon-x { margin-bottom: 6px; }
+.growth-src select, .growth-seg select { width: auto; padding: 4px 6px; font-size: 13px; }
+.growth-src input.short, .growth-seg input.short { width: 64px; }
+.growth-seg td input[type="checkbox"], .growth-src td input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+.growth-seg td, .growth-seg th { text-align: center; }
+.growth-seg td:first-child, .growth-seg th:first-child { text-align: left; }
+#tab-growth details.card > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; }
+#tab-growth details.card > summary h2 { display: inline; }
+#tab-growth details.card[open] > summary { margin-bottom: 12px; }
+#tab-growth .tool-actions { flex-wrap: wrap; }

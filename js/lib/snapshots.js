@@ -6,6 +6,8 @@ import { analyze as enhanceAnalyze, migrate as enhanceMigrate, SCHEMA as ENH_SCH
 import { TEMPLATES as ENH_T } from '../enhance/presets.js';
 import { analyze as gachaAnalyze } from '../gacha/model.js';
 import { TEMPLATES as GACHA_T } from '../gacha/presets.js';
+import { analyze as growthAnalyze } from '../growth/model.js';
+import { TEMPLATES as GROWTH_T } from '../growth/presets.js';
 import { analyze as battleAnalyze } from '../battle/model.js';
 import { TEMPLATES as BATTLE_T } from '../battle/presets.js';
 import { analyze as frameAnalyze } from '../frame/model.js';
@@ -37,6 +39,19 @@ export const TOOLS = [
       const r = gachaAnalyze(st, { runs: 800 });
       if (!r.ok) return null;
       return { kpis: r.goals.slice(0, 4).map(g => (g.won > 0 ? k(`${g.goal.name} 기대 비용`, g.won, 'money', 'lower') : k(`${g.goal.name} 기대 뽑기`, g.mean, 'num', 'lower'))), issues: iss(r.warnings) };
+    },
+  },
+  {
+    id: 'growth', label: '성장 표 템플릿', key: 'growth:v1',
+    base: () => ({ v: 1, template: 'mmo', ...GROWTH_T.mmo.make() }),
+    run: (st) => {
+      const r = growthAnalyze(st);
+      if (!r.ok) return null;
+      const ref = r.segs[r.ref];
+      return {
+        kpis: [...r.milestones.map(m => k(`${ref.seg.name} Lv${m.level} 도달일 (목표 ${m.day})`, m.actual ?? NaN, 'num')), ...r.segs.map(s => k(`${s.seg.name} 최장 무성장 (일)`, s.maxStall, 'num', 'lower'))],
+        issues: iss(r.warnings),
+      };
     },
   },
   {

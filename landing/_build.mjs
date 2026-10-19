@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const OUT = dirname(fileURLToPath(import.meta.url));
 const APP = '../index.html';
 const REPO = 'https://github.com/junhy96/gamedesign_workbench';
-const TESTS = 111;
+const TESTS = 120;
 
 // ── 도구 데이터 ──────────────────────────────────────────
 const TOOLS = [
@@ -49,7 +49,26 @@ const TOOLS = [
     verify: ['쿠폰 수집 n·Hₙ/p, 음이항 평균과 오차 1e-6', '천장: 절단 기하분포 해석해와 일치', '공시표: 레벨마다 캐릭터 확률 합 100%, 천장 변동표 마지막 줄 100%'],
     tests: 22,
     case: ['마일리지 선택권이 꼬리를 정확히 자릅니다', '방치형 동료 소환에서 레전드 천장(8천 회)은 평균을 26% 줄이지만 레전드가 나오는 속도 자체를 바꿔 스테이지 밸런스까지 흔듭니다. 2만 회마다 레전드 선택권을 주는 마일리지는 평균을 20% 줄이면서 99% 꼬리를 266,762회에서 정확히 200,000회로 자릅니다. 공시 확률은 그대로 두고 “아무리 운이 나빠도 여기까지”를 보여 줄 수 있어 1차안으로 골랐습니다.'],
-    related: ['enhance', 'battle', 'brief'],
+    related: ['enhance', 'growth', 'brief'],
+  },
+  {
+    id: 'growth', name: '성장 표 템플릿 (엑셀)', short: '성장 표', icon: 'solar:graph-up-linear', cat: '성장 · 엑셀',
+    tagline: '툴은 뼈대만, 콘텐츠 규칙은 엑셀에서 행을 더해 늘립니다',
+    card: '레벨 곡선·공급원·세그먼트로 일차별 진행을 미리 보고, 수식이 살아 있는 .xlsx로',
+    desc: '레벨 곡선(base·구간별 증가율·점프·상한)과 콘텐츠 공급원, 유저 세그먼트를 정하면 세그먼트마다 일차별 레벨 진행과 최장 무성장 기간을 보여 주고, 마일스톤에 맞는 base를 자동으로 풉니다. 결과는 수식이 살아 있는 엑셀로 내보내, 게임마다 다른 콘텐츠 규칙은 엑셀에서 행을 더해 늘립니다.',
+    facts: [['14 · 60일차', 'MMO 프리셋 코어 유저의 Lv30·Lv50 도달 (두 마일스톤에 맞춰 푼 값)'], ['6일', '같은 표에서 라이트 유저(주 4일·40분)의 최장 무성장 기간'], ['100행', '② 공급원 빈 행에 적으면 ④·⑤에 바로 반영']],
+    questions: ['코어 유저가 7일에 Lv20, 30일에 Lv40이 되려면 레벨 곡선의 base와 증가율은 얼마인가요?', '같은 표에서 라이트 유저는 며칠 동안 레벨이 멈추나요?', '콘텐츠 경계의 30% 점프가 라이트와 헤비에게 각각 얼마나 체감되나요?', '새 콘텐츠를 넣으면 엑셀에서 어디만 고치면 되나요?'],
+    features: [
+      ['solar:chart-2-linear', '레벨 곡선 — 경사와 점프', '필요량(L) = 필요량(L−1) × (1 + 구간 증가율) × (점프 레벨이면 J). 단일 등비는 후반에 폭주하기 쉬워 구간을 나누고 상한을 둘 수 있습니다. 콘텐츠 경계에서 한 번 크게 오르는 "완만한 경사 + 점프"를 그대로 표현합니다.', ['구간별 증가율', '점프 레벨 × J', '필요량 상한']],
+      ['solar:box-linear', '공급원과 세그먼트', '공급원마다 주기(매일·매주·1회), 해금(일차·레벨), 획득 방식(고정·레벨별 표·현재 필요량 %), 시간 비례를 고릅니다. 세그먼트는 하루 플레이 분과 요일별 접속 패턴(무작위 없음)으로 정의합니다.', ['매일 · 매주 · 1회', '고정 · 표 · %', '요일별 접속 1/0']],
+      ['solar:target-linear', 'base·증가율 자동 풀이', '기준 세그먼트가 첫 마일스톤에 목표 일차 안에 닿는 가장 큰 base를 이분 탐색으로 찾고, 원하면 증가율 배율까지 두 번째 마일스톤에 맞춥니다.', ['도달일은 base에 대해 단조', '중첩 이분 탐색', '버튼 하나로 적용']],
+      ['solar:file-download-linear', '수식이 살아 있는 .xlsx', '① 레벨 곡선 · ② 공급원 · ③ 세그먼트 · ④ 일차별 진행 · ⑤ 검증(차트 포함)을 값이 아니라 수식으로 채웁니다. 하루 공급은 ② 100행 전체를 한 SUMPRODUCT로 더해서, 빈 행에 콘텐츠를 적으면 바로 반영됩니다.', ['전날 행만 참조 (순환 참조 없음)', '드롭다운 · 입력 칸 색', '서버 전송 없음']],
+    ],
+    method: ['레벨 곡선: raw(L) = raw(L−1) × (1 + r(L)/100) × J^[L이 점프], 필요량 = round(raw), 상한', '하루: 시작 레벨 = 전날 끝 레벨 → 공급 = Σ 공급원 [주기·해금] × [획득량] × [시간] × 배율 × 횟수 → 누적 → 끝 레벨 = 누적 MATCH', '도달일(L) = 끝 레벨이 L보다 낮았던 날 수 + 1, 최장 무성장 = 레벨이 멈춘 날 연속의 최댓값', 'base = 도달일 ≤ 목표인 가장 큰 값 (이분 탐색)'],
+    verify: ['내보낸 .xlsx를 LibreOffice로 다시 계산한 값 = JS 참조 계산 (프리셋 3종 × 일차별 값·도달일·공급원 총량)', '② 빈 행에 공급원을 적은 파일도 같은 방식으로 일치', 'Microsoft Excel에서 같은 값, 수식 오류 0'],
+    tests: 9,
+    case: ['같은 표, 다른 체감', 'MMO 프리셋은 코어 유저가 Lv30에 14일차, Lv50에 60일차에 닿도록 base와 증가율을 풀어 둔 표입니다. 같은 표에서 주 4일·40분 플레이하는 라이트 유저는 120일에 Lv45에 머물고, 레벨이 오르지 않는 날이 최장 6일 이어집니다. 일일 퀘스트처럼 현재 필요량에 비례하는 공급을 늘릴지, 고정 보상을 늘릴지를 이 차이로 정합니다.'],
+    related: ['enhance', 'gacha', 'brief'],
   },
   {
     id: 'battle', name: '스탯·전투 밸런스', short: '스탯·전투', icon: 'solar:gamepad-linear', cat: '전투 · 스탯',
@@ -93,8 +112,8 @@ const TOOLS = [
     id: 'brief', name: '브리핑', short: '브리핑', icon: 'solar:clipboard-check-linear', cat: '공유 · 회의',
     tagline: '모든 탭의 결론을 한 장으로 모아 회의에 가져갑니다',
     card: '기준 스냅샷 대비 변화, 지표별 목표 통과·미달, 메모와 PDF',
-    desc: '강화·가챠·스탯 전투·프레임 탭의 핵심 지표와 검증 문장을 한 장에 모읍니다. 스냅샷을 기준으로 고르면 무엇이 얼마나 바뀌었는지, 지표마다 목표를 넣으면 통과·미달을 보여 주고, 결론·근거·리스크·결정 요청 메모와 함께 PDF로 저장합니다.',
-    facts: [['4개 탭', '핵심 지표와 검증 문장을 한 장에'], ['≤ · ≥', '지표마다 목표를 넣어 통과·미달 판정'], ['PDF', '입력칸 없이 값만 남는 인쇄 화면']],
+    desc: '강화·가챠·성장 표·스탯 전투·프레임 탭의 핵심 지표와 검증 문장을 한 장에 모읍니다. 스냅샷을 기준으로 고르면 무엇이 얼마나 바뀌었는지, 지표마다 목표를 넣으면 통과·미달을 보여 주고, 결론·근거·리스크·결정 요청 메모와 함께 PDF로 저장합니다.',
+    facts: [['5개 탭', '핵심 지표와 검증 문장을 한 장에'], ['≤ · ≥', '지표마다 목표를 넣어 통과·미달 판정'], ['PDF', '입력칸 없이 값만 남는 인쇄 화면']],
     questions: ['지난 회의안 대비 무엇이 얼마나 바뀌었나요?', '목표를 통과하지 못한 지표는 무엇인가요?', '회의에서 무엇을 결정해야 하나요?'],
     features: [
       ['solar:camera-linear', '스냅샷', '헤더의 “스냅샷”에서 모든 탭 설정을 한 번에 저장하고, 나중에 지금 설정과 탭별 핵심 지표를 비교하거나 되돌립니다. 프로젝트 파일로 팀과 같은 설정을 나눕니다.', ['모든 탭 한 번에 저장', '지표 비교 · 되돌리기', '프로젝트 파일']],
@@ -202,7 +221,7 @@ function footer() {
   <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
     <div class="max-w-md">
       <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100">${LOGO}<span>기획 워크벤치</span></a>
-      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 5개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 6개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
     </div>
     <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
       <a href="${APP}#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>
@@ -264,7 +283,7 @@ function preview(hash, { interactive, label }) {
 // ── 랜딩 ─────────────────────────────────────────────────
 function landing() {
   const tests = TESTS;
-  const bentoSpan = { enhance: 'lg:col-span-7 lg:row-span-2', gacha: 'lg:col-span-5', battle: 'lg:col-span-5', frame: 'lg:col-span-6', brief: 'lg:col-span-6' };
+  const bentoSpan = { enhance: 'lg:col-span-7 lg:row-span-2', gacha: 'lg:col-span-5', growth: 'lg:col-span-5', battle: 'lg:col-span-7 lg:row-span-2', frame: 'lg:col-span-5', brief: 'lg:col-span-5' };
   const toolCard = (t, i) => {
     const big = bentoSpan[t.id].includes('row-span-2');
     return `<a href="${t.id}.html" style="--i:${i % 4}" class="reveal t-spring bezel group block ${bentoSpan[t.id]} hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
@@ -296,7 +315,7 @@ function landing() {
   ];
   const cases = [byId.gacha, byId.enhance, byId.battle];
   const roles = [
-    ['solar:widget-5-linear', '시스템 기획자', '강화 확률을 바꾸면 기대 비용과 파괴 위험이 어떻게 달라지는지, 어느 단계를 손봐야 효과가 큰지, 수치를 바꾼 결과를 회의에 어떻게 가져갈지 봅니다.', ['enhance', 'brief']],
+    ['solar:widget-5-linear', '시스템 기획자', '레벨 곡선과 콘텐츠 공급으로 세그먼트마다 언제 몇 레벨인지, 강화 확률을 바꾸면 기대 비용과 파괴 위험이 어떻게 달라지는지 보고, 결과를 엑셀·회의 자료로 가져갑니다.', ['growth', 'enhance', 'brief']],
     ['solar:cart-large-2-linear', 'BM 기획자', '가챠 목표의 실제 비용과 운 나쁜 1%, 천장·마일리지 효과, 보조 아이템 가격과 기대 매출, 확률 공시표를 확인합니다.', ['gacha', 'enhance']],
     ['solar:gamepad-linear', '전투·레벨 기획자', 'CP가 실제 승률을 반영하는지, 보스 연계를 보고 피할 수 있는지, 반격할 틈이 몇 번인지 숫자로 판정합니다.', ['battle', 'frame']],
   ];
@@ -306,7 +325,7 @@ function landing() {
     ['브루트포스 대조', '프레임 판정의 최적 입력 계획을 무작위 연계 1,000개의 모든 입력 조합과 비교합니다.', 'frame'],
     ['해석해 대조', '쿠폰 수집 n·Hₙ/p, 음이항 평균, 절단 기하분포 같은 알려진 답과 오차 1e-6 안에서 맞춥니다.', 'gacha'],
   ];
-  return `${head('기획 워크벤치 — 게임 시스템·BM 밸런스 검증 도구', '강화 확률, 가챠 천장, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.')}
+  return `${head('기획 워크벤치 — 게임 시스템·BM 밸런스 검증 도구', '강화 확률, 가챠 천장, 성장 표, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제 구간을 바로 보여 주는 브라우저 도구 모음입니다.')}
 <body class="font-sans">
 ${nav(null)}
 <main>
@@ -318,7 +337,7 @@ ${nav(null)}
       <div class="reveal">
         ${eyebrow(`${icon('solar:cpu-bolt-linear', 'text-sm')}게임 시스템 · BM 기획`)}
         <h1 class="ko mt-7 text-4xl font-bold leading-tight tracking-tight text-zinc-50 md:text-6xl lg:text-[4.25rem] lg:leading-[1.12]">엑셀로 못 푸는<br>밸런스 계산을<br><span class="text-accent">링크 하나</span>로 확인합니다</h1>
-        <p class="ko mt-7 max-w-[54ch] text-base leading-relaxed text-zinc-400 md:text-lg">강화 확률, 가챠 천장, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제가 생기는 구간과 그 원인을 바로 보여 줍니다. 설치·로그인 없이 열리고, 넣은 숫자는 서버로 가지 않습니다.</p>
+        <p class="ko mt-7 max-w-[54ch] text-base leading-relaxed text-zinc-400 md:text-lg">강화 확률, 가챠 천장, 성장 표, 전투 승률, 보스 패턴 프레임까지. 기획서 숫자를 넣으면 기대값과 분포, 문제가 생기는 구간과 그 원인을 바로 보여 줍니다. 설치·로그인 없이 열리고, 넣은 숫자는 서버로 가지 않습니다.</p>
         <div class="mt-10 flex flex-wrap gap-3">
           ${cta(`${APP}#enhance`, '워크벤치 열기')}
           ${cta('#tools', '도구 둘러보기', false)}
@@ -343,10 +362,10 @@ ${nav(null)}
   <!-- 숫자 띠 -->
   <section class="border-y border-white/5 bg-zinc-950/60">
     <div class="mx-auto grid max-w-7xl grid-cols-2 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-4 lg:px-8">
-      <div class="reveal"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="5">5</p><p class="ko mt-2 text-sm text-zinc-500">기획 도구 (다이어그램·PDF 부가 도구 별도)</p></div>
+      <div class="reveal"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="6">6</p><p class="ko mt-2 text-sm text-zinc-500">기획 도구 (다이어그램·PDF 부가 도구 별도)</p></div>
       <div class="reveal" style="--i:1"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="${tests}">${tests}</p><p class="ko mt-2 text-sm text-zinc-500">계산 모듈 자동 테스트</p></div>
       <div class="reveal" style="--i:2"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl" data-count="1400000">1,400,000</p><p class="ko mt-2 text-sm text-zinc-500">Kalivra 엔진 대조에 쓴 전투 횟수</p></div>
-      <div class="reveal" style="--i:3"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl">0<span class="text-zinc-500">B</span></p><p class="ko mt-2 text-sm text-zinc-500">5개 도구가 서버로 보내는 데이터</p></div>
+      <div class="reveal" style="--i:3"><p class="font-display text-4xl font-semibold tracking-tight text-zinc-50 md:text-5xl">0<span class="text-zinc-500">B</span></p><p class="ko mt-2 text-sm text-zinc-500">6개 도구가 서버로 보내는 데이터</p></div>
     </div>
   </section>
 
@@ -376,7 +395,7 @@ ${nav(null)}
       <div class="reveal flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div>
           ${eyebrow('도구')}
-          <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">검증 도구 다섯 가지</h2>
+          <h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-5xl">기획 도구 여섯 가지</h2>
         </div>
         <p class="ko max-w-[44ch] text-base leading-relaxed text-zinc-400">카드의 숫자는 각 도구의 템플릿을 실제로 돌린 결과입니다. 누르면 계산 방법과 검증, 실제 화면을 볼 수 있습니다.</p>
       </div>

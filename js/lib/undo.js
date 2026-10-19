@@ -4,7 +4,7 @@
 import { store, encodeState } from './util.js';
 
 export const TAB_KEYS = {
-  enhance: 'enhance:v2', gacha: 'gacha:v1', battle: 'battle:v1', frame: 'frame:v1', diagram: 'diagram:v1',
+  enhance: 'enhance:v2', gacha: 'gacha:v1', growth: 'growth:v1', battle: 'battle:v1', frame: 'frame:v1', diagram: 'diagram:v1',
 };
 const KEY_TAB = Object.fromEntries(Object.entries(TAB_KEYS).map(([t, k]) => [k, t]));
 const LIMIT = 50;

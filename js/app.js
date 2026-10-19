@@ -5,6 +5,7 @@ import { mount as mountEnhance } from './enhance/view.js';
 import { mount as mountFrame } from './frame/view.js';
 import { mount as mountDiagram } from './diagram/view.js';
 import { mount as mountGacha } from './gacha/view.js';
+import { mount as mountGrowth } from './growth/view.js';
 import { mount as mountBattle } from './battle/view.js';
 import { mount as mountBrief } from './brief/view.js';
 import { openSnapshots } from './lib/snapshot-view.js';
@@ -13,6 +14,7 @@ import { refreshCharts } from './lib/chart.js';
 const TOOLS = {
   enhance: mountEnhance,
   gacha: mountGacha,
+  growth: mountGrowth,
   battle: mountBattle,
   frame: mountFrame,
   brief: mountBrief,
