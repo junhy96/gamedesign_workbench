@@ -75,6 +75,17 @@ export function downloadText(filename, text, type = 'text/plain') {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+/** 텍스트 파일 하나 고르기 → { name, text } (CSV 가져오기 등) */
+export function pickText(accept = '.csv,text/csv') {
+  return new Promise((resolve, reject) => {
+    const input = Object.assign(document.createElement('input'), { type: 'file', accept });
+    input.onchange = async () => {
+      try { const f = input.files[0]; resolve({ name: f.name, text: await f.text() }); } catch (e) { reject(e); }
+    };
+    input.click();
+  });
+}
+
 export function pickJSON() {
   return new Promise((resolve, reject) => {
     const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });

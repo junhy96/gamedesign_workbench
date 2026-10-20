@@ -8,15 +8,21 @@ import { mount as mountGacha } from './gacha/view.js';
 import { mount as mountGrowth } from './growth/view.js';
 import { mount as mountBattle } from './battle/view.js';
 import { mount as mountBrief } from './brief/view.js';
+import { mount as mountData } from './data/view.js';
+import { mount as mountCombat } from './combat/view.js';
 import { openSnapshots } from './lib/snapshot-view.js';
 import { refreshCharts } from './lib/chart.js';
+import { autoTips } from './lib/tip.js';
+import { installFieldChecks } from './lib/fieldcheck.js';
 
 const TOOLS = {
   enhance: mountEnhance,
   gacha: mountGacha,
   growth: mountGrowth,
   battle: mountBattle,
+  combat: mountCombat,
   frame: mountFrame,
+  data: mountData,
   brief: mountBrief,
   diagram: mountDiagram,
 };
@@ -79,7 +85,7 @@ function show(id) {
   }
   for (const key of Object.keys(TOOLS)) document.getElementById(`tab-${key}`).hidden = key !== id;
   const panel = document.getElementById(`tab-${id}`);
-  if (TOOLS[id] && !mounted.has(id)) { mounted.add(id); TOOLS[id](panel); }
+  if (TOOLS[id] && !mounted.has(id)) { mounted.add(id); TOOLS[id](panel); autoTips(panel, id); installFieldChecks(panel); }
   else requestAnimationFrame(() => refreshCharts(panel)); // 숨어 있는 동안 크기를 못 잡은 그래프를 다시 그림
 }
 

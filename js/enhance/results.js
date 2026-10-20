@@ -1,5 +1,6 @@
 // 결과 영역: KPI(기준안 대비)·고정 띠, 분포·예산, 재화별 소모, 검증, 아이템 최적화(MDP), 아이템 가격 곡선, 목표 비용 역산
-import { optimizeItems, solveForCost, priceSweep, specUnits, isQty, MAX_SWEEP_POINTS } from './model.js';
+import { optimizeItems, solveWeighted, ROUND_MODES, priceSweep, specUnits, isQty, MAX_SWEEP_POINTS } from './model.js';
+import { tip } from '../lib/tip.js';
 import { reachProbability } from './simulate.js';
 import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
@@ -107,6 +108,7 @@ export function renderMC(ctx, els, mc, res) {
   renderQuantiles(ctx, els, mc, res);
   renderPaths(ctx, els, mc, res);
   renderVerify(els, res, mc);
+  ctx.onMC?.(mc);
 }
 
 /** 강화 경로 예시: 앞 12번 시행의 시도별 단계 — 하락·파괴로 떨어지는 모습, 중간 시행과 가장 오래 걸린 시행을 강조 */
@@ -502,33 +504,76 @@ export function drawSweep(ctx, els) {
 export function renderInverse(ctx, els, res) {
   const s = ctx.state;
   const inv = s.inverse ??= { target: Math.round(res.expCost * 0.8), from: s.start, to: s.target - 1 };
+  Object.assign(inv, { w: inv.w ?? 50, pMin: inv.pMin ?? 0.01, pMax: inv.pMax ?? 100, cMin: inv.cMin ?? 0.1, cMax: inv.cMax ?? 10, unit: inv.unit ?? 0, mode: inv.mode ?? 'round' }, { ...inv });
   // 목표 비용은 표시 단위로 입력받고 원으로 저장
   const money = (key) => key === 'target';
-  const num = (key, label) => h('label.field', {}, h('span', {}, label), h('input', {
-    type: 'number', value: money(key) ? Math.round(toDisplay(inv[key])) : inv[key], step: 'any', 'aria-label': label,
-    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { inv[key] = money(key) ? fromDisplay(v) : v; ctx.save(); } },
+  let t;
+  const live = () => { clearTimeout(t); t = setTimeout(() => runInverse(ctx, els), 120); };
+  const num = (key, label, opts = {}) => h('label.field', {}, h('span', {}, label), h('input', {
+    type: 'number', value: money(key) ? Math.round(toDisplay(inv[key])) : inv[key], step: opts.step ?? 'any', min: opts.min, max: opts.max, 'aria-label': label,
+    oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { inv[key] = money(key) ? fromDisplay(v) : v; ctx.save(); live(); } },
   }));
+  const wLabel = h('b.w-now', {}, '');
+  const showW = () => { wLabel.textContent = `확률 ${inv.w}% · 비용 ${100 - inv.w}%`; };
+  showW();
+  const slider = h('input.w-slider', {
+    type: 'range', min: 0, max: 100, step: 5, value: inv.w, 'aria-label': '확률·비용 가중치 (0 = 비용만, 100 = 확률만)',
+    oninput: (e) => { inv.w = +e.target.value; showW(); ctx.save(); live(); },
+  });
+  const sel = (opts, key, label) => h('select', { 'aria-label': label, onchange: (e) => { inv[key] = e.target.value === '' ? 0 : (isNaN(+e.target.value) ? e.target.value : +e.target.value); ctx.save(); live(); } },
+    ...opts.map(([v, l]) => h('option', { value: v, selected: String(v) === String(inv[key]) }, l)));
   els.inverse.replaceChildren(
-    h('div.card-head', {}, h('h2', {}, '목표 비용 역산'), h('span.hint', {}, '확률 자동 조정')),
-    h('p.muted.small', {}, '원하는 기대 총비용을 넣으면, 지정한 구간의 성공·대성공 확률에 같은 배율을 곱해 그 비용이 되는 값을 찾습니다(이분 탐색). 실패 결과의 비율은 유지됩니다.'),
-    h('div.row3', {}, num('target', `목표 기대 비용 (${currency().name})`), num('from', '구간 시작'), num('to', '구간 끝')),
-    h('div', {}, h('button.btn.primary', { type: 'button', onclick: () => runInverse(ctx, els) }, '역산')),
+    h('div.card-head', {}, h('h2', {}, '목표 비용 역산'), h('span.hint', {}, '확률·비용 가중치 · 움직이면 바로 다시 계산')),
+    h('p.muted.small', {}, '원하는 기대 총비용을 넣으면 필요한 개선 배율 F = 지금 기대 비용 ÷ 목표를 확률과 비용에 나눠 줍니다: 확률 × F^w, 비용 ÷ F^(1−w). 하락·파괴·연속 보정이 있으면 마르코프 체인으로 기대 비용을 다시 계산하며 이분 탐색으로 정확히 맞춥니다.'),
+    h('div.row3', {}, num('target', `목표 기대 비용 (${currency().name})`, { min: 0 }), num('from', '구간 시작', { min: 0, step: 1 }), num('to', '구간 끝', { min: 0, step: 1 })),
+    h('div.weight-box', {},
+      h('div.weight-head', {}, h('span', {}, '어디를 바꿀까', tip('enh.weight')), wLabel),
+      h('div.weight-row', {}, h('span.w-end', {}, '비용 위주'), slider, h('span.w-end', {}, '확률 위주')),
+      h('p.desc', {}, '왼쪽 끝 0% = 비용만 바꿈 · 오른쪽 끝 100% = 확률만 바꿈 · 가운데 = 비율대로 둘 다 (곱셈 분배).')),
+    h('details.inv-more', {},
+      h('summary', {}, '범위 · 반올림'),
+      h('div.row2', {}, num('pMin', '확률 최소 (%)', { min: 0, max: 100 }), num('pMax', '확률 최대 (%)', { min: 0, max: 100 })),
+      h('div.row2', {}, num('cMin', '비용 최소 (원래의 ×배)', { min: 0.001 }), num('cMax', '비용 최대 (원래의 ×배)', { min: 0.001 })),
+      h('div.row2', {},
+        h('label.field', {}, h('span', {}, '비용 반올림 단위', tip('enh.rounding')), sel([[0, '안 함'], [1, '1'], [10, '10'], [100, '100'], [1000, '1,000'], [10000, '10,000']], 'unit', '반올림 단위')),
+        h('label.field', {}, h('span', {}, '반올림 방식'), sel(Object.entries(ROUND_MODES), 'mode', '반올림 방식'))),
+      h('p.desc', {}, '범위를 벗어나는 단계는 범위 끝에 고정하고, 모자란 개선을 반대쪽(확률 ↔ 비용)으로 넘겨 목표를 맞춥니다.')),
     els.invOut = h('div', {}),
   );
+  runInverse(ctx, els);
 }
+
+/** 표·설정이 바뀌면 역산 결과도 지금 설정으로 다시 */
+export function refreshInverse(ctx, els) { runInverse(ctx, els); }
 
 function runInverse(ctx, els) {
   const s = ctx.state, inv = s.inverse;
-  const res = solveForCost(ctx.toConfig(), inv.target, inv.from, inv.to);
+  if (!els.invOut) return;
+  const cfg = ctx.toConfig();
+  const res = solveWeighted(cfg, inv.target, { from: inv.from, to: inv.to, w: inv.w / 100, pMin: inv.pMin, pMax: inv.pMax, cMin: inv.cMin, cMax: inv.cMax, unit: inv.unit, mode: inv.mode });
+  ctx.renderDoc?.();
   if (!res.ok) { els.invOut.replaceChildren(h('p', { style: 'color:var(--bad)' }, res.error)); return; }
+  const names = (s.resources || []).map(r => r.name);
+  const costTxt = (arr) => arr.map((v, i) => (v ? `${comma(v)}${names[i] ? ' ' + names[i] : ''}` : null)).filter(Boolean).join(' + ') || '0';
+  const pct = (v) => `${(+v.toFixed(4)).toString()}%`;
+  const sign = (x) => `${x >= 0 ? '+' : '−'}${won(Math.abs(x))}`;
   els.invOut.replaceChildren(h('div.opt-result', {},
-    h('p', {}, `+${inv.from}~+${inv.to} 성공률 `, h('b', {}, `×${res.alpha.toFixed(4)}`), ' → 기대 총비용 ', h('b', {}, won(res.cost))),
+    h('div.inv-summary', {},
+      h('div', {}, h('span.muted', {}, '필요한 개선 배율 F'), h('b', {}, `×${res.F.toFixed(4)}`), h('small', {}, `확률 ×${res.Fp.toFixed(4)} · 비용 ÷${res.Fc.toFixed(4)}${Math.abs(res.s - res.F) > 1e-6 ? ` (하락·파괴·보정 때문에 실제 배율 s = ${res.s.toFixed(4)})` : ''}`)),
+      h('div', {}, h('span.muted', {}, '기대 비용'), h('b', {}, `${won(res.E0)} → ${won(res.E)}`), h('small', {}, `목표 ${won(inv.target)}`)),
+      h('div', {}, h('span.muted', {}, '반올림 뒤'), h('b', {}, won(res.Er)), h('small', { class: Math.abs(res.error) / inv.target > 0.01 ? 'bad-text' : '' }, `목표와 오차 ${sign(res.error)} (${(res.error / inv.target * 100).toFixed(2)}%)${inv.unit ? ` · ${comma(inv.unit)} 단위 ${ROUND_MODES[inv.mode]}` : ' · 반올림 안 함'}`))),
+    h('div.table-wrap', {}, h('table.mini.inv-table', {},
+      h('thead', {}, h('tr', {}, h('th.left', {}, '단계'), h('th', {}, '확률 조정 전'), h('th', {}, '→ 조정 후'), h('th', {}, '비용 조정 전'), h('th', {}, '→ 조정 후'), h('th.left', {}, ''))),
+      h('tbody', {}, ...res.stages.map(x => h('tr', {},
+        h('td.left', {}, `+${x.stage} → +${x.stage + 1}`), h('td', {}, pct(x.p0)), h('td', {}, h('b', {}, pct(x.p1))),
+        h('td', {}, costTxt(x.c0)), h('td', {}, h('b', {}, costTxt(x.c1r))),
+        h('td.left.muted', {}, [x.clampP ? '확률 범위 끝 → 비용으로 넘김' : null, x.clampC ? '비용 범위 끝 → 확률로 넘김' : null].filter(Boolean).join(' · '))))))),
     h('button.btn', {
       type: 'button',
       onclick: () => {
         if (!s.baseline) ctx.saveBaseline('역산 전');
         s.rows = res.rows; ctx.markTableDirty(); ctx.recompute();
-        toast('조정된 확률을 표에 적용했습니다 (적용 전 상태는 기준안으로 저장)');
+        toast('조정된 확률·비용을 표에 적용했습니다 (적용 전 상태는 기준안으로 저장)');
       },
     }, '표에 적용'),
   ));

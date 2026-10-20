@@ -1,10 +1,15 @@
 // 가챠·수집 설계 — 화면: 왼쪽 설정(템플릿·비용·천장·픽업·마일리지·기준 유저), 오른쪽 등급·확률 → 목표 → 달성 곡선·예산 → 검증
-import { analyze, helpers, GOAL_TYPES, disclosure, unitExpectations } from './model.js';
+import { analyze, helpers, GOAL_TYPES, disclosure, unitExpectations, gradeRates, levelAt, topProb } from './model.js';
+import { tip, label } from '../lib/tip.js';
 import { TEMPLATES } from './presets.js';
 import { renderQuantileCard, tailSamples } from '../lib/quantiles.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma, fmtMoney, fmtPct } from '../lib/util.js';
 import { drawChart as liveChart } from '../lib/chart.js';
+import { simFields } from '../lib/simconfig.js';
+import { renderDist } from '../lib/distview.js';
+import { renderABCard } from '../lib/abcompare.js';
+import { gachaDoc } from './doc.js';
 
 const SCHEMA = 1;
 const STORE_KEY = 'gacha:v1';
@@ -15,8 +20,65 @@ const save = debounce(() => store.set(STORE_KEY, state), 300);
 const schedule = (ms = 200) => { clearTimeout(timer); timer = setTimeout(recompute, ms); };
 const newId = (p) => p + Date.now().toString(36) + Math.floor(Math.random() * 1e3);
 
-function defaultState(id) { return { v: SCHEMA, template: id, view: 0, budgetWon: 0, discLevel: 0, discDigits: 4, ...TEMPLATES[id].make() }; }
-function hydrate(o) { return o && o.v === SCHEMA && TEMPLATES[o.template] ? { ...defaultState(o.template), ...o } : null; }
+function defaultState(id) {
+  const t = TEMPLATES[id].make();
+  return {
+    v: SCHEMA, template: id, view: 0, budgetWon: 0, discLevel: 0, discDigits: 4, ...t,
+    // 소환 레벨 시스템: 템플릿에 레벨이 여러 개면 켜진 상태로 시작
+    summonOn: t.levels.length > 1,
+    summon: { mode: 'count', expPerPull: 1, upCost: 0, upReward: 0, withPity: true },
+    ten: { enabled: false, grade: t.grades.at(-2)?.id ?? t.grades.at(-1)?.id },
+    stash: {},
+  };
+}
+function hydrate(o) {
+  if (!(o && o.v === SCHEMA && TEMPLATES[o.template])) return null;
+  const d = defaultState(o.template);
+  return { ...d, ...o, summonOn: o.summonOn ?? (o.levels?.length > 1), summon: { ...d.summon, ...o.summon }, ten: { ...d.ten, ...o.ten }, stash: o.stash || {} };
+}
+
+/**
+ * 계산에 넘길 설정: 소환 레벨이 꺼져 있으면 첫 열(고정 확률)만, 경험치 방식이면 필요 경험치를 뽑기 수로 바꿈,
+ * 천장 병행을 끄면 소환 레벨이 켜진 동안 천장 없음, 레벨업 비용·보상, 10연 보장.
+ */
+function cfgNow() { return cfgOf(state); }
+function cfgOf(s) {
+  const on = s.summonOn && s.levels.length > 1;
+  const per = Math.max(1e-9, s.summon.expPerPull || 1);
+  return {
+    ...s,
+    levels: on ? s.levels.map((x, l) => (l === 0 ? 0 : s.summon.mode === 'exp' ? Math.max(1, Math.ceil(x / per)) : x)) : [0],
+    grades: on ? s.grades : s.grades.map(g => ({ ...g, probs: [g.probs[0] ?? 0] })),
+    pity: on && !s.summon.withPity ? { ...s.pity, enabled: false } : s.pity,
+    levelUp: on ? { cost: s.summon.upCost || 0, reward: s.summon.upReward || 0 } : null,
+    ten: s.ten,
+  };
+}
+
+/** 스위치: 지금 모드의 값을 보관하고, 다른 모드에서 넣었던 값을 되살린다 */
+function setSummon(on) {
+  const s = state;
+  if (on === s.summonOn) return;
+  const byId = (f) => Object.fromEntries(s.grades.map(g => [g.id, f(g)]));
+  if (on) {
+    s.stash.off = { probs: byId(g => g.probs[0] ?? 0) };
+    const st = s.stash.on;
+    if (st?.levels?.length > 1) {
+      s.levels = [...st.levels];
+      s.grades.forEach(g => { g.probs = st.probs[g.id] ? [...st.probs[g.id]] : s.levels.map(() => g.probs[0] ?? 0); });
+    } else {
+      s.levels = [0, 100, 300, 700, 1500];
+      s.grades.forEach(g => { g.probs = s.levels.map(() => g.probs[0] ?? 0); });
+    }
+  } else {
+    s.stash.on = { levels: [...s.levels], probs: byId(g => [...g.probs]) };
+    const st = s.stash.off;
+    s.levels = [0];
+    s.grades.forEach(g => { g.probs = [st?.probs?.[g.id] ?? g.probs[0] ?? 0]; });
+  }
+  s.summonOn = on;
+  rebuild();
+}
 function readHash() { const m = location.hash.match(/^#gacha\?s=([\w-]+)/); return m ? hydrate(decodeState(m[1])) : null; }
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
@@ -62,6 +124,7 @@ function build(root) {
         els.kpis = h('div.kpis.econ-kpis'),
         els.grades = h('div.card.role-in'),
         els.goals = h('div.card.role-in'),
+        els.modeCard = h('div.card.role-out'),
         h('div.card.role-out', {},
           h('div.card-head', {}, els.distTitle = h('h2', {}, '달성 확률과 예산'), els.distHint = h('span.hint', {})),
           h('div.dist', {},
@@ -74,12 +137,15 @@ function build(root) {
           ),
         ),
         els.quantCard = h('div.card.role-out'),
+        els.distCard = h('div.card.role-out'),
         h('div.two-col', {},
           els.why = h('div.card.role-out'),
           els.verify = h('div.card.role-check'),
         ),
         els.disc = h('div.card.role-out.disc-card'),
         els.warnCard = h('div.card.role-check'),
+        els.abCard = h('div.card.role-tool'),
+        els.docCard = h('div.card.role-doc'),
       ),
     ),
   );
@@ -109,7 +175,23 @@ function section(id, title, summary, ...body) {
 function renderSide() {
   const s = state, top = s.grades.at(-1)?.name ?? '최상위';
   const onePull = s.pullCost * (s.wonPerGem || 0);
+  const sm = s.summon;
   els.side.replaceChildren(
+    h('div.summon-switch', {},
+      h('label.switch.big', {}, h('span', {}, '소환 레벨 시스템', tip('g.summonLevel')), h('input', { type: 'checkbox', role: 'switch', checked: s.summonOn, 'aria-label': '소환 레벨 시스템 켜기', onchange: (e) => setSummon(e.target.checked) })),
+      h('p.desc', {}, s.summonOn ? '켜짐 — 누적 소환에 따라 레벨이 오르고 레벨별 확률표를 씁니다 (방치형·성장형).' : '꺼짐 — 등급별 고정 확률 (일반적인 서브컬처 가챠).'),
+      s.summonOn ? h('div.side-body.summon-body', {},
+        field('레벨업 방식', select([['count', '횟수 — 누적 소환 수'], ['exp', '경험치 — 소환당 경험치를 쌓음']], sm.mode, (v) => { sm.mode = v; rebuild(); }), null),
+        sm.mode === 'exp' ? field('소환 1회당 경험치', num(sm, 'expPerPull', { min: 0.001, label: '소환당 경험치' }), '레벨 기준은 "필요 누적 경험치". 뽑기 수 = 경험치 ÷ 소환당 경험치 (올림)') : null,
+        h('div.row2', {},
+          field(`레벨업 비용 (${s.gemName})`, num(sm, 'upCost', { min: 0, label: '레벨업 비용' })),
+          field(`레벨업 보상 (${s.gemName})`, num(sm, 'upReward', { min: 0, label: '레벨업 보상' }))),
+        h('p.desc', {}, `최대 레벨 = Lv${s.levels.length} (확률표의 열 수). 레벨업마다 비용을 내고 보상을 받는다고 보고, 목표 비용에 더합니다(0이면 없음).`),
+        h('label.switch', {}, h('span', {}, '천장과 함께 쓰기', tip('g.withPity')), h('input', { type: 'checkbox', checked: sm.withPity, onchange: (e) => { sm.withPity = e.target.checked; renderSide(); schedule(0); } })),
+      ) : null,
+      h('label.switch', {}, h('span', {}, '10연 보장', tip('g.ten')), h('input', { type: 'checkbox', checked: s.ten.enabled, onchange: (e) => { s.ten.enabled = e.target.checked; renderSide(); schedule(0); } })),
+      s.ten.enabled ? field('보장 등급 (이상)', select(s.grades.map(g => [g.id, `${g.name} 이상`]), s.ten.grade, (v) => { s.ten.grade = v; schedule(0); })) : null,
+    ),
     section('base', '템플릿', TEMPLATES[s.template].label.split(' —')[0],
       select(Object.entries(TEMPLATES).map(([id, t]) => [id, t.label]), s.template, (v) => { state = defaultState(v); rebuild(); }),
       h('p.desc', {}, TEMPLATES[s.template].note),
@@ -144,8 +226,8 @@ function renderSide() {
       field(`무과금 하루 ${s.gemName} 획득`, num(s.user, 'freePerDay', { min: 0, label: '무과금 하루 획득' }), '퀘스트·출석·광고 등 무료로 버는 양 (뽑기권은 환산)'),
       field('기준 과금 유저 월 과금 (원)', num(s.user, 'monthlyWon', { min: 0, label: '월 과금' }), '무과금 획득 + 월 과금 ÷ 30 ÷ 단가 만큼 매일 생긴다고 봅니다'),
     ),
-    section('calc', '계산', `시뮬레이션 ${comma(s.runs)}회`,
-      field('목표당 시뮬레이션 횟수', num(s, 'runs', { int: true, min: 200, label: '시뮬레이션 횟수' }), '공식으로 풀 수 있는 목표는 분포까지 공식으로 계산하고, 나머지는 시드를 고정한 시뮬레이션으로 계산합니다'),
+    section('calc', '계산', `시뮬레이션 ${comma(s.runs)}회 · 시드 ${s.seed ?? 20261017}`,
+      ...simFields(s, { runsKey: 'runs', seedKey: 'seed', def: 20261017, min: 200, max: 100000, onChange: () => schedule(300), runsHint: '목표당 횟수. 공식으로 풀 수 있는 목표는 분포까지 공식으로 계산하고, 나머지만 시뮬레이션합니다' }),
     ),
   );
 }
@@ -157,13 +239,14 @@ function renderGrades() {
   const s = state, L = s.levels.length;
   els.levelSum = [];
   const lvHead = s.levels.map((from, l) => h('th', { title: `누적 ${comma(from)}회부터` }, L > 1 ? `Lv${l + 1} %` : '확률 %'));
-  const lvFrom = s.levels.map((from, l) => h('th', {}, l === 0 ? '0회~' : num(s.levels, l, { int: true, min: 1, label: `소환 레벨 ${l + 1} 기준 뽑기 수`, cls: 'short' })));
+  const expMode = s.summonOn && s.summon.mode === 'exp';
+  const lvFrom = s.levels.map((from, l) => h('th', {}, l === 0 ? (expMode ? '0 exp~' : '0회~') : num(s.levels, l, { int: !expMode, min: 1, label: `소환 레벨 ${l + 1} 기준 ${expMode ? '경험치' : '뽑기 수'}`, cls: 'short' })));
   els.grades.replaceChildren(
     h('div.card-head', {}, h('h2', {}, '① 등급과 확률'), h('span.hint', {}, L > 1 ? '아래가 상위 등급 · 둘째 줄 = 그 소환 레벨이 시작되는 누적 뽑기 수' : '아래가 상위 등급 · 같은 등급 안의 유닛은 균등')),
     h('div.table-wrap', {}, h('table.edit-table.gacha-table', {},
       h('thead', {},
         h('tr', {}, h('th.left', {}, '등급'), h('th', {}, '종 수'), h('th', { title: `필요 없는 중복 1장이 바뀌는 ${s.shardName} 수` }, `중복 ${s.shardName}`), h('th', { title: `이 등급 원하는 1장의 ${s.shardName} 가격 (0 = 교환 없음)` }, '교환 가격'), ...lvHead, h('th', {}, '')),
-        L > 1 ? h('tr.lv-from', {}, h('th.left', { colspan: 4 }, '소환 레벨 시작 (누적 뽑기)'), ...lvFrom, h('th', {}, '')) : null,
+        L > 1 ? h('tr.lv-from', {}, h('th.left', { colspan: 4 }, expMode ? '레벨 시작 (필요 누적 경험치)' : '소환 레벨 시작 (누적 뽑기)'), ...lvFrom, h('th', {}, '')) : null,
       ),
       h('tbody', {}, ...s.grades.map((g, i) => h(`tr${i === s.grades.length - 1 ? '.top-grade' : ''}`, {},
         h('td', {}, text(g, 'name', '등급 이름', () => refreshTables())),
@@ -177,8 +260,9 @@ function renderGrades() {
     )),
     h('div.table-foot', {},
       h('button.btn.small', { type: 'button', onclick: addGrade }, '+ 최상위 등급 추가'),
-      h('button.btn.small', { type: 'button', onclick: addLevel }, '+ 소환 레벨 추가'),
-      h('button.btn.small', { type: 'button', disabled: L <= 1, onclick: () => { s.levels.pop(); s.grades.forEach(g => g.probs.pop()); rebuild(); } }, '마지막 레벨 삭제'),
+      s.summonOn ? h('button.btn.small', { type: 'button', onclick: addLevel }, '+ 소환 레벨 추가') : null,
+      s.summonOn ? h('button.btn.small', { type: 'button', disabled: L <= 2, onclick: () => { s.levels.pop(); s.grades.forEach(g => g.probs.pop()); rebuild(); } }, '마지막 레벨 삭제') : null,
+      s.summonOn ? null : h('span.muted.small', {}, '소환 레벨이 꺼져 있어 등급별 고정 확률 한 열만 씁니다 (왼쪽 맨 위 스위치)'),
     ),
   );
   updateSums();
@@ -245,12 +329,12 @@ function renderGoals() {
   );
 }
 
-function rebuild() { renderSide(); renderGrades(); renderGoals(); recompute(); }
+function rebuild() { renderSide(); renderGrades(); renderGoals(); renderAB(); recompute(); }
 
 // ── 계산·표시 ───────────────────────────────────────────
 function recompute() {
   save();
-  const res = analyze(state);
+  const res = analyze(cfgNow());
   if (!res.ok) {
     els.errors.replaceChildren(...res.errors.slice(0, 8).map(e => h('li', {}, e)));
     els.errors.hidden = false;
@@ -278,6 +362,75 @@ function recompute() {
   renderVerify(res);
   renderWarnings(res);
   renderDisclosure();
+  renderModeCard(res);
+  els.docCard.replaceChildren(...gachaDoc(state, cfgNow()));
+}
+
+// ── 모드별 결과: 소환 레벨 켜짐 / 꺼짐 ───────────────────
+function renderModeCard(res) {
+  const cfg = cfgNow(), s = state;
+  if (!(s.summonOn && cfg.levels.length > 1)) return renderFixedCard(res, cfg);
+  const L = cfg.levels.length, maxPulls = cfg.levels[L - 1];
+  const lu = cfg.levelUp, net = (lu?.cost || 0) - (lu?.reward || 0);
+  const maxGems = maxPulls * s.pullCost + net * (L - 1);
+  const money1 = (gems) => money(gems * (hasWon() ? s.wonPerGem : 1));
+  const canvas = h('canvas', { role: 'img', 'aria-label': '소환 횟수별 소환 레벨' });
+  const bands = cfg.levels.map((from, l) => {
+    const to = l + 1 < L ? cfg.levels[l + 1] : null;
+    const pulls = to == null ? 100 : to - from;
+    const rates = gradeRates(cfg, l);
+    return { l, from, to, pulls, counts: rates.map(r => r * pulls), rates };
+  });
+  els.modeCard.replaceChildren(
+    h('div.card-head', {}, h('h2', {}, ...label('소환 레벨 결과', 'g.summonLevel')), h('span.hint', {}, `${s.summon.mode === 'exp' ? `경험치 방식 (소환당 ${s.summon.expPerPull})` : '횟수 방식'} · 최대 Lv${L}${s.summon.withPity ? '' : ' · 소환 레벨 동안 천장 없음'}`)),
+    h('div.mode-kpis', {},
+      h('div', {}, h('span', {}, '최대 레벨 도달'), h('b', {}, `${comma(maxPulls)}회`), h('small', {}, `Lv${L} 시작 누적 소환`)),
+      h('div', {}, h('span', {}, '최대 레벨까지 비용'), h('b', {}, money1(maxGems)), h('small', {}, net ? `뽑기 ${money1(maxPulls * s.pullCost)} ${net > 0 ? '+' : '−'} 레벨업 ${money1(Math.abs(net) * (L - 1))}` : '레벨업 비용·보상 없음')),
+      h('div', {}, h('span', {}, '레벨업 비용·보상 (선택 목표)'), h('b', {}, money1(res.goals[s.view]?.levelAdj ?? 0)), h('small', {}, '목표를 이루기 전 지나간 레벨 기준 기대값'))),
+    h('div.chart-box.short', {}, canvas),
+    h('h3.sub', {}, ...label('레벨 구간별 등급 획득 분포', 'g.bands')),
+    h('div.table-wrap', {}, h('table.mini', {},
+      h('thead', {}, h('tr', {}, h('th.left', {}, '레벨'), h('th', {}, '구간 (누적 소환)'), h('th', {}, '구간 소환 수'), ...s.grades.map(g => h('th', {}, `${g.name}`)))),
+      h('tbody', {}, ...bands.map(b => h('tr', {},
+        h('td.left', {}, `Lv${b.l + 1}`), h('td', {}, b.to == null ? `${comma(b.from)}회~` : `${comma(b.from)}~${comma(b.to - 1)}회`), h('td', {}, b.to == null ? '100회당' : `${comma(b.pulls)}회`),
+        ...b.counts.map((c, gi) => h('td', { title: `1회당 ${(b.rates[gi] * 100).toFixed(3)}%` }, c >= 10 ? comma(c) : c.toFixed(2)))))))),
+    h('p.muted.small', {}, '칸 = 그 구간에서 평균 몇 장 나오는지 (등급 확률 × 구간 소환 수, 10연 보장 반영, 천장 제외). 마지막 레벨은 100회당.'),
+  );
+  // 소환 횟수 → 레벨 (계단)
+  const pts = [];
+  const xMax = Math.max(10, Math.round(maxPulls * 1.25));
+  for (let l = 0; l < L; l++) pts.push({ x: cfg.levels[l], y: l + 1 });
+  pts.push({ x: xMax, y: L });
+  liveChart('gacha:levels', canvas, {
+    type: 'line', data: { datasets: [{ label: '소환 레벨', data: pts, stepped: 'before', borderColor: cssVar('--series-1'), backgroundColor: cssVar('--series-1'), borderWidth: 2, pointRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, parsing: false,
+      scales: { x: { type: 'linear', min: 0, max: xMax, grid: { color: cssVar('--grid') }, ticks: { color: cssVar('--text-3') }, title: { display: true, text: '누적 소환 횟수', color: cssVar('--text-3') } },
+        y: { min: 1, max: L, ticks: { stepSize: 1, color: cssVar('--text-3') }, grid: { color: cssVar('--grid') }, title: { display: true, text: '소환 레벨', color: cssVar('--text-3') } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (it) => `Lv${it.raw.y} · ${comma(it.raw.x)}회부터` } } } },
+  });
+}
+
+function renderFixedCard(res, cfg) {
+  const s = state, rates = gradeRates(cfg, 0), base = cfg.grades.map(g => (g.probs[0] ?? 0) / 100);
+  const r = res.goals[s.view];
+  const top = cfg.grades.length - 1;
+  // 천장 도달 확률 = 천장 직전까지 최상위가 한 번도 안 나올 확률
+  let noTop = 1;
+  if (cfg.pity?.enabled) for (let j = 1; j < cfg.pity.hard; j++) noTop *= 1 - topProb(cfg, base[top], j);
+  els.modeCard.replaceChildren(
+    h('div.card-head', {}, h('h2', {}, ...label('고정 확률 결과', 'g.fixed')), h('span.hint', {}, `등급별 고정 확률${s.ten.enabled ? ` · 10연 보장 ${cfg.grades.find(g => g.id === s.ten.grade)?.name ?? ''} 이상` : ''}${cfg.pity?.enabled ? ` · 천장 ${cfg.pity.hard}회` : ''}`)),
+    h('div.mode-kpis', {},
+      h('div', {}, h('span', {}, `목표 — ${r?.goal.name ?? ''}`), h('b', {}, r ? `${comma(r.mean)}회` : '—'), h('small', {}, r ? `기대 비용 ${pullsMoney(r.mean)}` : '')),
+      h('div', {}, h('span', {}, `천장 도달 (${cfg.grades[top].name})`), h('b', {}, cfg.pity?.enabled ? `${comma(cfg.pity.hard)}회째` : '천장 없음'), h('small', {}, cfg.pity?.enabled ? `천장까지 가는 비율 ${fmtPct(noTop, noTop < 0.01 ? 3 : 1)} (그 전에 한 번도 안 나옴)` : '')),
+      h('div', {}, h('span', {}, '10연 보장'), h('b', {}, s.ten.enabled ? '켜짐' : '꺼짐'), h('small', {}, s.ten.enabled ? '10번째까지 보장 등급 이상이 없으면 10번째는 그 등급 이상' : ''))),
+    h('h3.sub', {}, ...label('등급별 획득', 'g.gradeCounts')),
+    h('div.table-wrap', {}, h('table.mini', {},
+      h('thead', {}, h('tr', {}, h('th.left', {}, '등급'), h('th', {}, '표기 확률'), h('th', {}, '실제 1회당'), h('th', {}, '100회당'), h('th', {}, r ? `목표까지 (${comma(r.mean)}회)` : '목표까지'))),
+      h('tbody', {}, ...cfg.grades.map((g, gi) => h('tr', {},
+        h('td.left', {}, g.name), h('td', {}, `${(base[gi] * 100).toFixed(3)}%`), h('td', {}, `${(rates[gi] * 100).toFixed(3)}%`),
+        h('td', {}, (rates[gi] * 100).toFixed(2)), h('td', {}, r && Number.isFinite(r.mean) ? (rates[gi] * r.mean).toFixed(1) : '—')))))),
+    h('p.muted.small', {}, '실제 1회당 = 10연 보장을 반영한 비율 (천장은 제외 — 최상위는 실효 확률을 확률 공시표에서). 목표까지 = 기대 뽑기 수 동안 평균 몇 장.'),
+  );
 }
 
 function showSelected(res) {
@@ -296,6 +449,39 @@ function showSelected(res) {
   drawChart(res);
   renderQuantiles(res);
   renderWhy(r);
+  renderDistCard(r);
+}
+
+function renderDistCard(r) {
+  const sorted = r.sim.sorted.filter(Number.isFinite);
+  if (!sorted.length) { els.distCard.replaceChildren(h('div.card-head', {}, h('h2', {}, '뽑기 수 분포')), h('p.muted', {}, '목표에 닿은 시행이 없습니다.')); return; }
+  renderDist(els.distCard, 'gacha:dist', Float64Array.from(sorted), {
+    unit: '회', fmt: (v) => comma(v), title: `뽑기 수 분포 — ${r.goal.name}`,
+    hint: `시뮬레이션 ${comma(r.sim.runs)}회${r.exactMean != null ? ' · 평균은 공식 계산값과 비교' : ''}`,
+    note: `비용으로는 P50 ${pullsMoney(sorted[Math.floor(sorted.length / 2)])}, P90 ${pullsMoney(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))])}. 천장·마일리지가 있으면 오른쪽 꼬리가 잘린 모양이 됩니다.`,
+  });
+}
+
+// ── 프리셋 저장 · A/B 비교 ──────────────────────────────
+function renderAB() {
+  renderABCard(els.abCard, {
+    tool: 'gacha',
+    current: () => state,
+    apply: (st) => { const h2 = hydrate(st); if (h2) { state = h2; rebuild(); } },
+    metrics: (st) => {
+      const s2 = hydrate(st) || st, r = analyze({ ...cfgOf(s2), runs: Math.min(s2.runs ?? 3000, 3000) });
+      if (!r.ok) throw new Error(r.errors[0]);
+      const per = s2.pullCost * (s2.wonPerGem > 0 ? s2.wonPerGem : 1);
+      const M = (v) => (Number.isFinite(v) ? `${fmtMoney(v)}${s2.wonPerGem > 0 ? '원' : ` ${s2.gemName}`}` : '—');
+      return r.goals.slice(0, 4).flatMap(g => [
+        { label: `${g.goal.name} — 기대 뽑기`, value: g.mean, fmt: (v) => `${comma(v)}회`, better: 'lower' },
+        { label: `${g.goal.name} — 기대 비용`, value: g.mean * per, fmt: M, better: 'lower' },
+        { label: `${g.goal.name} — P90 비용`, value: g.pct.p90 * per, fmt: M, better: 'lower' },
+        { label: `${g.goal.name} — P99 비용`, value: g.pct.p99 * per, fmt: M, better: 'lower' },
+      ]);
+    },
+    note: '두 설정의 목표(앞에서부터 4개)를 같은 시드로 계산합니다. 목표 이름이 같은 순서여야 줄이 맞습니다.',
+  });
 }
 
 /** 달성 분위별 수치: 뽑기·비용·무과금 도달일·천장 발동을 0.1% ~ 99.9%로 */
@@ -467,13 +653,13 @@ function renderWarnings(res) {
 // 모든 캐릭터의 확률(소환 레벨별), 확률이 바뀌는 조건(천장·픽업 보장·마일리지·교환), 천장을 포함한 실효 확률.
 // 표시 자릿수로 반올림했을 때 0으로 보이는 확률과 합계 오차를 함께 검사한다.
 function renderDisclosure() {
-  const d = disclosure(state);
+  const d = disclosure(cfgNow());
   const L = d.levels.length;
   if (!(state.discLevel < L)) state.discLevel = 0;
   const lv = d.levels[state.discLevel];
   const digits = state.discDigits ?? 4;
   const pct = (p) => `${(p * 100).toFixed(digits)}%`;
-  const exp = unitExpectations(state);
+  const exp = unitExpectations(cfgNow());
   const expOf = (gi, featured) => exp.find(x => x.gi === gi && x.featured === featured) ?? exp.find(x => x.gi === gi);
   const top = state.grades.length - 1;
 

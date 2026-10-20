@@ -21,6 +21,7 @@
 import { compile } from './formula.js';
 import { mulberry32 } from '../enhance/simulate.js';
 import { convergence } from '../lib/mcviz.js';
+import { seedMix } from '../lib/simconfig.js';
 
 export const MODES = { time: '시간 기반 (공격 속도 = 초당 공격)', turn: '턴 교대 (Kalivra 방식)' };
 export const TIES = { coin: '동전 (반반)', simul: '무승부' };
@@ -487,7 +488,7 @@ export function duel(cfg, f, A, B, lv, { runs = cfg.sim?.runs ?? 4000, seed } = 
   const prep = prepare(cfg, f, A, B, lv);
   const ex = duelExact(cfg, f, A, B, lv, prep);
   if (ex) return { exact: true, winA: ex.winA, winB: ex.winB, draw: ex.draw, ci: null, ex, prep };
-  const sm = duelSim(cfg, f, A, B, lv, runs, seed, prep);
+  const sm = duelSim(cfg, f, A, B, lv, runs, seedMix(cfg.sim?.seed, seed ?? 20261018), prep); // 사용자 시드와 섞음 (기본 시드면 예전 그대로)
   const reason = traitsOf(cfg, A).length || traitsOf(cfg, B).length ? '특성' : (A.variance || B.variance) ? '데미지 변동' : '계산량';
   return { exact: false, winA: sm.winA, winB: sm.winB, draw: sm.draw, ci: sm.ciA, sim: sm, prep, reason };
 }

@@ -79,8 +79,10 @@ export const TOOLS = [
 ];
 
 /** 지금 저장된 모든 탭 설정 (없으면 null) */
+/** 지표는 없지만 스냅샷·프로젝트 파일에 함께 담는 저장 키 (데이터 테이블 — 전투 시뮬레이터가 읽음) */
+export const EXTRA_KEYS = ['tables:v1'];
 export function currentStates() {
-  return Object.fromEntries(TOOLS.map(t => [t.key, store.get(t.key)]));
+  return Object.fromEntries([...TOOLS.map(t => t.key), ...EXTRA_KEYS].map(k => [k, store.get(k)]));
 }
 
 /** 한 도구의 지표 (설정이 없으면 기본 템플릿, 계산 실패면 null) */
@@ -112,9 +114,9 @@ export function saveSnapshot(name) {
 export function deleteSnapshot(id) { store.set(SNAP_KEY, listSnapshots().filter(s => s.id !== id)); }
 /** 스냅샷의 설정을 각 탭 저장 키에 되돌림 (화면은 새로고침해야 반영) */
 export function restoreSnapshot(snap) {
-  for (const t of TOOLS) {
-    const v = snap.states?.[t.key];
-    if (v == null) store.remove(t.key); else store.set(t.key, v);
+  for (const key of [...TOOLS.map(t => t.key), ...EXTRA_KEYS]) {
+    const v = snap.states?.[key];
+    if (v == null) store.remove(key); else store.set(key, v);
   }
 }
 

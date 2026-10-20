@@ -3,12 +3,14 @@ import {
   analyze, compileRules, curves, matrix, duel, duelSim, prepare, killStats, statsAt, fromKalivra,
   MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt, traitsOf, scoreOf, compareBuilds, minChanges, battleSensitivity, contributions, solveTarget, applyScale,
 } from './model.js';
-import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS } from './presets.js';
+import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS, FORMULA_INFO } from './presets.js';
+import { tip } from '../lib/tip.js';
 import { unityFiles, unrealFiles } from './export.js';
 import { makeZip } from '../lib/zip.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
 import { drawChart } from '../lib/chart.js';
+import { simFields, seedMix } from '../lib/simconfig.js';
 
 const SCHEMA = 1;
 const STORE_KEY = 'battle:v1';
@@ -127,13 +129,22 @@ function renderSide() {
     const presets = FORMULA_PRESETS[key];
     const input = h('input.formula', {
       type: 'text', value: r[key], spellcheck: false, 'aria-label': `${label} 수식`,
-      oninput: (e) => { r[key] = e.target.value; schedule(250); },
+      oninput: (e) => { r[key] = e.target.value; showInfo(); schedule(250); },
     });
     els.fErr[key] = h('small.formula-err', {});
+    // 프리셋 수식이면 인자의 뜻과 쓰는 상황을 바로 아래에
+    const info = h('div.formula-info');
+    const showInfo = () => {
+      const f = FORMULA_INFO[String(r[key]).replace(/\s+/g, ' ').trim()];
+      info.replaceChildren(...(f ? [h('b', {}, `${f.name} — 인자`), h('ul', {}, ...f.factors.map(x => h('li', {}, x))), h('span', {}, f.use)] : []));
+      info.hidden = !f;
+    };
+    showInfo();
     return h('label.field', {},
       h('span', {}, label, h('span.muted.small', {}, kind === 'self' ? ' · 자기 스탯' : ' · a 공격 / b 방어')),
       input,
-      presets ? select([['', '프리셋 고르기…'], ...presets.map(([l, v]) => [v, l])], '', (v) => { if (v) { r[key] = v; input.value = v; schedule(0); } }, `${label} 프리셋`) : null,
+      presets ? select([['', '프리셋 고르기…'], ...presets.map(([l, v]) => [v, l])], '', (v) => { if (v) { r[key] = v; input.value = v; showInfo(); schedule(0); } }, `${label} 프리셋`) : null,
+      info,
       key === 'cp' ? h('small', {}, '게임에 보여 줄 전투력 숫자. 승패 계산에는 쓰이지 않고, 아래 "CP와 실제 승률"에서 실제 강함과 순서를 비교합니다.') : null,
       els.fErr[key]);
   };
@@ -161,8 +172,9 @@ function renderSide() {
         field('명중 하한 (%)', numIn(r, 'hitMin', { min: 0, max: 100, label: '명중 하한' })),
         field('명중 상한 (%)', numIn(r, 'hitMax', { min: 0, max: 100, label: '명중 상한' }))),
       h('div.row2', {},
-        field('데미지 반올림', select(Object.entries(ROUNDS), r.round, (v) => { r.round = v; schedule(0); }, '데미지 반올림')),
-        field('시뮬레이션 횟수', numIn(s.sim, 'runs', { int: true, min: 200, label: '시뮬레이션 횟수' }), '데미지 변동이 있을 때·검증용')),
+        field('데미지 반올림', select(Object.entries(ROUNDS), r.round, (v) => { r.round = v; schedule(0); }, '데미지 반올림'))
+      ),
+      ...simFields(s.sim, { runsKey: 'runs', seedKey: 'seed', min: 200, max: 100000, onChange: () => schedule(300), runsHint: '데미지 변동·특성이 있을 때와 검증용. 비교(빌드·밸런스 도구)는 같은 시드로 돌립니다' }),
       h('p.desc', {}, '시간·턴 안에 못 끝나면 무승부로 따로 셉니다 (Kalivra는 양쪽 모두 패배로 셈).'),
     ),
     section('formula', '규칙 수식', '코드 실행 없는 파서',
@@ -181,9 +193,11 @@ function renderEntities() {
       h('input.stat-id', { type: 'text', value: s.id, 'aria-label': '스탯 이름(수식용)', title: '수식에서 쓰는 이름', onchange: (e) => renameStat(i, e.target.value.trim()) }),
       h('input.stat-name', { type: 'text', value: s.name ?? '', 'aria-label': '스탯 설명', placeholder: '설명', oninput: (e) => { s.name = e.target.value; save(); } }),
       select(Object.entries(GROWTHS).map(([k, v]) => [k, k === 'linear' ? '선형' : '등비 (g%)']), s.growth, (v) => { s.growth = v; schedule(0); }, `${s.id} 성장 방식`),
-      h('div.stat-range', {},
-        numIn(s, 'min', { allowEmpty: true, placeholder: '최소', label: `${s.id} 최소` }),
-        numIn(s, 'max', { allowEmpty: true, placeholder: '최대', label: `${s.id} 최대` })),
+      h('div.stat-range', { title: '이 스탯이 가질 수 있는 값의 범위 — 계산 중 이 범위로 자름 (비우면 제한 없음)' },
+        h('span.range-cap', {}, '허용 범위', tip('b.range')),
+        numIn(s, 'min', { allowEmpty: true, placeholder: '최소 없음', label: `${s.id} 최솟값` }),
+        h('span.range-sep', {}, '~'),
+        numIn(s, 'max', { allowEmpty: true, placeholder: '최대 없음', label: `${s.id} 최댓값` })),
       h('button.icon-x', { type: 'button', title: '스탯 삭제', disabled: S.length <= 1, onclick: () => removeStat(i) }, '×'),
     ));
   const cell = (e, s) => {
@@ -194,17 +208,17 @@ function renderEntities() {
           type: 'text', value: sv.table.map(([l, v]) => `${l}:${v}`).join(' '), spellcheck: false, 'aria-label': `${e.name} ${s.id} 표`, title: '레벨:값 을 띄어 씀 (사이는 직선 보간)',
           oninput: (ev) => { const pts = parseTable(ev.target.value); if (pts) { sv.table = pts; ev.target.classList.remove('bad-input'); schedule(); } else ev.target.classList.add('bad-input'); },
         }),
-        h('button.mini-btn', { type: 'button', title: '공식(기본 + 성장)으로 되돌리기', onclick: () => { delete sv.table; renderEntities(); schedule(0); } }, '공식'));
+        h('button.mini-btn', { type: 'button', title: '입력 방식을 공식(Lv1 기본값 + 레벨당 성장)으로 되돌리기', onclick: () => { delete sv.table; renderEntities(); schedule(0); } }, '공식으로 입력'), tip('b.inputmode'));
     }
     return h('td.stat-cell', {},
       h('div.bg', {},
-        numIn(sv, 'b', { label: `${e.name} ${s.id} 기본값` }),
-        numIn(sv, 'g', { label: `${e.name} ${s.id} 레벨당 ${s.growth === 'geo' ? '%' : '증가'}`, cls: 'g' })),
-      h('button.mini-btn', { type: 'button', title: '레벨별 표로 입력 (레벨:값)', onclick: () => { sv.table = [[1, sv.b ?? 0], [state.maxLevel, (sv.b ?? 0) + (sv.g ?? 0) * (state.maxLevel - 1)]]; renderEntities(); schedule(0); } }, '표'));
+        h('label.bg-row', {}, h('span.cap', { title: '레벨 1일 때의 값' }, 'Lv1'), numIn(sv, 'b', { label: `${e.name} ${s.id} Lv1 기본값` })),
+        h('label.bg-row', {}, h('span.cap', { title: s.growth === 'geo' ? '레벨이 1 오를 때마다 곱해지는 증가율(%)' : '레벨이 1 오를 때마다 더해지는 값' }, s.growth === 'geo' ? '%/Lv' : '+/Lv'), numIn(sv, 'g', { label: `${e.name} ${s.id} 레벨당 ${s.growth === 'geo' ? '증가율 %' : '증가량'}`, cls: 'g' }))),
+      h('button.mini-btn', { type: 'button', title: '입력 방식을 레벨별 표(레벨:값, 사이는 직선)로 바꾸기', onclick: () => { sv.table = [[1, sv.b ?? 0], [state.maxLevel, (sv.b ?? 0) + (sv.g ?? 0) * (state.maxLevel - 1)]]; renderEntities(); schedule(0); } }, '레벨표로 입력'));
   };
   els.bulk = { stat: S[0]?.id, part: 'b', op: 'mult', value: 1.1 };
   put(els.entCard, 
-    h('div.card-head', {}, h('h2', {}, '엔티티와 스탯'), h('span.hint', {}, '칸마다 위 = 기본값(Lv1), 아래 = 레벨당 증가(등비면 %) · "표"로 레벨별 값을 직접 넣을 수 있음 (사이는 직선)')),
+    h('div.card-head', {}, h('h2', {}, '엔티티와 스탯'), h('span.hint', {}, '칸마다 Lv1 = 레벨 1 기본값, +/Lv = 레벨당 증가량(등비면 %/Lv = 증가율) · "레벨표로 입력"을 누르면 레벨:값 표로 직접 넣음 (사이는 직선)')),
     h('div.table-wrap', {}, h('table.stages.ent-table', {},
       h('thead', {}, h('tr', {}, h('th', {}, ''), h('th.left', {}, '엔티티'), h('th', { title: '데미지 ±비율 (0.1 = ±10%). 0이 아니면 시뮬레이션' }, '변동'), h('th', { title: '발동 시점 × 조건 × 효과. 있으면 시뮬레이션' }, '특성'), ...S.map(statHead), h('th', {}, ''))),
       h('tbody', {}, ...E.flatMap((e, i) => [h('tr', {},
@@ -611,8 +625,8 @@ function renderPair(res) {
   const prep = d.prep;
   const mode = state.rules.mode;
   // 검증: 정확해면 시뮬레이션과 비교, 아니면 시뮬레이션 결과 그대로
-  const sim = d.exact ? duelSim(state, f, A, B, lv, state.sim.runs, 777, prep) : d.sim;
-  const logRun = duelSim(state, f, A, B, lv, LOG_BATTLES, 555, prep, { logs: LOG_BATTLES });
+  const sim = d.exact ? duelSim(state, f, A, B, lv, state.sim.runs, seedMix(state.sim.seed, 777), prep) : d.sim;
+  const logRun = duelSim(state, f, A, B, lv, LOG_BATTLES, seedMix(state.sim.seed, 555), prep, { logs: LOG_BATTLES });
   const prof = (p, hpT) => [
     ['명중', pct(p.hit)], ['치명 (적중 중)', pct(p.crit)], ['1회 데미지', `${num(p.normal, 1)} / 치명 ${num(p.critical, 1)}`],
     ['공격 속도', mode === 'time' ? `${num(p.speed, 2)}회/초` : `${num(p.speed, 2)} (선공 확률에만)`], ['상대 체력', num(hpT, 0)],

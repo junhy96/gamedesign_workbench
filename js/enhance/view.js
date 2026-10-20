@@ -7,15 +7,20 @@ import { bindCurrency } from './currency.js';
 import { renderTable } from './table.js';
 import {
   buildKPIs, buildStrip, renderKPIs, buildDist, renderMC, renderMCSkipped, renderResources,
-  renderOptCard, renderInverse, drawChart, renderSweepCard, drawSweep, renderQuantiles,
+  renderOptCard, renderInverse, refreshInverse, drawChart, renderSweepCard, drawSweep, renderQuantiles,
 } from './results.js';
-import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma } from '../lib/util.js';
+import { h, store, encodeState, decodeState, downloadJSON, downloadText, pickJSON, toast, debounce, comma, fmtPct } from '../lib/util.js';
+import { renderDist } from '../lib/distview.js';
+import { renderABCard } from '../lib/abcompare.js';
+import { enhanceDoc } from './doc.js';
+import { money as wonFmt } from './currency.js';
 
 const STORE_KEY = 'enhance:v2'; // 저장 키는 그대로 두고 내용을 migrate()로 v3까지 올려 읽는다
 const SECTIONS = [['enh-stages', '단계 표'], ['enh-analysis', '결과 분석'], ['enh-tools', '밸런스 도구']];
 const MC_STEP_BUDGET = 4e7;   // 시뮬레이션 계산량 상한 (기대 시도 × 반복 수)
 const MC_MAX_TRIALS = 20000;
 const MC_MIN_TRIALS = 1000;
+const MC_SEED = 20261013;     // 기본 시드 (왼쪽 '시뮬레이션'에서 바꿀 수 있음)
 const CONFIG_KEYS = ['rows', 'resources', 'start', 'target', 'restore', 'destroyCosts', 'double', 'streak', 'items', 'usage', 'event'];
 
 const els = {};
@@ -23,10 +28,12 @@ let worker, mcSeq = 0, timer;
 
 const ctx = {
   state: null, tableDirty: true, lastMC: null, lastRes: null, chart: null,
-  toConfig: () => Object.fromEntries(CONFIG_KEYS.map(k => [k, ctx.state[k]])),
+  toConfig: () => configOf(ctx.state),
   schedule(ms = 150, tableDirty = false) { if (tableDirty) ctx.tableDirty = true; clearTimeout(timer); timer = setTimeout(recompute, ms); },
   markTableDirty() { ctx.tableDirty = true; },
   recompute: () => recompute(),
+  onMC: (mc) => renderDistCard(mc),
+  renderDoc: () => { if (els.docCard) els.docCard.replaceChildren(...enhanceDoc(ctx.state, ctx.toConfig(), ctx.lastRes)); },
   rebuild: () => rebuild(),
   loadTemplate(id) { ctx.state = defaultState(id); rebuild(); },
   save: debounce(() => store.set(STORE_KEY, serialize(ctx.state)), 300),
@@ -38,9 +45,20 @@ const ctx = {
   },
 };
 
+/** 화면 상태 → 계산 설정 (실패 보정 ON/OFF: 꺼진 쪽은 0, 둘 다 꺼지면 보정 없음) — 프리셋 비교에도 씀 */
+function configOf(state) {
+  const cfg = Object.fromEntries(CONFIG_KEYS.map(k => [k, state[k]]));
+  const st = cfg.streak;
+  if (st && st.kind !== 'none' && (st.bonusOn === false || st.pityOn === false)) {
+    const e = { ...st, bonus: st.bonusOn === false ? 0 : st.bonus, pity: st.pityOn === false ? 0 : st.pity };
+    cfg.streak = !(e.bonus > 0) && !e.pity ? { ...e, kind: 'none' } : e;
+  }
+  return cfg;
+}
+
 // ── 상태 ────────────────────────────────────────────────
 function defaultState(id) {
-  return migrate({ v: SCHEMA, template: id, ...TEMPLATES[id].make(), showAll: false, baseline: null, budget: 0, inverse: null, priceSweep: null });
+  return migrate({ v: SCHEMA, template: id, ...TEMPLATES[id].make(), showAll: false, baseline: null, budget: 0, inverse: null, priceSweep: null, sim: { trials: MC_MAX_TRIALS, seed: MC_SEED } });
 }
 function serialize(st) { const { baseline, ...rest } = st; return rest; }
 function hydrate(obj) {
@@ -106,12 +124,15 @@ function build(root) {
         section('enh-analysis', '결과 분석', '총비용 분포 · 달성 분위 · 재화별 소모 · 계산 검증', 'out'),
         buildDist(ctx, els),
         els.pathCard = h('div.card.role-out'),
+        els.distCard = h('div.card.role-out'),
         els.quantCard = h('div.card.role-out'),
         h('div.two-col', {}, els.resources = h('div.card.role-out'), els.verify = h('div.card.role-check')),
 
         section('enh-tools', '밸런스 도구', '목표 비용 역산 · 보조 아이템 최적 사용 정책 · 아이템 가격 곡선', 'tool'),
         h('div.two-col', {}, els.inverse = h('div.card.tool-card.role-tool'), els.optCard = h('div.card.tool-card.role-tool')),
         els.sweepCard = h('div.card.tool-card.role-tool'),
+        els.abCard = h('div.card.role-tool'),
+        els.docCard = h('div.card.role-doc'),
       ),
     ),
   );
@@ -140,8 +161,49 @@ function rebuild() {
   renderSweepCard(ctx, els);
   els.showAll.checked = ctx.state.showAll;
   els.inverse.replaceChildren();
+  renderAB();
   ctx.tableDirty = true;
   recompute();
+}
+
+// ── 결과 분포 (비용·시도) ───────────────────────────────
+let distKind = 'cost';
+export function renderDistCard(mc) {
+  if (!mc) { els.distCard.replaceChildren(); return; }
+  const tabs = h('div.seg-tabs', {}, ...[['cost', '총비용'], ['attempts', '시도 횟수']].map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(distKind === k), onclick: () => { distKind = k; renderDistCard(mc); } }, l)));
+  const body = h('div');
+  els.distCard.replaceChildren(tabs, body);
+  if (distKind === 'cost') renderDist(body, 'enh:dist', mc.sortedCost, { fmt: (v) => wonFmt(v), title: '총비용 분포', hint: `시뮬레이션 ${comma(mc.trials)}회 · 세로선 = P10·P50·P90·P99`, note: `평균 ${wonFmt(mc.mean.cost)} · 파괴 없이 도달 ${fmtPct(mc.noDestroy)}. 꼬리가 긴 분포라 평균이 중앙값보다 큽니다 — 보통 유저는 P50, 민원 수준은 P90·P99로 보세요.` });
+  else renderDist(body, 'enh:dist', Float64Array.from(mc.sortedAttempts || []), { unit: '회', fmt: (v) => comma(v), title: '시도 횟수 분포', hint: `시뮬레이션 ${comma(mc.trials)}회` });
+}
+
+// ── 프리셋 저장 · A/B 비교 ──────────────────────────────
+function renderAB() {
+  renderABCard(els.abCard, {
+    tool: 'enhance',
+    current: () => serialize(ctx.state),
+    apply: (st) => { const h2 = hydrate(st); if (h2) { ctx.state = h2; rebuild(); } },
+    metrics: (st) => {
+      const s2 = hydrate(st) || st, cfg = configOf(s2), r = analyze(cfg);
+      if (!r.ok) throw new Error(r.errors[0]);
+      const sim = s2.sim || {};
+      const mc = simulate(cfg, Math.min(sim.trials ?? 20000, 10000), sim.seed ?? MC_SEED);
+      const q = (arr, p) => arr[Math.min(arr.length - 1, Math.floor(p * arr.length))];
+      const W = (v) => wonFmt(v);
+      return [
+        { label: '기대 총비용', value: r.expCost, fmt: W, better: 'lower' },
+        { label: '총비용 P10', value: q(mc.sortedCost, 0.1), fmt: W, better: 'lower' },
+        { label: '총비용 중앙값 (P50)', value: q(mc.sortedCost, 0.5), fmt: W, better: 'lower' },
+        { label: '총비용 P90', value: q(mc.sortedCost, 0.9), fmt: W, better: 'lower' },
+        { label: '총비용 P99', value: q(mc.sortedCost, 0.99), fmt: W, better: 'lower' },
+        { label: '표준편차', value: r.std, fmt: W, better: 'lower' },
+        { label: '기대 시도 횟수', value: r.attempts, fmt: (v) => `${(+v.toFixed(1)).toLocaleString('ko-KR')}회`, better: 'lower' },
+        { label: '기대 파괴 횟수', value: r.expDestroy, fmt: (v) => `${v.toFixed(2)}회`, better: 'lower' },
+        { label: '파괴 없이 도달할 확률', value: r.noDestroy, fmt: (v) => fmtPct(v), better: 'higher' },
+      ];
+    },
+    note: '비교는 두 설정을 같은 시드로 시뮬레이션합니다(각 1만 회). 기대 총비용·표준편차·파괴 확률은 공식 계산값입니다.',
+  });
 }
 
 // ── 계산 ────────────────────────────────────────────────
@@ -161,22 +223,24 @@ function recompute() {
   renderKPIs(ctx, els, res);
   renderTable(ctx, els, res);
   renderResources(els, res);
-  if (!els.inverse.hasChildNodes()) renderInverse(ctx, els, res);
+  if (!els.inverse.hasChildNodes()) renderInverse(ctx, els, res); else refreshInverse(ctx, els);
+  ctx.renderDoc();
   runMC(cfg, res);
 }
 
 function runMC(cfg, res) {
   const id = ++mcSeq;
-  const trials = Math.min(MC_MAX_TRIALS, Math.floor(MC_STEP_BUDGET / Math.max(res.attempts, 1)));
+  const sim = ctx.state.sim || {};
+  const trials = Math.min(sim.trials ?? MC_MAX_TRIALS, Math.floor(MC_STEP_BUDGET / Math.max(res.attempts, 1)));
   if (trials < MC_MIN_TRIALS) { renderMCSkipped(ctx, els, res); return; }
   els.distHint.textContent = `시뮬레이션 ${comma(trials)}회 계산 중…`;
   const done = (mc) => { if (id === mcSeq) renderMC(ctx, els, mc, res); };
   try {
     worker ??= new Worker(new URL('./mc-worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => { if (e.data.id === mcSeq && e.data.ok) done(e.data.result); };
-    worker.postMessage({ id, cfg, trials, seed: 20261013 });
+    worker.postMessage({ id, cfg, trials, seed: sim.seed ?? MC_SEED });
   } catch {
-    done(simulate(cfg, Math.min(trials, 5000))); // Worker 미지원 환경
+    done(simulate(cfg, Math.min(trials, 5000), sim.seed ?? MC_SEED)); // Worker 미지원 환경
   }
 }
 

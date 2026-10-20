@@ -32,6 +32,9 @@
 import { mulberry32 } from '../enhance/simulate.js';
 import { PCTS, quantiles } from '../lib/quantiles.js';
 import { convergence } from '../lib/mcviz.js';
+import { seedMix } from '../lib/simconfig.js';
+
+const SEED = 20261017; // 기본 시드 — cfg.seed가 이 값이면 예전과 같은 결과
 
 export const GOAL_TYPES = { collect: '수집 (K종 × k장)', pickup: '픽업 유닛 k장', unit: '특정 캐릭터 k장' };
 const MAX_PULLS = 1e9; // 한 번 시행의 상한 (확률 0 등으로 닿지 못하는 목표)
@@ -136,12 +139,92 @@ function geometric(p, rnd) {
   return Math.max(1, Math.ceil(Math.log1p(-rnd()) / Math.log1p(-p)));
 }
 
+// ── 10연 보장 ───────────────────────────────────────────
+/** 10연 보장: 10번째 뽑기까지 정한 등급 이상이 한 번도 없으면 10번째는 그 등급 이상 (등급 비율대로) */
+export const tenOn = (cfg) => !!(cfg.ten?.enabled && cfg.grades.some(g => g.id === cfg.ten.grade));
+const tenIndex = (cfg) => cfg.grades.findIndex(g => g.id === cfg.ten.grade);
+/** 이 목표의 등급이 보장 등급 이상이면 보장이 결과를 바꾼다 (공식 계산 대신 한 번씩 뽑는 시뮬레이션) */
+export function tenRelevant(cfg, goal) {
+  if (!tenOn(cfg)) return false;
+  const g = goal.type === 'pickup' ? cfg.grades.length - 1 : cfg.grades.findIndex(x => x.id === goal.grade);
+  return g >= tenIndex(cfg);
+}
+
+/**
+ * 뽑기 한 번에 각 등급이 나오는 실제 비율 (소환 레벨 l, 천장 제외). 10연 보장이 있으면
+ * 보장 등급 이상: (9p + (1 − a)p + a·p/q) / 10, 아래 등급: (9p + (1 − a)p) / 10   (q = 보장 등급 이상 확률 합, a = (1 − q)^9)
+ */
+export function gradeRates(cfg, l = 0) {
+  const p = cfg.grades.map(g => (g.probs[l] ?? 0) / 100);
+  if (!tenOn(cfg)) return p;
+  const G = tenIndex(cfg);
+  const q = p.reduce((s, x, h) => s + (h >= G ? x : 0), 0);
+  if (!(q > 0)) return p;
+  const a = (1 - q) ** 9;
+  return p.map((x, h) => (h >= G ? (9 * x + (1 - a) * x + a * x / q) / 10 : (9 * x + (1 - a) * x) / 10));
+}
+
+/** 한 번씩 뽑는 시뮬레이션 (10연 보장용). 천장·픽업·마일리지·조각 교환·소환 레벨을 모두 반영 */
+function simulatePerPull(cfg, goal, runs, rnd) {
+  const P = probTable(cfg);
+  const { g, isTop, K, k, n, off } = goalSpec(cfg, goal);
+  const levels = cfg.levels, top = cfg.grades.length - 1, G = tenIndex(cfg);
+  const pityOn = isTop && cfg.pity?.enabled;
+  const softFrom = pityOn ? Math.min(cfg.pity.hard, cfg.pity.softStep > 0 ? cfg.pity.softStart : Infinity) : Infinity;
+  const pick = isTop && cfg.pickup?.enabled ? { share: cfg.pickup.share / 100, guarantee: !!cfg.pickup.guarantee } : null;
+  const mil = isTop && cfg.mileage?.enabled ? cfg.mileage : null;
+  const exCost = cfg.grades[g].exchange || 0, shardDup = cfg.grades[g].shard || 0;
+  const out = new Float64Array(runs), pityRuns = pityOn ? new Float64Array(runs) : null;
+  const src = { pull: 0, pity: 0, mileage: 0, exchange: 0 };
+  const need = new Int32Array(K);
+  const takeBest = () => { let b = 0; for (let i = 1; i < K; i++) if (need[i] > need[b]) b = i; need[b]--; };
+  const w = new Float64Array(cfg.grades.length);
+  const LIMIT = 2e6;
+  for (let r = 0; r < runs; r++) {
+    need.fill(k);
+    let remaining = K * k, t = 0, c = 0, guar = false, miles = 0, shards = 0, pityHits = 0, high = false;
+    while (remaining > 0) {
+      while (mil && remaining > 0 && miles >= mil.cost) { miles -= mil.cost; if (need[0] > 0) need[0]--; else takeBest(); remaining--; src.mileage++; }
+      while (exCost > 0 && remaining > 0 && shards >= exCost) { shards -= exCost; takeBest(); remaining--; src.exchange++; }
+      if (remaining <= 0) break;
+      if (t > LIMIT) { t = Infinity; break; }
+      const L = levelAt(levels, t), row = P[L];
+      if (t % 10 === 0) high = false;
+      // 이번 뽑기의 등급 비율: 천장 구간이면 최상위 확률을 올리고 나머지를 같은 비율로 줄임
+      const pTop = pityOn ? topProb(cfg, row[top], c + 1) : row[top];
+      const scale = row[top] < 1 ? (1 - pTop) / (1 - row[top]) : 0;
+      for (let h = 0; h < w.length; h++) w[h] = h === top ? pTop : row[h] * scale;
+      if (t % 10 === 9 && !high) for (let h = 0; h < G; h++) w[h] = 0; // 10번째인데 보장 등급 이상이 없었음
+      let sum = 0; for (let h = 0; h < w.length; h++) sum += w[h];
+      let x = rnd() * sum, hit = w.length - 1;
+      for (let h = 0; h < w.length; h++) { x -= w[h]; if (x < 0) { hit = h; break; } }
+      t++;
+      if (mil) miles += mil.per;
+      if (hit >= G) high = true;
+      const forced = pityOn && pTop >= 1, zone = pityOn && c + 1 >= softFrom;
+      if (hit === top && pityOn) { if (zone) pityHits++; c = 0; } else if (pityOn) c++;
+      if (hit !== g) { shards += cfg.grades[hit].shard || 0; continue; }
+      let kind;
+      if (pick) {
+        if (guar || rnd() < pick.share) { kind = 0; guar = false; }
+        else { kind = 1 + Math.floor(rnd() * (n - 1)); guar = pick.guarantee; }
+      } else kind = Math.floor(rnd() * n);
+      if (kind >= off && kind < off + K && need[kind - off] > 0) { need[kind - off]--; remaining--; if (forced) src.pity++; else src.pull++; }
+      else shards += shardDup;
+    }
+    out[r] = t;
+    if (pityRuns) pityRuns[r] = pityHits;
+  }
+  return finishSim(out, pityRuns, src, runs, softFrom);
+}
+
 /**
  * 목표 하나를 runs번 시뮬레이션. 반환: 정렬된 뽑기 수 표본, 평균, 획득 경로별 평균 장수.
  * 표본에 Infinity가 있으면 그 시행은 상한 안에 목표를 못 채운 것.
  */
 export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
   const rnd = mulberry32(seed);
+  if (tenRelevant(cfg, goal)) return simulatePerPull(cfg, goal, runs, rnd);
   const P = probTable(cfg);
   const { g, isTop, K, k, n, off } = goalSpec(cfg, goal);
   const levels = cfg.levels;
@@ -208,6 +291,11 @@ export function simulateGoal(cfg, goal, runs = 3000, seed = 20261017) {
     out[r] = t;
     if (pityRuns) pityRuns[r] = pityHits;
   }
+  return finishSim(out, pityRuns, src, runs, softFrom);
+}
+
+/** 시뮬레이션 표본 → 결과 (정렬, 평균, 분위, 획득 경로, 천장 구간 당첨, 수렴) */
+function finishSim(out, pityRuns, src, runs, softFrom) {
   const conv = convergence(out); // 시행 순서대로의 누적 평균 뽑기 수 (끝나지 않은 시행이 있으면 null)
   out.sort();
   let pitySum = 0;
@@ -473,7 +561,7 @@ export function unitExpectations(cfg, runs = 2000) {
       const goal = { id: `u${gi}${type}`, name: '', type, grade: g.id, kinds: 1, copies: 1 };
       const never = cfg.levels.every((_, l) => !((g.probs[l] ?? 0) > 0)) && !(gi === top && (cfg.pity?.enabled || cfg.mileage?.enabled));
       const ex = never ? null : exactUnit(cfg, goal);
-      const mean = never ? Infinity : ex ? ex.mean : simulateGoal(cfg, goal, runs, 777 + gi).mean;
+      const mean = never ? Infinity : ex ? ex.mean : simulateGoal(cfg, goal, runs, seedMix(cfg.seed, 777 + gi, SEED)).mean;
       out.push({ gi, featured, mean, exact: !!ex });
     }
   });
@@ -487,18 +575,22 @@ export function analyze(cfg, { runs = cfg.runs ?? 3000 } = {}) {
   const gemPerDayFree = cfg.user?.freePerDay || 0;
   const gemPerDayPaid = gemPerDayFree + (cfg.wonPerGem > 0 ? (cfg.user?.monthlyWon || 0) / 30 / cfg.wonPerGem : 0);
   const goals = cfg.goals.map((goal, i) => {
-    const sim = simulateGoal(cfg, goal, runs, 20261017 + i * 7919);
-    const exact = goal.type === 'pickup' || goal.type === 'unit' ? exactUnit(cfg, goal) : null;
-    const exactMean = exact ? exact.mean : exactCollectMean(cfg, goal);
+    const sim = simulateGoal(cfg, goal, runs, seedMix(cfg.seed, 20261017 + i * 7919, SEED));
+    const ten = tenRelevant(cfg, goal);
+    const exact = !ten && (goal.type === 'pickup' || goal.type === 'unit') ? exactUnit(cfg, goal) : null;
+    const exactMean = exact ? exact.mean : ten ? null : exactCollectMean(cfg, goal);
     const mean = exactMean ?? sim.mean;
     const pct = exact ? { p50: exact.q50, p90: exact.q90, p99: exact.q99 } : { p50: sim.q(0.5), p90: sim.q(0.9), p99: sim.q(0.99) };
     const quant = exact ? exact.quantiles : quantiles(sim.sorted); // 분위수 표 (PCTS 순서)
     const gems = mean * cfg.pullCost;
     const reach = exact ? exact.reach : (n) => reachShare(sim.sorted, n);
     const nd = noDupConfig(cfg, goal);
-    const noDup = nd ? (exactCollectMean(nd.cfg, nd.goal) ?? simulateGoal(nd.cfg, nd.goal, runs, 20261017 + i * 7919).mean) : null;
+    const noDup = nd ? (exactCollectMean(nd.cfg, nd.goal) ?? simulateGoal(nd.cfg, nd.goal, runs, seedMix(cfg.seed, 20261017 + i * 7919, SEED)).mean) : null;
+    // 소환 레벨 레벨업 비용·보상(유료 재화): 목표를 이루기 전에 지나간 레벨마다 (비용 − 보상) × P(뽑기 수 ≥ 그 레벨 기준)
+    const lu = cfg.levelUp, net = lu ? (lu.cost || 0) - (lu.reward || 0) : 0;
+    const levelAdj = net && cfg.levels.length > 1 ? cfg.levels.slice(1).reduce((a, from) => a + net * (1 - reach(from - 1)), 0) : 0;
     return {
-      goal, spec: goalSpec(cfg, goal), sim, exact, exactMean, mean, pct, quant, reach, noDup,
+      goal, spec: goalSpec(cfg, goal), sim, exact, exactMean, mean, pct, quant, reach, noDup, levelAdj, tenSim: ten,
       naive: naivePulls(cfg, goal),
       gems, won: gems * cfg.wonPerGem,
       daysFree: gemPerDayFree > 0 ? gems / gemPerDayFree : Infinity,

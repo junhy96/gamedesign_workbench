@@ -1,0 +1,78 @@
+{
+  "classes": [
+    { "id": "CL_WARRIOR", "name": "전사", "role": "dealer", "row": "front", "hp": 900, "atk": 95, "def": 45, "spd": 100, "cric": 10, "crid": 1.5, "acc": 95, "eva": 5, "hpG": 60, "atkG": 6, "defG": 3, "spdG": 0.5, "skills": ["SK_SLASH"] },
+    { "id": "CL_KNIGHT", "name": "기사", "role": "tank", "row": "front", "hp": 1300, "atk": 60, "def": 80, "spd": 90, "cric": 5, "crid": 1.5, "acc": 90, "eva": 5, "hpG": 90, "atkG": 3.5, "defG": 5, "spdG": 0.4, "skills": ["SK_SHIELDBASH", "SK_PROVOKE"] },
+    { "id": "CL_ARCHER", "name": "궁수", "role": "dealer", "row": "back", "hp": 650, "atk": 110, "def": 25, "spd": 115, "cric": 20, "crid": 1.7, "acc": 100, "eva": 15, "hpG": 40, "atkG": 7.5, "defG": 1.5, "spdG": 0.6, "skills": ["SK_ARROW"] },
+    { "id": "CL_MAGE", "name": "마법사", "role": "dealer", "row": "back", "hp": 600, "atk": 125, "def": 20, "spd": 105, "cric": 15, "crid": 1.6, "acc": 100, "eva": 5, "hpG": 38, "atkG": 8.5, "defG": 1.2, "spdG": 0.5, "skills": ["SK_FIREBALL"] },
+    { "id": "CL_PRIEST", "name": "사제", "role": "healer", "row": "back", "hp": 700, "atk": 70, "def": 30, "spd": 110, "cric": 5, "crid": 1.5, "acc": 100, "eva": 5, "hpG": 45, "atkG": 4.5, "defG": 2, "spdG": 0.5, "skills": ["SK_HEAL"] },
+    { "id": "CL_BARD", "name": "음유시인", "role": "buffer", "row": "back", "hp": 720, "atk": 65, "def": 30, "spd": 120, "cric": 5, "crid": 1.5, "acc": 100, "eva": 10, "hpG": 46, "atkG": 4, "defG": 2, "spdG": 0.7, "skills": ["SK_WARSONG"] },
+    { "id": "CL_SHAMAN", "name": "주술사", "role": "debuffer", "row": "back", "hp": 680, "atk": 80, "def": 28, "spd": 108, "cric": 8, "crid": 1.5, "acc": 100, "eva": 8, "hpG": 44, "atkG": 5, "defG": 1.8, "spdG": 0.5, "skills": ["SK_CURSE"] }
+  ],
+  "characters": [
+    { "id": "CH_AREN", "name": "아렌", "classId": "CL_WARRIOR", "element": "화", "grade": "SSR", "modMode": "add", "hp": 100, "atk": 10, "skills": ["SK_BREAK"] },
+    { "id": "CH_BRIGID", "name": "브리지드", "classId": "CL_KNIGHT", "element": "광", "grade": "SSR", "modMode": "mul", "hp": 10, "def": 10, "skills": ["SK_BARRIER"] },
+    { "id": "CH_CAEL", "name": "카엘", "classId": "CL_ARCHER", "element": "풍", "grade": "SR", "modMode": "add", "atk": 5, "cric": 5, "skills": ["SK_RAIN"] },
+    { "id": "CH_DAHLIA", "name": "달리아", "classId": "CL_MAGE", "element": "화", "grade": "SSR", "modMode": "mul", "atk": 10, "skills": ["SK_METEOR"] },
+    { "id": "CH_ELLA", "name": "엘라", "classId": "CL_PRIEST", "element": "수", "grade": "SSR", "modMode": "add", "skills": ["SK_MASSHEAL", "SK_REVIVE"] },
+    { "id": "CH_FINN", "name": "핀", "classId": "CL_BARD", "element": "풍", "grade": "SR", "modMode": "add", "spd": 5, "skills": [] },
+    { "id": "CH_GRETA", "name": "그레타", "classId": "CL_SHAMAN", "element": "암", "grade": "SR", "modMode": "add", "skills": [] },
+    { "id": "CH_HUGO", "name": "휴고", "classId": "CL_WARRIOR", "element": "수", "grade": "R", "modMode": "mul", "atk": -5, "skills": [] }
+  ],
+  "monsters": [
+    { "id": "MO_SLIME", "name": "슬라임", "element": "수", "row": "front", "hp": 3000, "atk": 120, "def": 30, "spd": 80, "cric": 0, "crid": 1.5, "acc": 90, "eva": 0, "skills": [], "boss": false },
+    { "id": "MO_GOBLIN", "name": "고블린 궁수", "element": "풍", "row": "back", "hp": 2200, "atk": 160, "def": 20, "spd": 115, "cric": 10, "crid": 1.5, "acc": 95, "eva": 10, "skills": ["SK_BITE"], "boss": false },
+    { "id": "MO_ORC", "name": "오크 전사", "element": "화", "row": "front", "hp": 4500, "atk": 190, "def": 60, "spd": 95, "cric": 10, "crid": 1.5, "acc": 95, "eva": 5, "skills": ["SK_SLAM"], "boss": false },
+    { "id": "MO_GOLEM", "name": "화염 골렘", "element": "화", "row": "front", "hp": 48000, "atk": 330, "def": 90, "spd": 95, "cric": 10, "crid": 1.5, "acc": 100, "eva": 0, "skills": ["SK_SLAM"], "boss": true, "groggyMax": 300, "phases": "70=SK_FLAME|SK_SLAM; 30=SK_ERUPT|SK_FLAME|SK_ENRAGE" }
+  ],
+  "skills": [
+    { "id": "SK_SLASH", "name": "베기", "target": "enemy", "area": "single", "mult": 1.6, "cost": 30, "cooldown": 2, "groggy": 15, "effects": [] },
+    { "id": "SK_SHIELDBASH", "name": "방패 강타", "target": "enemy", "area": "single", "mult": 1.0, "cost": 30, "cooldown": 3, "groggy": 25, "effects": ["EF_STUN"] },
+    { "id": "SK_PROVOKE", "name": "도발", "target": "self", "area": "single", "mult": 0, "cost": 20, "cooldown": 4, "groggy": 0, "effects": ["EF_TAUNT"] },
+    { "id": "SK_ARROW", "name": "연사", "target": "enemy", "area": "single", "mult": 1.4, "cost": 25, "cooldown": 1, "groggy": 8, "effects": [] },
+    { "id": "SK_RAIN", "name": "화살비", "target": "enemy", "area": "all", "mult": 0.7, "cost": 50, "cooldown": 3, "groggy": 10, "effects": [] },
+    { "id": "SK_FIREBALL", "name": "화염구", "target": "enemy", "area": "single", "mult": 1.8, "cost": 40, "cooldown": 2, "groggy": 12, "effects": ["EF_BURN"] },
+    { "id": "SK_METEOR", "name": "메테오", "target": "enemy", "area": "all", "mult": 1.1, "cost": 70, "cooldown": 4, "groggy": 20, "effects": ["EF_BURN"] },
+    { "id": "SK_HEAL", "name": "치유", "target": "ally", "area": "single", "mult": 0, "cost": 30, "cooldown": 1, "groggy": 0, "effects": ["EF_HEAL"] },
+    { "id": "SK_MASSHEAL", "name": "광역 치유", "target": "ally", "area": "all", "mult": 0, "cost": 60, "cooldown": 3, "groggy": 0, "effects": ["EF_HEAL_SM"] },
+    { "id": "SK_BARRIER", "name": "수호의 빛", "target": "ally", "area": "single", "mult": 0, "cost": 40, "cooldown": 3, "groggy": 0, "effects": ["EF_SHIELD"] },
+    { "id": "SK_REVIVE", "name": "부활", "target": "ally", "area": "single", "mult": 0, "cost": 80, "cooldown": 6, "groggy": 0, "effects": ["EF_REVIVE"] },
+    { "id": "SK_WARSONG", "name": "전쟁의 노래", "target": "ally", "area": "all", "mult": 0, "cost": 50, "cooldown": 3, "groggy": 0, "effects": ["EF_ATKUP"] },
+    { "id": "SK_CURSE", "name": "약화의 저주", "target": "enemy", "area": "all", "mult": 0.4, "cost": 40, "cooldown": 3, "groggy": 5, "effects": ["EF_DEFDOWN", "EF_VULN"] },
+    { "id": "SK_BREAK", "name": "갑옷 파쇄", "target": "enemy", "area": "single", "mult": 1.2, "cost": 30, "cooldown": 2, "groggy": 20, "effects": ["EF_DEFDOWN_FLAT"] },
+    { "id": "SK_BITE", "name": "물어뜯기", "target": "enemy", "area": "single", "mult": 1.3, "cost": 30, "cooldown": 2, "groggy": 0, "effects": [] },
+    { "id": "SK_SLAM", "name": "내려찍기", "target": "enemy", "area": "all", "mult": 0.9, "cost": 40, "cooldown": 3, "groggy": 0, "effects": ["EF_STUN"] },
+    { "id": "SK_FLAME", "name": "화염 숨결", "target": "enemy", "area": "all", "mult": 1.2, "cost": 50, "cooldown": 3, "groggy": 0, "effects": ["EF_BURN"] },
+    { "id": "SK_ENRAGE", "name": "광폭화", "target": "self", "area": "single", "mult": 0, "cost": 0, "cooldown": 99, "groggy": 0, "effects": ["EF_ENRAGE"] },
+    { "id": "SK_ERUPT", "name": "대분화", "target": "enemy", "area": "all", "mult": 1.6, "cost": 60, "cooldown": 4, "groggy": 0, "effects": ["EF_BURN"] }
+  ],
+  "effects": [
+    { "id": "EF_STUN", "name": "기절", "kind": "stun", "chance": 30, "duration": 1, "stack": false },
+    { "id": "EF_TAUNT", "name": "도발", "kind": "taunt", "chance": 100, "duration": 2, "stack": false },
+    { "id": "EF_DEFDOWN", "name": "방어력 감소", "kind": "debuff", "stat": "def", "value": 30, "mode": "mul", "chance": 100, "duration": 2, "stack": false },
+    { "id": "EF_DEFDOWN_FLAT", "name": "방어 파쇄", "kind": "debuff", "stat": "def", "value": 10, "mode": "add", "chance": 50, "duration": 3, "stack": true },
+    { "id": "EF_VULN", "name": "취약", "kind": "debuff", "stat": "dmgTaken", "value": 20, "mode": "add", "chance": 100, "duration": 2, "stack": false },
+    { "id": "EF_ATKUP", "name": "공격력 증가", "kind": "buff", "stat": "atk", "value": 20, "mode": "mul", "chance": 100, "duration": 2, "stack": false },
+    { "id": "EF_HEAL", "name": "회복", "kind": "heal", "value": 150, "chance": 100 },
+    { "id": "EF_HEAL_SM", "name": "소회복", "kind": "heal", "value": 70, "chance": 100 },
+    { "id": "EF_SHIELD", "name": "보호막", "kind": "shield", "value": 200, "chance": 100, "duration": 2, "stack": false },
+    { "id": "EF_BURN", "name": "화상", "kind": "dot", "value": 20, "chance": 50, "duration": 3, "stack": true },
+    { "id": "EF_REVIVE", "name": "부활", "kind": "revive", "value": 30, "chance": 100 },
+    { "id": "EF_ENRAGE", "name": "광폭", "kind": "buff", "stat": "atk", "value": 30, "mode": "mul", "chance": 100, "duration": 0, "stack": false },
+    { "id": "EF_SYN_ATK", "name": "화염 공명", "kind": "buff", "stat": "atk", "value": 10, "mode": "mul", "chance": 100, "duration": 0, "stack": false },
+    { "id": "EF_SYN_DEF", "name": "삼위일체", "kind": "buff", "stat": "def", "value": 15, "mode": "mul", "chance": 100, "duration": 0, "stack": false },
+    { "id": "EF_SYN_CRIT", "name": "오랜 동료", "kind": "buff", "stat": "cric", "value": 10, "mode": "add", "chance": 100, "duration": 0, "stack": false }
+  ],
+  "elements": [
+    { "id": "무", "vs:무": 1, "vs:화": 1, "vs:수": 1, "vs:풍": 1, "vs:광": 1, "vs:암": 1 },
+    { "id": "화", "vs:무": 1, "vs:화": 1, "vs:수": 0.8, "vs:풍": 1.3, "vs:광": 1, "vs:암": 1 },
+    { "id": "수", "vs:무": 1, "vs:화": 1.3, "vs:수": 1, "vs:풍": 0.8, "vs:광": 1, "vs:암": 1 },
+    { "id": "풍", "vs:무": 1, "vs:화": 0.8, "vs:수": 1.3, "vs:풍": 1, "vs:광": 1, "vs:암": 1 },
+    { "id": "광", "vs:무": 1, "vs:화": 1, "vs:수": 1, "vs:풍": 1, "vs:광": 1, "vs:암": 1.3 },
+    { "id": "암", "vs:무": 1, "vs:화": 1, "vs:수": 1, "vs:풍": 1, "vs:광": 1.3, "vs:암": 1 }
+  ],
+  "synergies": [
+    { "id": "SY_FIRE", "name": "화염 공명", "cond": "element", "key": "화", "count": 2, "effects": ["EF_SYN_ATK"] },
+    { "id": "SY_TRINITY", "name": "삼위일체", "cond": "role", "key": "tank|healer|dealer", "effects": ["EF_SYN_DEF"] },
+    { "id": "SY_DUO", "name": "오랜 동료", "cond": "chars", "key": "CH_AREN|CH_ELLA", "effects": ["EF_SYN_CRIT"] }
+  ]
+}

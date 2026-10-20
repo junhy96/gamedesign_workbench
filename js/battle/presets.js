@@ -20,9 +20,11 @@ const st = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Array
 /** 수식 프리셋: 고르면 해당 칸에 들어간다 */
 export const FORMULA_PRESETS = {
   damage: [
-    ['방어 감쇠형 (100 ÷ (100 + 방어))', 'a.atk * 100 / (100 + b.def)'],
-    ['차감형 (최소 10%)', 'max(a.atk - b.def, a.atk * 0.1)'],
-    ['비율형 (공 ÷ 방, 상한 3배)', 'a.atk * min(a.atk / max(b.def, 1), 3)'],
+    ['방어력 상수 감소형 (공 × 100 ÷ (100 + 방))', 'a.atk * 100 / (100 + b.def)'],
+    ['단순 차감형 (공 − 방, 최소 10%)', 'max(a.atk - b.def, a.atk * 0.1)'],
+    ['비율 감소형 (공 × 공 ÷ (공 + 방))', 'a.atk * a.atk / (a.atk + b.def)'],
+    ['곱연산형 (방어 = 감소율 %, 상한 90%)', 'a.atk * (1 - min(b.def, 90) / 100)'],
+    ['공/방 비율형 (상한 3배)', 'a.atk * min(a.atk / max(b.def, 1), 3)'],
     ['레벨 차 보정', 'a.atk * 100 / (100 + b.def) * (1 + 0.02 * (a.lv - b.lv))'],
   ],
   hit: [['명중 − 회피', 'a.acc - b.eva'], ['비율 (명중 ÷ (명중 + 회피))', '100 * a.acc / (a.acc + b.eva)'], ['항상 명중', '100']],
@@ -30,6 +32,18 @@ export const FORMULA_PRESETS = {
     ['가중 합 (Kalivra 기본)', 'atk * aspd * 10 + hp * 0.5 + def * 1.5 + acc + eva * 2'],
     ['기대 DPS × 체력 제곱근', 'atk * aspd * (1 + cric / 100 * (crid - 1)) * sqrt(hp)'],
   ],
+};
+
+/** 수식 안내: 프리셋 수식이면 인자 뜻과 어떤 상황에 쓰는지 보여 준다 */
+export const FORMULA_INFO = {
+  'a.atk * 100 / (100 + b.def)': { name: '방어력 상수 감소형', factors: ['a.atk = 공격하는 쪽 공격력', 'b.def = 맞는 쪽 방어력', '100 = 방어 상수 K — 방어가 K와 같으면 데미지 절반'], use: '방어가 올라도 0이 되지 않고 완만하게 줄어듦. 대부분의 RPG 기본형.' },
+  'max(a.atk - b.def, a.atk * 0.1)': { name: '단순 차감형', factors: ['a.atk = 공격력', 'b.def = 방어력', '0.1 = 최소 데미지 (공격력의 10%)'], use: '숫자가 직관적. 방어가 공격에 가까워지면 데미지가 급격히 줄어 하한이 꼭 필요. 고전 JRPG형.' },
+  'a.atk * a.atk / (a.atk + b.def)': { name: '비율 감소형', factors: ['a.atk = 공격력', 'b.def = 방어력'], use: '공격과 방어의 비율만 중요 — 둘이 같은 배율로 성장하면 데미지 비율 유지. 인플레이션이 큰 성장형 게임.' },
+  'a.atk * (1 - min(b.def, 90) / 100)': { name: '곱연산형 (방어율)', factors: ['a.atk = 공격력', 'b.def = 받는 피해 감소율(%)', '90 = 감소율 상한'], use: '방어력을 감소 %로 직접 씀. 읽기 쉽고 상한으로 무적을 막음.' },
+  'a.atk * min(a.atk / max(b.def, 1), 3)': { name: '공/방 비율형', factors: ['a.atk = 공격력', 'b.def = 방어력', '3 = 배율 상한'], use: '공격이 방어보다 높을수록 크게 늘어남. 상한으로 폭주를 막음.' },
+  'a.atk * 100 / (100 + b.def) * (1 + 0.02 * (a.lv - b.lv))': { name: '레벨 차 보정', factors: ['a.atk·b.def = 공격력·방어력', 'a.lv·b.lv = 레벨', '0.02 = 레벨 1 차이당 ±2%'], use: '레벨이 높은 상대에게 불리하게 — 레벨 제한 컨텐츠.' },
+  'a.acc - b.eva': { name: '명중 − 회피', factors: ['a.acc = 명중', 'b.eva = 회피'], use: '차이가 곧 명중 %. 하한·상한으로 자름.' },
+  '100 * a.acc / (a.acc + b.eva)': { name: '비율 명중', factors: ['a.acc = 명중', 'b.eva = 회피'], use: '명중과 회피가 같으면 50%. 수치가 커져도 안정적.' },
 };
 
 /** 특성 프리셋: 특성 편집에서 고르면 그대로 추가된다 */

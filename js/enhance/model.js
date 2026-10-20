@@ -649,4 +649,80 @@ export function solveForCost(cfg, targetCost, from, to) {
   return { ok: true, alpha, rows: scaleSuccess(cfg.rows, alpha, from, to, cfg.double), cost: costAt(alpha) };
 }
 
+// ── 역산 2: 확률·비용 가중치로 나눠 맞추기 ─────────────────
+export const ROUND_MODES = { round: '반올림', ceil: '올림', floor: '내림' };
+const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+/** 반올림 규칙: unit 단위로 mode(반올림·올림·내림). unit ≤ 0이면 그대로 */
+export function roundCost(x, unit = 1, mode = 'round') {
+  if (!(unit > 0)) return x;
+  const f = mode === 'ceil' ? Math.ceil : mode === 'floor' ? Math.floor : Math.round;
+  return f(x / unit - 1e-9 * (mode === 'ceil' ? 1 : 0)) * unit;
+}
+
+/**
+ * 개선 배율 s를 확률과 비용에 가중치 w로 곱셈 분배해 한 단계에 적용.
+ * Fp = s^w (확률 배율), Fc = s^(1−w) (비용 나눗셈 배율). 확률이 [pMin, pMax]를, 비용이 원래의 [cMin, cMax]배를 벗어나면
+ * 범위 끝에 고정하고 모자란 만큼을 반대쪽으로 넘긴다 (Fp × Fc = s 유지, 둘 다 막히면 거기까지).
+ * 반환 { row, fp, fc, clampP, clampC }
+ */
+export function applyWeighted(r, s, w, { double = false, pMin = 0.01, pMax = 100, cMin = 0.01, cMax = 100 } = {}) {
+  const sTot = r.s + (double ? r.s2 : 0);
+  if (!(sTot > 0)) return { row: r, fp: 1, fc: 1, clampP: false, clampC: false };
+  const hiP = Math.min(100, pMax), loP = Math.max(0, pMin);
+  let fp = Math.pow(s, w), clampP = false, clampC = false;
+  const fpC = clamp(sTot * fp, loP, hiP) / sTot;
+  if (Math.abs(fpC - fp) > 1e-12) { fp = fpC; clampP = true; }
+  let fc = s / fp;
+  const fcC = clamp(fc, 1 / cMax, 1 / cMin); // 새 비용 = 비용 ÷ fc ∈ [비용 × cMin, 비용 × cMax]
+  if (Math.abs(fcC - fc) > 1e-12) {
+    fc = fcC; clampC = true;
+    const fp2 = clamp(sTot * s / fc, loP, hiP) / sTot; // 비용이 막힌 만큼 확률로
+    if (Math.abs(fp2 - fp) > 1e-12) { fp = fp2; clampP = clampP || Math.abs(sTot * fp - hiP) < 1e-9 || Math.abs(sTot * fp - loP) < 1e-9; }
+  }
+  const row = { ...scaleSuccess([r], fp, r.stage, r.stage, double)[0], costs: r.costs.map(c => c / fc) };
+  return { row, fp, fc, clampP, clampC };
+}
+
+/**
+ * 목표 기대 비용 역산 (확률·비용 가중치). E0 = 지금 기대 비용, F = E0 ÷ 목표. 단계마다 같은 s를 applyWeighted로 적용하고,
+ * 하락·파괴·연속 보정이 있는 구조도 마르코프 체인 기대 비용으로 다시 계산하며 s를 이분 탐색해 목표에 맞춘다
+ * (단일 단계·페널티 없음이면 s = F 정확히). 비용은 반올림 규칙을 적용한 표와 그때의 오차를 함께 돌려준다.
+ * opts { from, to, w (0 = 비용만, 1 = 확률만), pMin, pMax (%), cMin, cMax (원래 비용의 배수), unit, mode }
+ */
+export function solveWeighted(cfg, target, opts = {}) {
+  const { from = 0, to = Infinity, w = 0.5, unit = 0, mode = 'round' } = opts;
+  const lim = { double: cfg.double, pMin: opts.pMin ?? 0.01, pMax: opts.pMax ?? 100, cMin: opts.cMin ?? 0.01, cMax: opts.cMax ?? 100 };
+  const E0 = expectedCost(cfg).cost;
+  if (!(target > 0)) return { ok: false, error: '목표 기대 비용은 0보다 커야 합니다.' };
+  if (!Number.isFinite(E0)) return { ok: false, error: '지금 설정의 기대 비용을 계산할 수 없습니다 (목표에 도달 불가).' };
+  const inRange = (r) => r.stage >= from && r.stage <= to;
+  if (!cfg.rows.some(r => inRange(r) && r.s + (cfg.double ? r.s2 : 0) > 0)) return { ok: false, error: '해당 구간에 성공 확률이 있는 단계가 없습니다.' };
+  const build = (s) => ({ ...cfg, rows: cfg.rows.map(r => (inRange(r) ? applyWeighted(r, s, w, lim).row : r)) });
+  const costAt = (s) => { const c = build(s); if (validate(c).length) return NaN; const e = expectedCost(c).cost; return Number.isFinite(e) && e >= 0 ? e : Infinity; };
+  // F 근처에서 시작해 넓혀 가며 목표를 감싸는 구간을 찾는다 (너무 극단적인 배율은 확률이 0에 가까워져 계산이 불안정)
+  const F = E0 / target;
+  let lo = Math.max(1e-3, F / 4), hi = Math.min(1e3, F * 4);
+  while (lo > 1e-3 && costAt(lo) < target) lo = Math.max(1e-3, lo / 4);
+  while (hi < 1e3 && costAt(hi) > target) hi = Math.min(1e3, hi * 4);
+  const eLo = costAt(lo), eHi = costAt(hi);
+  if (!(target <= eLo) || !(target >= eHi)) {
+    return { ok: false, error: `이 범위 설정으로 만들 수 있는 기대 비용은 ${Math.round(eHi).toLocaleString('ko-KR')} ~ ${Number.isFinite(eLo) ? Math.round(eLo).toLocaleString('ko-KR') : '∞'} 입니다 (확률·비용 범위를 넓히세요).`, min: eHi, max: eLo, E0 };
+  }
+  for (let it = 0; it < 80; it++) { // 기대 비용은 s에 대해 감소 → 로그 이분 탐색
+    const mid = Math.sqrt(lo * hi);
+    if (costAt(mid) > target) lo = mid; else hi = mid;
+    if (hi / lo < 1 + 1e-10) break;
+  }
+  const s = Math.sqrt(lo * hi);
+  const stages = cfg.rows.filter(inRange).map(r => {
+    const a = applyWeighted(r, s, w, lim);
+    const rounded = a.row.costs.map(c => roundCost(c, unit, mode));
+    return { stage: r.stage, p0: r.s + (cfg.double ? r.s2 : 0), p1: a.row.s + (cfg.double ? a.row.s2 : 0), c0: r.costs, c1: a.row.costs, c1r: rounded, fp: a.fp, fc: a.fc, clampP: a.clampP, clampC: a.clampC, row: { ...a.row, costs: rounded } };
+  });
+  const rowsRaw = build(s).rows;
+  const rows = cfg.rows.map(r => stages.find(x => x.stage === r.stage)?.row ?? r);
+  const E = costAt(s), Er = expectedCost({ ...cfg, rows }).cost;
+  return { ok: true, s, F: E0 / target, Fp: Math.pow(s, w), Fc: Math.pow(s, 1 - w), E0, E, Er, error: Er - target, rows, rowsRaw, stages };
+}
+
 export function round(x, d = 2) { const f = 10 ** d; return Math.round(x * f) / f; }

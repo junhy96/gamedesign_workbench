@@ -77,6 +77,7 @@ export function simulate(cfg, trials = 20000, seed = 20261013) {
     convergence: convergence(costs), // 시행 순서대로의 누적 평균 총비용과 95% 범위
     paths,                           // 앞 12번 시행의 시도별 단계 (파괴 위치 포함)
     sortedCost, // 예산별 도달 확률 계산용
+    sortedAttempts: sortedAtt, // 시도 횟수 분포 (결과 분포 카드)
     histogram: histogram(sortedCost, 36),
   };
 }

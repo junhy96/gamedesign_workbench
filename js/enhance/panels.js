@@ -1,7 +1,8 @@
 // 왼쪽 설정 메뉴: 템플릿·구간, 연속 보정, 이벤트, 재화와 비용, 보조 아이템
 import { TEMPLATES } from './presets.js';
 import { MAX_ITEMS, MAX_UNITS } from './model.js';
-import { h, store } from '../lib/util.js';
+import { h, store, comma } from '../lib/util.js';
+import { simFields } from '../lib/simconfig.js';
 import { rateOf, setRate } from './currency.js';
 
 const MAX_RESOURCES = 4;
@@ -23,9 +24,9 @@ export function numInput(ctx, obj, key, opts = {}) {
 
 const field = (label, input, hint) => h('label.field', {}, h('span', {}, label), input, hint ? h('small', {}, hint) : null);
 
-function toggle(ctx, label, obj, key, after) {
+function toggle(ctx, label, obj, key, after, defaultOn = false) {
   return h('label.switch', {}, label, h('input', {
-    type: 'checkbox', checked: !!obj[key],
+    type: 'checkbox', checked: obj[key] ?? defaultOn,
     onchange: (e) => { obj[key] = e.target.checked; after?.(); ctx.rebuild(); },
   }));
 }
@@ -56,6 +57,7 @@ export function renderSidebar(ctx, el) {
   const STREAK = { none: '없음', fail: '연속 실패 기준', drop: '찬스타임' };
 
   const streakFields = st.kind === 'none' ? [h('p.desc', {}, '실패가 쌓일수록 성공률이 오르는 보너스, n회 실패 시 확정 성공(천장), 연속 하락 후 확정 성공(찬스타임)을 설정합니다.')] : [
+    toggle(ctx, '실패 누적 보너스 (실패당 +n%)', st, 'bonusOn', null, true),
     h('div.row2', {},
       field('실패 1회당 보너스', numInput(ctx, st, 'bonus', { min: 0, label: '보너스' })),
       field('보너스 기준', select([['rel', '기본 성공률의 %'], ['abs', '%p (고정)']], st.bonusMode, (v) => { st.bonusMode = v; ctx.rebuild(); })),
@@ -64,6 +66,7 @@ export function renderSidebar(ctx, el) {
       field('최대 성공률 %', numInput(ctx, st, 'cap', { min: 0, max: 100, label: '최대 성공률' })),
       field('천장 (회, 0=없음)', numInput(ctx, st, 'pity', { min: 0, int: true, label: '천장' })),
     ),
+    toggle(ctx, '천장 (n회 실패 시 확정 성공)', st, 'pityOn', null, true),
     h('p.desc', {}, st.kind === 'fail'
       ? '유지·하락할 때마다 카운터 +1, 성공·파괴 시 초기화. 천장에 도달하면 다음 시도는 확정 성공.'
       : '하락할 때만 카운터 +1(유지는 그대로), 성공·파괴 시 초기화. 천장 2 = 2연속 하락 후 확정 성공(찬스타임).'),
@@ -94,6 +97,9 @@ export function renderSidebar(ctx, el) {
     ),
     section('currency', '재화와 비용', s.resources.map(r => r.name).join(' · '), ...currencyBody(ctx)),
     section('items', '보조 아이템 (BM)', s.items.length ? `${s.items.length}개` : '없음', ...itemsBody(ctx)),
+    section('sim', '시뮬레이션', `${comma(s.sim?.trials ?? 20000)}회 · 시드 ${s.sim?.seed ?? 20261013}`,
+      ...simFields(s.sim ||= { trials: 20000, seed: 20261013 }, { runsKey: 'trials', def: 20261013, min: 1000, max: 200000, onChange: () => ctx.schedule(300),
+        runsHint: '기대 시도가 많은 설정은 계산량 상한(기대 시도 × 횟수 ≤ 4천만) 때문에 자동으로 줄어듭니다' })),
   );
 }
 
