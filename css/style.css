@@ -1166,3 +1166,6 @@ h3.sub { font-size: 14px; margin: 10px 0 6px; display: flex; align-items: center
 .combat-extra > * { min-width: 0; }
 .card dd { min-width: 0; }
 .card dd .small { white-space: normal; overflow-wrap: anywhere; }
+
+/* 첫 랜딩 전 깜빡임 방지 */
+html.pre-home main, html.pre-home .app-footer { display: none; }

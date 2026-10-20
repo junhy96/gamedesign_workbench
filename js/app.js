@@ -90,23 +90,41 @@ function show(id) {
 }
 
 const currentTab = () => location.hash.slice(1).split('?')[0];
+// 첫 랜딩: 주소에 도구(#enhance 등)가 없으면 소개 화면. 도구 링크는 그대로 도구를 연다
+const TOOL_IDS = new Set([...document.querySelectorAll('[data-tab]')].map(b => b.dataset.tab));
+const isHome = () => { const t = currentTab(); return !t || t === 'home' || !TOOL_IDS.has(t); };
+const setHome = () => {
+  const home = isHome() && !currentTab().startsWith('hm-');
+  document.body.classList.toggle('home', home || currentTab().startsWith('hm-'));
+  document.documentElement.classList.remove('pre-home');
+  if (home) for (const g of groups) { g.classList.remove('active'); g.querySelector('.nav-cur').textContent = ''; }
+  return home || currentTab().startsWith('hm-');
+};
 
 for (const btn of tabs) {
   btn.addEventListener('click', () => {
-    if (currentTab() !== btn.dataset.tab) history.replaceState(null, '', `#${btn.dataset.tab}`);
+    const wasHome = document.body.classList.contains('home');
+    if (currentTab() !== btn.dataset.tab) history[wasHome ? 'pushState' : 'replaceState'](null, '', `#${btn.dataset.tab}`);
+    setHome();
     show(btn.dataset.tab);
+    if (wasHome) window.scrollTo({ top: 0 });
   });
 }
-window.addEventListener('hashchange', () => show(currentTab()));
+window.addEventListener('hashchange', () => {
+  if (currentTab().startsWith('hm-')) { document.getElementById(currentTab())?.scrollIntoView({ behavior: 'smooth' }); return; }
+  if (setHome()) { window.scrollTo({ top: 0 }); return; }
+  show(currentTab()); window.scrollTo({ top: 0 });
+});
 // 로고: 처음 화면(첫 도구, 맨 위)으로
 document.getElementById('brand-home')?.addEventListener('click', (e) => {
   e.preventDefault();
   closeMenus();
-  if (currentTab() !== 'enhance') history.replaceState(null, '', '#enhance');
-  show('enhance');
+  history.pushState(null, '', location.pathname);
+  setHome();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
-show(currentTab());
+if (!setHome()) show(currentTab());
+else { show('enhance'); setHome(); for (const b of tabs) b.removeAttribute('aria-current'); }   // 도구는 뒤에서 미리 준비
 
 // 테마: OS 설정을 따르되, 버튼으로 명시 선택 가능
 document.getElementById('theme-toggle').addEventListener('click', () => {

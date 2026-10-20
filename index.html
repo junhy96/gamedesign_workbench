@@ -8,14 +8,16 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/home.css">
   <script>
     // 테마를 첫 렌더 전에 적용해 깜빡임 방지. 처음에는 라이트, 버튼으로 고른 적이 있으면 그 테마
+    if (!location.hash || location.hash === '#home') document.documentElement.classList.add('pre-home');
     try { const t = localStorage.getItem('planwb:theme'); document.documentElement.dataset.theme = t ? JSON.parse(t) : 'light'; } catch {}
   </script>
 </head>
 <body>
   <header class="app-header">
-    <a class="brand" href="#enhance" id="brand-home" title="처음 화면으로">
+    <a class="brand" href="./" id="brand-home" title="처음 화면으로">
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
         <strong>기획 워크벤치</strong>
@@ -57,6 +59,56 @@
     </button>
   </header>
 
+  <section id="home" aria-label="기획 워크벤치 소개">
+    <div class="hm-wrap">
+      <div class="hm-hero">
+        <div>
+          <span class="hm-eb">게임 시스템·BM 기획 검증 도구</span>
+          <h1><s>엑셀</s>은 평균 하나.<br>워크벤치는 <em>분포 전체</em>를.</h1>
+          <p class="hm-lede">강화·가챠·성장·전투 밸런스를 몬테카를로 시뮬레이션과 마르코프 체인으로 계산해요. 평균뿐 아니라 운 나쁜 1%가 얼마를 쓰는지, 공식과 시뮬레이션이 서로 맞는지까지 브라우저에서 바로 확인합니다.</p>
+          <div class="hm-cta">
+            <a class="hm-btn primary" href="#enhance">도구 바로 열기 →</a>
+            <a class="hm-btn" href="#hm-features">기능 둘러보기</a>
+            <a class="hm-btn" href="landing/">자세한 소개</a>
+          </div>
+          <div class="hm-chips"><span>설치 없음 · 무료</span><span>시드 고정 · 같은 설정은 같은 결과</span><span>CSV · xlsx · JSON 내보내기</span></div>
+        </div>
+        <div>
+          <div class="hm-phone"><video src="media/shorts.mp4" poster="media/shorts-poster.webp" autoplay muted loop playsinline preload="metadata" aria-label="기획 워크벤치 소개 영상 (41초)"></video></div>
+          <p class="hm-cap">41초 소개 영상 · 기본 템플릿 값</p>
+        </div>
+      </div>
+
+      <section class="hm-sec">
+        <h2>엑셀로는 못 만지는 계산</h2>
+        <p class="hm-sub">같은 질문을 공식 계산(오차 없는 정답)과 시뮬레이션(분포 전체)으로 동시에 풀고, 두 결과가 맞는지 스스로 검증합니다.</p>
+        <div class="hm-diff">
+          <div class="hm-x"><h3>엑셀</h3><ul><li><b>✕</b>기대값 하나만 나옴</li><li><b>✕</b>확률 수식을 손으로 짜기</li><li><b>✕</b>1만 번 돌리면 멈춤</li><li><b>✕</b>천장·보장이 들어가면 근사치</li></ul></div>
+          <div class="hm-o"><h3>기획 워크벤치</h3><ul><li><b>✓</b>분포 전체, 운 나쁜 1%·0.1%까지</li><li><b>✓</b>몬테카를로 2만 회를 몇 초에</li><li><b>✓</b>흡수 마르코프 체인·동적 계획법으로 정답 계산</li><li><b>✓</b>공식과 시뮬레이션 교차 검증 (오차 0.1%)</li><li><b>✓</b>결과는 다시 엑셀(.xlsx·CSV)로</li></ul></div>
+        </div>
+      </section>
+
+      <section class="hm-sec" id="hm-features">
+        <h2>도구 여덟 가지</h2>
+        <p class="hm-sub">카드를 누르면 그 도구가 기본 템플릿으로 열려요. 그림 속 숫자는 모두 기본 템플릿 값입니다.</p>
+        <div class="hm-grid">
+          <a class="hm-card wide" href="#enhance"><div class="tx"><span class="tg">BM·성장</span><b>강화 확률·비용 설계</b><p>단계별 성공·유지·하락·파괴 확률과 비용으로 +15까지 총비용 분포. 보조 아이템 최적 사용과 가격 곡선, 목표 비용 역산.</p><span class="k">평균 2만 7,967원 · 운 나쁜 1% 10만 9,980원</span></div><img src="media/feat-enhance-dist.webp" alt="강화 총비용 분포와 예산 그래프" loading="lazy"></a>
+          <a class="hm-card" href="#enhance"><div class="tx"><span class="tg">검증</span><b>계산 검증</b><p>마르코프 체인 정답과 시뮬레이션 2만 회 평균이 95% 범위 안에서 맞는지.</p><span class="k">오차 0.1% 일치</span></div><img src="media/feat-enhance-verify.webp" alt="공식 계산과 시뮬레이션 비교" loading="lazy"></a>
+          <a class="hm-card" href="#gacha"><div class="tx"><span class="tg">BM·성장</span><b>가챠·수집 설계</b><p>천장·픽업 보장·마일리지까지 넣은 달성 확률과 예산, 확률 공시표.</p><span class="k">단순 12만 회 → 실제 평균 20.5만 회</span></div><img src="media/feat-gacha-curve.webp" alt="가챠 달성 확률과 예산" loading="lazy"></a>
+          <a class="hm-card" href="#growth"><div class="tx"><span class="tg">BM·성장</span><b>성장 표 템플릿 (엑셀)</b><p>레벨 곡선과 공급원으로 일차별 레벨 진행, 수식이 살아 있는 .xlsx 내보내기.</p><span class="k">마일스톤 맞춤 base 자동 풀이</span></div><img src="media/feat-growth-curve.webp" alt="레벨 진행 미리보기" loading="lazy"></a>
+          <a class="hm-card" href="#battle"><div class="tx"><span class="tg">전투</span><b>스탯·전투 밸런스</b><p>규칙 수식으로 레벨별 CP와 1:1 승률 정확해, 승률 행렬과 민감도.</p><span class="k">CP와 실제 강함 상관 0.80</span></div><img src="media/feat-battle-matrix.webp" alt="승률 행렬" loading="lazy"></a>
+          <a class="hm-card" href="#combat"><div class="tx"><span class="tg">전투</span><b>전투 시뮬레이터</b><p>데이터 테이블 기반 파티 vs 보스, 턴제·실시간, 기여도·교체 비교.</p><span class="k">보스전 300판 · 평균 23.4턴</span></div><img src="media/feat-combat-turns.webp" alt="클리어 턴 분포" loading="lazy"></a>
+          <a class="hm-card" href="#frame"><div class="tx"><span class="tg">전투</span><b>패턴 프레임 검증</b><p>보스 연계의 선딜·판정·후딜과 회피 무적으로 반응·암기·반격 판정, PPT 내보내기.</p><span class="k">회피 윈도우 자동 판정</span></div><img src="media/feat-frame-timeline.webp" alt="프레임 타임라인" loading="lazy"></a>
+          <a class="hm-card" href="#brief"><div class="tx"><span class="tg">공유</span><b>브리핑 · 데이터 테이블</b><p>탭별 핵심 지표와 목표 통과·미달을 한 장으로. 엑셀 전투 시트의 ID 참조 검증.</p><span class="k">회의 직전 5분 정리</span></div></a>
+        </div>
+      </section>
+
+      <section class="hm-last">
+        <div><h2>기획서 숫자 하나를 넣어 보세요</h2><p>설치 없이, 지금 브라우저에서.</p></div>
+        <a class="hm-btn" href="#enhance">강화 확률 설계 열기 →</a>
+      </section>
+    </div>
+  </section>
   <main>
     <section id="tab-enhance" role="tabpanel" class="panel"></section>
     <section id="tab-gacha" role="tabpanel" class="panel" hidden></section>
