@@ -6,7 +6,7 @@
 
 ![강화 확률·비용 설계 화면](docs/screenshot.png)
 
-**▶ 사용 설명서(워드)**: [전체본](docs/manual/) · [기능별 10편](docs/manual/편별/) — 1편에 공통 내용(실행·공통 기능·공유·FAQ·공통 수학), 2~10편은 도구별 본문 + 그 도구의 부록. 첫 화면 쇼츠 영상: [media/shorts.mp4](media/shorts.mp4)
+**▶ 사용 설명서(워드)**: [전체본](docs/manual/) · [기능별 10편](docs/manual/편별/) · [PDF 11종](docs/manual/pdf/) — 1편에 공통 내용(실행·공통 기능·공유·FAQ·공통 수학), 2~10편은 도구별 본문 + 그 도구의 부록. 첫 화면 쇼츠 영상: [media/shorts.mp4](media/shorts.mp4)
 
 **▶ 도구 소개 페이지: https://junhy96.github.io/gamedesign_workbench/landing/** — 도구별 계산 방법·검증·사례와 실제 화면 ([landing/](landing/))
 
