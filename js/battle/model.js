@@ -291,11 +291,12 @@ function fighter(cfg, f, ent, lv) {
   const base = statsAt(cfg, ent, lv);
   const stats = { ...base };
   const hp = f.hp(stats, lv);
-  return { ent, base, stats, hp, maxHp: hp, buffs: [], traits: traitsOf(cfg, ent), procs: new Map(), v: ent.variance || 0, n: 0, ver: 0, anchor: 0, k: 0, spd: null, next: 0, attacks: 0, hits: 0, crits: 0 };
+  return { ent, base, stats, hp, maxHp: hp, buffs: [], traits: traitsOf(cfg, ent), procs: new Map(), v: ent.variance || 0, n: 0, ver: 0, anchor: 0, k: 0, spd: null, next: 0, attacks: 0, hits: 0, crits: 0, dealt: 0 };
 }
 
 /**
- * 전투 한 번. 반환 { w: 1 A 승 | 2 B 승 | 3 무승부, t: 길이(초 또는 턴), hpA, hpB(남은 비율), A, B(전투원), ev(로그) }
+ * 전투 한 번. 반환 { w: 1 A 승 | 2 B 승 | 3 무승부, t: 길이(초 또는 턴), hpA, hpB(남은 비율), hpAbsA, hpAbsB(남은 체력),
+ *   first(턴 교대에서 A가 먼저 공격했나, 시간 기반은 null), over(진 쪽 체력이 0 아래로 내려간 양), A, B(전투원 — dealt = 가한 데미지), ev(로그) }
  * 같은 규칙으로 정확해와 맞춰 둔다: 특성·변동이 없으면 시간 기반 결정타 순서·동시 처리·턴 교대 순서가 duelExact와 같다.
  */
 export function battleOnce(cfg, f, A0, B0, lv, rnd, log = false) {
@@ -327,7 +328,7 @@ export function battleOnce(cfg, f, A0, B0, lv, rnd, log = false) {
     const amount = (target) => (e.base === 'dmg' ? (ctx?.dmg || 0) * v / 100 : e.base === 'maxHp' ? target.maxHp * v / 100 : v);
     switch (e.type) {
       case 'heal': { const a = Math.max(0, round(amount(T))); const before = T.hp; T.hp = Math.min(T.maxHp, T.hp + a); if (T.hp !== before) say('heal', T, `[${tr.name}] 체력 +${fmt(T.hp - before)}`, T.hp - before); break; }
-      case 'damage': { const a = Math.max(0, round(amount(T))); if (a) { T.hp -= a; say('trait', X, `[${tr.name}] 추가 데미지 ${fmt(a)}`, a); } break; }
+      case 'damage': { const a = Math.max(0, round(amount(T))); if (a) { T.hp -= a; if (T !== X) X.dealt += a; say('trait', X, `[${tr.name}] 추가 데미지 ${fmt(a)}`, a); } break; }
       case 'dmgMult': if (ctx?.mod) ctx.mult *= v; break;
       case 'dmgAdd': if (ctx?.mod) ctx.add += v; break;
       case 'buff': {
@@ -374,14 +375,18 @@ export function battleOnce(cfg, f, A0, B0, lv, rnd, log = false) {
     for (const tr of taken) for (const e of tr.effects) if (MOD_EFFECTS.has(e.type)) apply(Y, tr, e, ctx);
     const dmg = Math.max(0, round(raw * (crit ? p.mult : 1) * ctx.mult + ctx.add));
     ctx.dmg = dmg; ctx.mod = false;
-    Y.hp -= dmg;
+    Y.hp -= dmg; X.dealt += dmg;
     say(crit ? 'crit' : 'hit', X, crit ? `치명타 ${fmt(dmg)}` : `${fmt(dmg)}`, dmg);
     if (Y.hp <= 0) return;
     for (const tr of taken) for (const e of tr.effects) if (!MOD_EFFECTS.has(e.type)) apply(Y, tr, e, ctx);
     fire(X, 'attackHit', ctx);
     if (crit) fire(X, 'critical', ctx);
   };
-  const result = (w) => ({ w, t, hpA: Math.max(0, A.hp) / A.maxHp, hpB: Math.max(0, B.hp) / B.maxHp, A, B, ev });
+  let firstA = null;
+  const result = (w) => ({
+    w, t, hpA: Math.max(0, A.hp) / A.maxHp, hpB: Math.max(0, B.hp) / B.maxHp, hpAbsA: Math.max(0, A.hp), hpAbsB: Math.max(0, B.hp),
+    first: firstA, over: w === 1 ? Math.max(0, -B.hp) : w === 2 ? Math.max(0, -A.hp) : 0, A, B, ev,
+  });
   const judge = () => {
     const da = A.hp <= 0, db = B.hp <= 0;
     if (da && db) { const w = r.tie === 'coin' || turn ? (rnd() < 0.5 ? 1 : 2) : 3; say('die', null, w === 3 ? '동시에 쓰러짐 — 무승부' : '동시에 쓰러짐 — 동전', 0); return result(w); }
@@ -399,6 +404,7 @@ export function battleOnce(cfg, f, A0, B0, lv, rnd, log = false) {
   if (turn) {
     const tot = sA0 + sB0;
     const aFirst = rnd() < (tot > 0 ? sA0 / tot : 0.5);
+    firstA = aFirst;
     const [P, Q] = aFirst ? [A, B] : [B, A];
     for (t = 1; t <= r.maxTurns; t++) {
       fire(P, 'turn', null); fire(Q, 'turn', null);
@@ -491,6 +497,67 @@ export function duel(cfg, f, A, B, lv, { runs = cfg.sim?.runs ?? 4000, seed } = 
   const sm = duelSim(cfg, f, A, B, lv, runs, seedMix(cfg.sim?.seed, seed ?? 20261018), prep); // 사용자 시드와 섞음 (기본 시드면 예전 그대로)
   const reason = traitsOf(cfg, A).length || traitsOf(cfg, B).length ? '특성' : (A.variance || B.variance) ? '데미지 변동' : '계산량';
   return { exact: false, winA: sm.winA, winB: sm.winB, draw: sm.draw, ci: sm.ciA, sim: sm, prep, reason };
+}
+
+// ── 배틀 시뮬레이터 (Kalivra의 FIGHT · M.C) ──────────────
+/**
+ * FIGHT: A 대 B를 runs번 돌려 승·패·무, 평균 길이(모든 판 / A가 이긴 판), 앞 logs판의 전투 로그.
+ * 같은 seed면 같은 결과 (Kalivra는 Math.random이라 누를 때마다 바뀜).
+ */
+export function fightBatch(cfg, f, A, B, lv, { runs = 100, seed = 20261018, logs = 100 } = {}) {
+  const rnd = mulberry32(seed);
+  let wa = 0, wb = 0, dr = 0, len = 0, lenWin = 0;
+  const logList = [];
+  for (let i = 0; i < runs; i++) {
+    const r = battleOnce(cfg, f, A, B, lv, rnd, i < logs);
+    if (r.w === 1) { wa++; lenWin += r.t; } else if (r.w === 2) wb++; else dr++;
+    len += r.t;
+    if (r.ev) logList.push({ w: r.w, t: r.t, first: r.first, ev: r.ev });
+  }
+  return { runs, winA: wa / runs, winB: wb / runs, draw: dr / runs, ci: wilson(wa, runs), avgLen: len / runs, avgLenWin: wa ? lenWin / wa : NaN, logs: logList };
+}
+
+/**
+ * M.C: A 대 B 상세 몬테카를로. 승률(Wilson 95%)과 함께 Kalivra Detailed Analysis의 지표를 같은 뜻으로 —
+ *   선공일 때·후공일 때 승률(턴 교대만), 전투 길이 분포, 승리 시 남은 체력 분포(양쪽), 실현 명중·치명·회피,
+ *   A의 길이당 데미지(DPT: 턴 교대는 턴당, 시간 기반은 초당), A가 이긴 판의 평균 오버킬.
+ * 치명타율은 적중 중 비율(critRate)과 공격 중 비율(critPerAttack — Kalivra의 "Realized Crit %")을 따로 준다.
+ */
+export function monteCarlo(cfg, f, A, B, lv, { runs = 10000, seed = 20261018 } = {}) {
+  const rnd = mulberry32(seed);
+  let wa = 0, wb = 0, dr = 0, lenSum = 0, overSum = 0;
+  let nFirst = 0, wFirst = 0, nSecond = 0, wSecond = 0;
+  let atkA = 0, hitA = 0, critA = 0, atkB = 0, hitB = 0, dealtA = 0;
+  const rawDur = new Float64Array(runs), outcome = new Uint8Array(runs), hpWinA = [], hpWinB = [];
+  for (let i = 0; i < runs; i++) {
+    const r = battleOnce(cfg, f, A, B, lv, rnd);
+    rawDur[i] = r.t; outcome[i] = r.w; lenSum += r.t;
+    if (r.w === 1) { wa++; hpWinA.push(r.hpAbsA); overSum += r.over; } else if (r.w === 2) { wb++; hpWinB.push(r.hpAbsB); } else dr++;
+    if (r.first === true) { nFirst++; if (r.w === 1) wFirst++; } else if (r.first === false) { nSecond++; if (r.w === 1) wSecond++; }
+    atkA += r.A.attacks; hitA += r.A.hits; critA += r.A.crits; atkB += r.B.attacks; hitB += r.B.hits; dealtA += r.A.dealt;
+  }
+  const turn = cfg.rules.mode === 'turn';
+  return {
+    runs, winA: wa / runs, winB: wb / runs, draw: dr / runs, ci: wilson(wa, runs),
+    first: turn ? { share: nFirst / runs, winFirst: nFirst ? wFirst / nFirst : NaN, winSecond: nSecond ? wSecond / nSecond : NaN } : null,
+    avgLen: lenSum / runs, rawDur, outcome,
+    hpWinA: Float64Array.from(hpWinA).sort(), hpWinB: Float64Array.from(hpWinB).sort(),
+    hitRate: atkA ? hitA / atkA : NaN, critRate: hitA ? critA / hitA : NaN, critPerAttack: atkA ? critA / atkA : NaN,
+    dodgeRate: atkB ? 1 - hitB / atkB : NaN,
+    dpt: lenSum > 0 ? dealtA / lenSum : NaN, overkill: wa ? overSum / wa : NaN,
+  };
+}
+
+/** 구간별 승률 (Kalivra Phase Analysis): 구간마다 레벨별 A 승률의 평균. 공식으로 풀리는 대결은 공식 계산, 아니면 레벨마다 runs번 */
+export function phaseSplit(cfg, f, A, B, { runs = 400, seed = 20261018 } = {}) {
+  return phaseRanges(cfg).map(r => {
+    let sum = 0, n = 0, exact = true;
+    for (let lv = r.from; lv <= r.to; lv++) {
+      const d = duel(cfg, f, A, B, lv, { runs, seed: seed + lv });
+      sum += d.winA; n++; exact &&= d.exact;
+    }
+    return { ...r, win: n ? sum / n : NaN, exact };
+  });
 }
 
 // ── 레벨 곡선 ───────────────────────────────────────────

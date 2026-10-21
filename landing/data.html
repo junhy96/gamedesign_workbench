@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>데이터 테이블 — 기획 워크벤치</title>
+  <meta name="description" content="엑셀 전투 시트를 그대로 옮겨 와 깨진 참조를 찾습니다. 전투 시뮬레이터가 읽는 직업·캐릭터·몬스터·스킬·효과·속성 상성·시너지 일곱 개 테이블을 편집합니다. 테이블끼리는 ID로 참조하고, 엑셀이 저장한 CSV를 그대로 불러오며, 없는 ID 참조·중복 ID·빈 필수값·범위 밖 숫자를 행과 칸에 표시합니다. 행을 더하면 시뮬레이터의 선택 목록에 바로 나타납니다.">
+  <meta property="og:title" content="데이터 테이블 — 기획 워크벤치">
+  <meta property="og:description" content="엑셀 전투 시트를 그대로 옮겨 와 깨진 참조를 찾습니다. 전투 시뮬레이터가 읽는 직업·캐릭터·몬스터·스킬·효과·속성 상성·시너지 일곱 개 테이블을 편집합니다. 테이블끼리는 ID로 참조하고, 엑셀이 저장한 CSV를 그대로 불러오며, 없는 ID 참조·중복 ID·빈 필수값·범위 밖 숫자를 행과 칸에 표시합니다. 행을 더하면 시뮬레이터의 선택 목록에 바로 나타납니다.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#0b0b0a">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23d8a272'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='%231c130a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', 'Geist', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+            display: ['Geist', 'Pretendard', 'system-ui', 'sans-serif'],
+            mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          // 키 컬러 = 샌드 → 탄 → 브론즈 그라데이션(.bg-accent 채움은 아래 style에서 그라데이션으로). 무채색은 따뜻한 검정 계열로
+          colors: {
+            accent: { DEFAULT: '#d8a272', soft: '#f2d3a8', deep: '#9c5d2d' }, ink: '#1c130a', glow: '#f4e24a',
+            zinc: { 50: '#f6f5f2', 100: '#edebe6', 200: '#dcd9d2', 300: '#c2beb5', 400: '#9c988f', 500: '#7a766e', 600: '#5a5751', 700: '#3f3d39', 800: '#292825', 900: '#1a1917', 950: '#0e0e0d' },
+          },
+          transitionTimingFunction: { spring: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+        },
+      },
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { background: radial-gradient(1100px 600px at 100% -10%, rgba(216, 162, 114, 0.10), transparent 62%), radial-gradient(900px 520px at -10% 105%, rgba(181, 185, 140, 0.05), transparent 60%), #0b0b0a; background-attachment: fixed; color: #e9e7e1; -webkit-font-smoothing: antialiased; }
+    /* 키 컬러 채움은 단색이 아니라 그라데이션 */
+    .bg-accent, .group:hover .group-hover:bg-accent { background-image: linear-gradient(90deg, #f2d3a8 0%, #d8a272 45%, #9c5d2d 100%); }
+    .key-text { background: linear-gradient(90deg, #f2d3a8 0%, #d8a272 45%, #b06f39 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    /* 레퍼런스의 진행 막대: 그라데이션 + 끝의 노란 글로우 점 */
+    .key-meter { position: relative; height: 4px; border-radius: 2px; background: linear-gradient(90deg, #f2d3a8 0%, #d8a272 45%, #9c5d2d 100%); }
+    .key-meter::after { content: ""; position: absolute; right: -5px; top: 50%; width: 11px; height: 11px; margin-top: -5.5px; border-radius: 50%; background: #fffbe0; box-shadow: 0 0 0 1px rgba(244, 226, 74, 0.6), 0 0 14px 3px rgba(244, 226, 74, 0.55); }
+    .ko { word-break: keep-all; overflow-wrap: break-word; }
+    /* 레퍼런스 구조: 알약·둥근 상자 대신 각진 모서리, 가는 숫자. 흐림 덩어리(.orb)는 그대로 둥글게 */
+    [class*="rounded-"]:not(.orb) { border-radius: 2px !important; }
+    .bezel { border-radius: 6px !important; } .bezel > .core { border-radius: 4px !important; } .frame-view { border-radius: 0 0 4px 4px !important; }
+    .font-display { font-weight: 300; }
+    /* 유리 패널: 카드·틀·내비 띠는 뒤를 흐린다 */
+    .bezel, .bg-white/[0.02], .bg-white/5, .bg-zinc-900/60, .bg-zinc-900/90, .bg-zinc-950/60 { -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+    .bezel { background: rgba(255, 255, 255, 0.045); }
+    .t-spring { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .grain { position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0.035; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    .orb { position: absolute; border-radius: 9999px; filter: blur(80px); pointer-events: none; animation: float 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-18px) } }
+    .reveal { opacity: 0; transform: translateY(2rem); filter: blur(4px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), filter 0.9s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: calc(var(--i, 0) * 80ms); }
+    .reveal.in { opacity: 1; transform: none; filter: none; }
+    .bezel { background: rgba(255, 255, 255, 0.03); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); padding: 6px; border-radius: 2rem; }
+    .bezel > .core { border-radius: calc(2rem - 6px); background: linear-gradient(180deg, #151413 0%, #0e0e0d 100%); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08); }
+    .frame-view { position: relative; overflow: hidden; border-radius: 0 0 calc(2rem - 6px) calc(2rem - 6px); background: #121211; }
+    .frame-view iframe { position: absolute; left: 0; top: 0; width: 1280px; height: 820px; border: 0; transform-origin: 0 0; }
+    .marquee { display: flex; width: max-content; animation: marquee 38s linear infinite; }
+    .marquee:hover { animation-play-state: paused; }
+    @keyframes marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+    .nav-panel { opacity: 0; pointer-events: none; transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .nav-panel.open { opacity: 1; pointer-events: auto; }
+    .nav-panel a { opacity: 0; transform: translateY(2rem); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: calc(var(--i, 0) * 60ms); }
+    .nav-panel.open a { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal, .reveal.in { opacity: 1; transform: none; filter: none; transition: none; } .orb, .marquee { animation: none; } }
+  </style>
+</head>
+<body class="font-sans">
+<div class="grain" aria-hidden="true"></div>
+<header class="fixed inset-x-0 top-0 z-40 px-4">
+  <nav class="mx-auto mt-4 flex w-full max-w-5xl items-center justify-between gap-3 rounded-full border border-white/10 bg-zinc-900/60 py-2 pl-4 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl" aria-label="주요 메뉴">
+    <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><defs><linearGradient id="wb-key" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2d3a8"/><stop offset=".5" stop-color="#d8a272"/><stop offset="1" stop-color="#9c5d2d"/></linearGradient></defs><rect width="32" height="32" rx="6" fill="url(#wb-key)"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#1c130a" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
+    <div class="hidden items-center gap-1 md:flex">
+      <a href="index.html#tools" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">도구</a>
+      <a href="index.html#compare" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">비교</a>
+      <a href="index.html#proof" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">검증</a>
+      <a href="index.html#cases" class="t-spring rounded-full px-4 py-2 text-sm text-zinc-400 hover:bg-white/5 hover:text-zinc-100">사례</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="../index.html#data" class="t-spring group hidden items-center gap-2 rounded-full bg-accent py-2 pl-4 pr-2 text-sm font-semibold text-ink hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 sm:flex">이 도구 열기<span class="t-spring flex h-7 w-7 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-0.5"><iconify-icon icon="solar:arrow-right-linear" class="text-base" aria-hidden="true"></iconify-icon></span></a>
+      <button type="button" class="nav-toggle flex h-10 w-10 items-center justify-center rounded-full text-zinc-300 hover:bg-white/5 md:hidden" aria-label="메뉴 열기" aria-expanded="false"><iconify-icon icon="solar:hamburger-menu-linear" class="text-2xl" aria-hidden="true"></iconify-icon></button>
+    </div>
+  </nav>
+</header>
+<div class="nav-panel fixed inset-0 z-50 flex flex-col bg-zinc-950/80 px-6 pt-24 backdrop-blur-3xl md:hidden" role="dialog" aria-label="메뉴">
+  <button type="button" class="nav-close absolute right-5 top-6 flex h-11 w-11 items-center justify-center rounded-full text-zinc-300 hover:bg-white/5" aria-label="메뉴 닫기"><iconify-icon icon="solar:close-circle-linear" class="text-3xl" aria-hidden="true"></iconify-icon></button>
+  <a href="index.html#tools" style="--i:0" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">도구</a>
+  <a href="index.html#compare" style="--i:1" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">비교</a>
+  <a href="index.html#proof" style="--i:2" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">검증</a>
+  <a href="index.html#cases" style="--i:3" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">사례</a>
+  <a href="../index.html#data" style="--i:4" class="border-b border-white/5 py-5 text-2xl font-semibold text-zinc-100">워크벤치 열기</a>
+</div>
+<main>
+  <!-- 히어로: 왼쪽 설명, 오른쪽 템플릿 결과 -->
+  <section class="relative overflow-hidden pb-20 pt-32 md:pb-28 md:pt-40">
+    <div class="orb right-[-10%] top-[10%] h-[460px] w-[460px] bg-accent/12" aria-hidden="true"></div>
+    <div class="relative mx-auto grid max-w-7xl gap-14 px-4 sm:px-6 lg:grid-cols-[1.25fr_1fr] lg:items-end lg:px-8">
+      <div class="reveal">
+        <a href="index.html#tools" class="t-spring inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-200"><iconify-icon icon="solar:arrow-left-linear" class="" aria-hidden="true"></iconify-icon>도구 목록</a>
+        <div class="mt-6"><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent"><iconify-icon icon="solar:database-linear" class="text-sm" aria-hidden="true"></iconify-icon>전투 · 데이터</span></div>
+        <p class="mt-6 text-lg font-semibold text-zinc-300">데이터 테이블</p>
+        <h1 class="ko mt-3 text-4xl font-bold leading-tight tracking-tight text-zinc-50 md:text-5xl lg:text-6xl">엑셀 전투 시트를 그대로 옮겨 와 깨진 참조를 찾습니다</h1>
+        <p class="ko mt-7 max-w-[62ch] text-base leading-relaxed text-zinc-400 md:text-lg">전투 시뮬레이터가 읽는 직업·캐릭터·몬스터·스킬·효과·속성 상성·시너지 일곱 개 테이블을 편집합니다. 테이블끼리는 ID로 참조하고, 엑셀이 저장한 CSV를 그대로 불러오며, 없는 ID 참조·중복 ID·빈 필수값·범위 밖 숫자를 행과 칸에 표시합니다. 행을 더하면 시뮬레이터의 선택 목록에 바로 나타납니다.</p>
+        <div class="mt-10 flex flex-wrap gap-3"><a href="../index.html#data" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(216,162,114,0.28)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">이 도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a><a href="#preview" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] py-2 pl-7 pr-2 text-base font-medium text-zinc-200 hover:scale-[1.02] hover:bg-white/[0.06] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 md:text-lg">화면 먼저 보기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-white/5 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div>
+      <div class="reveal bezel" style="--i:2">
+        <div class="core p-7 md:p-8">
+          <p class="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.15em] text-zinc-500"><iconify-icon icon="solar:play-circle-linear" class="text-sm text-accent" aria-hidden="true"></iconify-icon>템플릿을 돌린 결과</p>
+          <dl class="mt-6 divide-y divide-white/5">
+            <div class="py-5 first:pt-0 last:pb-0"><dt class="font-display text-3xl font-light tracking-tight text-zinc-50 md:text-4xl">7개</dt><dd class="ko mt-1.5 text-sm leading-relaxed text-zinc-400">테이블 (직업 7 · 캐릭터 8 · 몬스터 4 · 스킬 19 · 효과 15 · 상성 6 · 시너지 3)</dd></div>
+            <div class="py-5 first:pt-0 last:pb-0"><dt class="font-display text-3xl font-light tracking-tight text-zinc-50 md:text-4xl">0건</dt><dd class="ko mt-1.5 text-sm leading-relaxed text-zinc-400">기본 데이터의 오류·경고 — 오타 하나도 행·칸으로 표시</dd></div>
+            <div class="py-5 first:pt-0 last:pb-0"><dt class="font-display text-3xl font-light tracking-tight text-zinc-50 md:text-4xl">2,740 · 279</dt><dd class="ko mt-1.5 text-sm leading-relaxed text-zinc-400">아렌 Lv30의 체력·공격력 (직업 기본 → 레벨 성장 → 보정)</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 이런 질문에 답합니다: 번호 목록 -->
+  <section class="border-y border-white/5 bg-zinc-950/70 py-24 md:py-32">
+    <div class="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
+      <div class="reveal"><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">질문</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">이런 질문에<br>답합니다</h2></div>
+      <ol class="divide-y divide-white/5">
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:0"><span class="font-display text-2xl font-light text-zinc-700 md:text-3xl">01</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">엑셀에서 고친 스킬 시트에 없는 효과 ID를 참조하는 행은 없나요?</p></li>
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:1"><span class="font-display text-2xl font-light text-zinc-700 md:text-3xl">02</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">캐릭터를 하나 추가하면 최종 스탯은 얼마가 되나요?</p></li>
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:2"><span class="font-display text-2xl font-light text-zinc-700 md:text-3xl">03</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">스킬 ID 이름을 바꾸면 그 스킬을 쓰던 몬스터와 보스 페이즈는 어떻게 되나요?</p></li>
+        <li class="reveal flex gap-6 py-7 first:pt-0" style="--i:3"><span class="font-display text-2xl font-light text-zinc-700 md:text-3xl">04</span><p class="ko text-lg font-medium leading-snug text-zinc-100 md:text-2xl">속성 상성과 시너지 조건을 한곳에서 관리할 수 있나요?</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 실제 도구 -->
+  <section id="preview" class="scroll-mt-28 py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <div><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">실제 화면</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">설명 대신 직접 만져 보세요</h2></div>
+        <p class="ko max-w-[46ch] text-sm leading-relaxed text-zinc-500">아래는 캡처가 아니라 실제 도구입니다. 여기서 바꾼 값은 이 브라우저에 저장되고, 앱의 ↶ 버튼으로 되돌릴 수 있습니다.</p>
+      </div>
+      <div class="reveal mt-12 hidden md:block"><div class="bezel">
+    <div class="core overflow-hidden">
+      <div class="flex items-center gap-3 border-b border-white/5 px-5 py-3">
+        <span class="flex gap-1.5" aria-hidden="true"><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i><i class="h-2.5 w-2.5 rounded-full bg-zinc-700"></i></span>
+        <span class="truncate font-mono text-xs text-zinc-500">기획 워크벤치 / #data</span>
+        <span class="ml-auto hidden items-center gap-1.5 text-xs text-zinc-500 sm:flex"><iconify-icon icon="solar:play-circle-linear" class="text-sm text-accent" aria-hidden="true"></iconify-icon>직접 조작할 수 있는 실제 도구</span>
+      </div>
+      <div class="frame-view" style="height:420px">
+        <iframe src="../index.html#data" title="데이터 테이블 도구" loading="lazy" ></iframe>
+      </div>
+    </div>
+  </div></div>
+      <div class="reveal mt-10 md:hidden"><div class="bezel"><div class="core p-7">
+        <p class="ko text-base leading-relaxed text-zinc-300">작은 화면에서는 도구를 바로 여는 편이 보기 좋습니다.</p>
+        <div class="mt-6"><a href="../index.html#data" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(216,162,114,0.28)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div></div></div>
+    </div>
+  </section>
+
+  <!-- 기능: 좌우가 번갈아 -->
+  <section class="py-12 md:py-20">
+    <div class="mx-auto grid max-w-7xl gap-20 px-4 sm:px-6 md:gap-28 lg:px-8">
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal ">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:checklist-minimalistic-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">검증 — 빨간 칸과 노란 칸</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">모든 ID를 먼저 모은 뒤 참조 칸(ClassID, 속성, 스킬·효과 목록, 페이즈 안의 스킬, 시너지 조건 값)을 하나씩 대조합니다. 빈 필수값·중복 ID·숫자 범위·선택지 밖 값은 오류, 효과가 걸리지 않는 설정은 경고로 표시하고, 오류를 누르면 그 칸으로 이동합니다.</p>
+        </div>
+        <div class="reveal " style="--i:1">
+          <div class="bezel md:-rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-accent/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">CL_WARIOR → 직업 테이블에 없음</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">EF_STUNN → 효과 테이블에 없음</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">발동 확률 130 → 100 이하</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal md:order-2">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:file-download-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">CSV 왕복 — 엑셀 저장본 그대로</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">BOM, 따옴표 안 쉼표·줄바꿈, 쉼표·세미콜론·탭 구분자, 한글 머리글(체력)과 한글 선택지(탱커)를 그대로 읽습니다. 내보낼 때는 열 키와 한글 선택지로 써서 엑셀에서 바로 열립니다. 전체 또는 테이블 하나를 JSON으로도 주고받습니다.</p>
+        </div>
+        <div class="reveal md:order-1" style="--i:1">
+          <div class="bezel md:rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-accent/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">머리글: hp 또는 체력</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">여러 ID: SK_A|SK_B</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">7개 테이블 왕복 일치</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal ">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:link-round-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">ID 바꾸기와 참조</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">ID를 고치면 그 ID를 가리키던 다른 테이블의 칸도 함께 바뀝니다. 보스 페이즈 문자열("70=SK_FLAME|SK_SLAM; 30=…") 안의 스킬, 상성 표의 열, 같은 속성 시너지의 조건 값까지 따라갑니다.</p>
+        </div>
+        <div class="reveal " style="--i:1">
+          <div class="bezel md:-rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-accent/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">SK_SLAM → SK_SMASH</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">몬스터 스킬·페이즈 함께</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">이미 있는 ID면 중복 오류</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+        <div class="reveal md:order-2">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20"><iconify-icon icon="solar:layers-minimalistic-linear" class="text-2xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-6 text-2xl font-bold leading-snug tracking-tight text-zinc-50 md:text-3xl">최종 스탯 계산 순서</h3>
+          <p class="ko mt-5 max-w-[56ch] text-base leading-relaxed text-zinc-400 md:text-lg">① 직업 기본(Lv1) → ② 레벨 성장(성장 × (Lv − 1)) → ③ 캐릭터 보정(합: + 값 / 곱: × (1 + 값%)) → ④ 장비·버프. 전투 시뮬레이터의 대결 구성 표가 단계별 값을 그대로 보여 줍니다.</p>
+        </div>
+        <div class="reveal md:order-1" style="--i:1">
+          <div class="bezel md:rotate-[0.6deg]"><div class="core relative overflow-hidden p-7 md:p-9">
+            <div class="orb right-[-30%] top-[-40%] h-56 w-56 bg-accent/10" aria-hidden="true"></div>
+            <ul class="relative grid gap-3">
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">01</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">아렌: 900 → 2,640 → 2,740</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">02</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">달리아 공격력: 371.5 × 1.1 = 408.7</span></li>
+              <li class="flex items-center gap-4 rounded-2xl border border-white/5 bg-black/20 px-5 py-4"><span class="font-mono text-xs text-zinc-600">03</span><span class="ko text-sm font-medium tabular-nums text-zinc-200 md:text-base">몬스터는 표의 값 그대로</span></li>
+            </ul>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 계산 방법 · 검증: 크기가 다른 두 칸 -->
+  <section class="py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal"><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">계산과 검증</span><h2 class="ko mt-6 text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">어떻게 계산하고, 어떻게 확인했나</h2></div>
+      <div class="mt-12 grid gap-4 lg:grid-cols-12">
+        <div class="reveal bezel lg:col-span-7"><div class="core h-full p-7 md:p-9">
+          <p class="flex items-center gap-2 text-sm font-semibold text-zinc-200"><iconify-icon icon="solar:calculator-minimalistic-linear" class="text-lg text-accent" aria-hidden="true"></iconify-icon>계산 방법</p>
+          <ul class="mt-6 grid gap-4"><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>테이블 정의(열 종류: ID·문자·숫자·선택지·참·거짓·참조·여러 참조·페이즈) 하나로 편집기·검증·CSV를 함께 만듦</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>검증: ID 목록을 만든 뒤 모든 참조 칸을 대조 (참조 무결성)</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>CSV: RFC 4180, 구분자는 첫 줄에서 가장 많은 쪽</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><span class="mt-2.5 h-1.5 w-1.5 flex-none rounded-full bg-zinc-600"></span>최종 스탯 = (직업 기본 + 성장 × (Lv − 1)) 보정 합/곱 → 장비·버프</li></ul>
+        </div></div>
+        <div class="reveal bezel lg:col-span-5" style="--i:1"><div class="core flex h-full flex-col p-7 md:p-9">
+          <p class="flex items-center gap-2 text-sm font-semibold text-zinc-200"><iconify-icon icon="solar:test-tube-linear" class="text-lg text-accent" aria-hidden="true"></iconify-icon>검증</p>
+          <ul class="mt-6 grid gap-4"><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>기본 데이터는 오류·경고 없이 통과</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>7개 테이블 CSV 내보내기 → 가져오기 왕복이 같음, 엑셀 CSV(BOM·세미콜론·따옴표·한글 머리글)</li><li class="ko flex gap-3 text-base leading-relaxed text-zinc-400"><iconify-icon icon="solar:check-circle-linear" class="mt-1 flex-none text-accent" aria-hidden="true"></iconify-icon>없는 ID·중복 ID·빈 필수값·숫자 범위·선택지 밖 값을 행 단위로 표시, 페이즈 형식</li></ul>
+          <div class="mt-auto flex items-end gap-3 border-t border-white/5 pt-6"><span class="font-display text-5xl font-light tracking-tight text-zinc-50">8</span><span class="ko pb-1.5 text-sm text-zinc-500">이 도구의 자동 테스트 (전체 158개)</span></div>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 사례 -->
+  <section class="relative overflow-hidden border-y border-white/5 bg-zinc-950/70 py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal grid gap-10 lg:grid-cols-[0.7fr_1.3fr]">
+        <div><span class="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-accent">판단 사례</span></div>
+        <div>
+          <h2 class="ko text-3xl font-bold leading-snug tracking-tight text-zinc-50 md:text-4xl">오타 하나가 보스를 바꿉니다</h2>
+          <p class="ko mt-6 max-w-[64ch] text-lg leading-relaxed text-zinc-300 md:text-xl">스킬 시트에서 SK_SLAM을 지우면, 그 스킬을 쓰던 오크 전사와 화염 골렘 페이즈가 조용히 깨지고 전투에서는 "보스가 스킬을 안 쓴다"는 엉뚱한 증상으로 나타납니다. 데이터 테이블은 이런 깨진 참조를 전투를 돌리기 전에 칸 단위로 보여 주고, ID를 바꾸면 참조를 함께 고칩니다.</p>
+          <p class="ko mt-6 text-sm text-zinc-500">템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 함께 쓰는 도구 -->
+  <section class="py-24 md:py-32">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="reveal flex items-end justify-between gap-6">
+        <h2 class="ko text-2xl font-bold tracking-tight text-zinc-50 md:text-3xl">함께 쓰는 도구</h2>
+        <a href="index.html#tools" class="t-spring hidden items-center gap-1.5 text-sm text-zinc-400 hover:text-accent sm:inline-flex">전체 도구<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></a>
+      </div>
+      <div class="mt-10 grid gap-4 md:grid-cols-[1.2fr_1fr_1fr]">
+        <a href="combat.html" class="reveal t-spring bezel group block hover:-translate-y-1" style="--i:0"><div class="core h-full p-7">
+          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:users-group-rounded-linear" class="text-xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-5 text-lg font-semibold text-zinc-50">전투 시뮬레이터</h3>
+          <p class="ko mt-2 text-sm leading-relaxed text-zinc-400">테이블 그대로 1:1과 파티 전투를 수백 번 돌려 봅니다</p>
+          <span class="mt-5 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">자세히<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span>
+        </div></a>
+        <a href="battle.html" class="reveal t-spring bezel group block hover:-translate-y-1" style="--i:1"><div class="core h-full p-7">
+          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:gamepad-linear" class="text-xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-5 text-lg font-semibold text-zinc-50">스탯·전투 밸런스</h3>
+          <p class="ko mt-2 text-sm leading-relaxed text-zinc-400">CP는 높은데 실제로는 지는 캐릭터를 찾아냅니다</p>
+          <span class="mt-5 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">자세히<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span>
+        </div></a>
+        <a href="growth.html" class="reveal t-spring bezel group block hover:-translate-y-1" style="--i:2"><div class="core h-full p-7">
+          <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5 text-zinc-200 ring-1 ring-white/10"><iconify-icon icon="solar:graph-up-linear" class="text-xl" aria-hidden="true"></iconify-icon></span>
+          <h3 class="ko mt-5 text-lg font-semibold text-zinc-50">성장 표 템플릿 (엑셀)</h3>
+          <p class="ko mt-2 text-sm leading-relaxed text-zinc-400">툴은 뼈대만, 콘텐츠 규칙은 엑셀에서 행을 더해 늘립니다</p>
+          <span class="mt-5 inline-flex items-center gap-1.5 text-sm text-zinc-500 group-hover:text-accent">자세히<iconify-icon icon="solar:arrow-right-linear" class="t-spring group-hover:translate-x-1" aria-hidden="true"></iconify-icon></span>
+        </div></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 마무리 CTA -->
+  <section class="relative overflow-hidden border-t border-white/5 py-24 md:py-32">
+    <div class="orb left-[10%] top-[20%] h-[380px] w-[380px] bg-accent/10" aria-hidden="true"></div>
+    <div class="relative mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_1fr] lg:items-end lg:px-8">
+      <div class="reveal">
+        <h2 class="ko text-3xl font-bold leading-tight tracking-tight text-zinc-50 md:text-5xl">템플릿으로 시작해<br>내 수치로 바꿔 보세요</h2>
+        <div class="mt-10 flex flex-wrap gap-3"><a href="../index.html#data" class="t-spring group inline-flex min-h-[52px] items-center gap-3 rounded-full bg-accent py-2 pl-7 pr-2 text-base font-semibold text-ink hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(216,162,114,0.28)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 md:text-lg">데이터 도구 열기<span class="t-spring flex h-9 w-9 items-center justify-center rounded-full bg-black/10 group-hover:translate-x-1"><iconify-icon icon="solar:arrow-right-linear" class="text-lg" aria-hidden="true"></iconify-icon></span></a></div>
+      </div>
+      <nav class="reveal grid grid-cols-2 gap-3" style="--i:1" aria-label="다른 도구">
+        <a href="battle.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center gap-1.5 text-xs text-zinc-500"><iconify-icon icon="solar:arrow-left-linear" class="" aria-hidden="true"></iconify-icon>이전 도구</span><span class="ko mt-2 block text-base font-semibold text-zinc-100">스탯·전투 밸런스</span></a>
+        <a href="frame.html" class="t-spring rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-5 text-right hover:border-white/10 hover:bg-white/[0.04]"><span class="flex items-center justify-end gap-1.5 text-xs text-zinc-500">다음 도구<iconify-icon icon="solar:arrow-right-linear" class="" aria-hidden="true"></iconify-icon></span><span class="ko mt-2 block text-base font-semibold text-zinc-100">패턴 프레임 검증기</span></a>
+      </nav>
+    </div>
+  </section>
+</main>
+<footer class="border-t border-white/5">
+  <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
+    <div class="max-w-md">
+      <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100"><svg viewBox="0 0 32 32" class="h-7 w-7" aria-hidden="true"><defs><linearGradient id="wb-key" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2d3a8"/><stop offset=".5" stop-color="#d8a272"/><stop offset="1" stop-color="#9c5d2d"/></linearGradient></defs><rect width="32" height="32" rx="6" fill="url(#wb-key)"/><path d="M9 22l5-12 4 8 2-4 3 8" stroke="#1c130a" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>기획 워크벤치</span></a>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 8개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+    </div>
+    <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
+      <a href="../index.html#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>
+      <a href="index.html#tools" class="t-spring hover:text-zinc-100">도구 목록</a>
+      <a href="https://github.com/junhy96/gamedesign_workbench" class="t-spring hover:text-zinc-100" rel="noopener">GitHub 저장소</a>
+      <a href="https://github.com/junhy96/gamedesign_workbench/blob/main/docs/case-study.md" class="t-spring hover:text-zinc-100" rel="noopener">기획 판단 사례</a>
+    </div>
+  </div>
+</footer>
+<script>
+  // 화면에 들어올 때 나타나기 (스크롤 이벤트 대신 IntersectionObserver)
+  const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  // 숫자 올라가기
+  const fmt = new Intl.NumberFormat('ko-KR');
+  const co = new IntersectionObserver((es) => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const el = e.target, to = +el.dataset.count, t0 = performance.now();
+    const step = (t) => { const p = Math.min(1, (t - t0) / 1200), k = 1 - Math.pow(1 - p, 3); el.textContent = fmt.format(Math.round(to * k)); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step); co.unobserve(el);
+  }), { threshold: 0.6 });
+  document.querySelectorAll('[data-count]').forEach(el => co.observe(el));
+  // 실제 도구 미리보기: 1280px 화면을 칸 너비에 맞춰 줄임
+  document.querySelectorAll('.frame-view').forEach(box => {
+    const f = box.querySelector('iframe');
+    new ResizeObserver(() => { const s = box.clientWidth / 1280; f.style.transform = 'scale(' + s + ')'; box.style.height = Math.round(820 * s) + 'px'; }).observe(box);
+  });
+  // 모바일 메뉴
+  const panel = document.querySelector('.nav-panel'), tog = document.querySelector('.nav-toggle');
+  const setMenu = (open) => { panel.classList.toggle('open', open); tog.setAttribute('aria-expanded', String(open)); document.body.style.overflow = open ? 'hidden' : ''; };
+  tog.addEventListener('click', () => setMenu(true));
+  panel.querySelector('.nav-close').addEventListener('click', () => setMenu(false));
+  panel.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setMenu(false)));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+</script>
+</body>
+</html>

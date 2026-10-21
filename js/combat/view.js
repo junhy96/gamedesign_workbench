@@ -493,7 +493,7 @@ function renderLog(log) {
       h('thead', {}, h('tr', {}, ...[isRT() ? '초' : '턴', '이벤트', '행동 주체', '스킬', '대상', '수치', '내용'].map((x, i) => h(`th${i > 0 && i !== 5 ? '.left' : ''}`, {}, x)))),
       h('tbody', {}, ...shown.map(l => h(`tr.ev-${l.ev}`, {}, h('td', {}, String(l.t)), h('td.left', {}, EV_LABEL[l.ev] ?? l.ev), h('td.left', {}, l.actor ?? ''), h('td.left', {}, l.skill ?? ''), h('td.left', {}, l.target ?? ''),
         h('td', {}, l.value != null ? `${comma(l.value)}${l.crit ? ' ★' : ''}` : ''), h('td.left', {}, l.text)))))),
-    rows.length > shown.length ? h('p.muted.small', {}, `앞 ${comma(shown.length)}건만 표시 — 전체는 CSV/JSON으로 내보내세요.`) : null,
+    rows.length > shown.length ? h('p.muted.small', {}, `앞 ${comma(shown.length)}건만 표시 — 전체는 CSV/JSON으로 내보내세요.`) : '',
   );
 }
 

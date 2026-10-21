@@ -42,7 +42,7 @@ export function renderQuantileCard(host, { title = '달성 분위별 수치', hi
   const canvas = h('canvas', { role: 'img', 'aria-label': `${cur.label} 분위별 값 막대 그래프 (표로도 제공)` });
   host.replaceChildren(
     h('div.card-head', {}, h('h2', {}, title), h('span.hint', {}, hint)),
-    metrics.length > 1 ? h('div.seg-tabs', {}, ...metrics.map(m => h('button', { type: 'button', 'aria-pressed': String(m.id === cur.id), onclick: () => onSelect(m.id) }, m.label))) : null,
+    metrics.length > 1 ? h('div.seg-tabs', {}, ...metrics.map(m => h('button', { type: 'button', 'aria-pressed': String(m.id === cur.id), onclick: () => onSelect(m.id) }, m.label))) : '',
     h('div.chart-box', {}, canvas),
     h('div.table-wrap', {}, h('table.stages.q-table', {},
       h('thead', {}, h('tr', {}, h('th', {}, '분위'), h('th.left', {}, '뜻'), ...metrics.map(m => h('th', {}, m.label)))),

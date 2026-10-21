@@ -1,6 +1,6 @@
 // 스탯·전투 밸런스 — 화면: 왼쪽 규칙(템플릿·전투 방식·수식), 오른쪽 엔티티·아이템 표 → 레벨 곡선 → 승률 행렬 → 1:1 상세 → 검증
 import {
-  analyze, compileRules, curves, matrix, duel, duelSim, prepare, killStats, statsAt, fromKalivra,
+  analyze, compileRules, curves, matrix, duel, duelSim, prepare, killStats, statsAt, fromKalivra, fightBatch, monteCarlo, phaseSplit,
   MODES, TIES, ROUNDS, GROWTHS, FORMULA_KEYS, METRICS, josa, TRIGGERS, EFFECTS, EFFECT_BASES, phaseRanges, phaseReport, sweepPlan, sweepAt, traitsOf, scoreOf, compareBuilds, minChanges, battleSensitivity, contributions, solveTarget, applyScale,
 } from './model.js';
 import { TEMPLATES, FORMULA_PRESETS, TRAIT_PRESETS, FORMULA_INFO } from './presets.js';
@@ -10,6 +10,7 @@ import { makeZip } from '../lib/zip.js';
 import { drawConvergence, halfWidth } from '../lib/mcviz.js';
 import { h, store, encodeState, decodeState, downloadJSON, downloadText, toast, debounce, comma } from '../lib/util.js';
 import { drawChart } from '../lib/chart.js';
+import { arcGauge } from '../lib/gauge.js';
 import { simFields, seedMix } from '../lib/simconfig.js';
 
 const SCHEMA = 1;
@@ -41,7 +42,7 @@ export function mount(root) {
   if (location.hash.startsWith('#battle?')) history.replaceState(null, '', '#battle');
   build(root);
   rebuild();
-  document.addEventListener('themechange', () => last && (drawCurves(last), renderPair(last), startPhase(last)));
+  document.addEventListener('themechange', () => last && (drawCurves(last), renderPair(last), renderSim(last, { keep: true }), startPhase(last)));
   window.addEventListener('hashchange', () => { const st = readHash(); if (st) { state = st; history.replaceState(null, '', '#battle'); rebuild(); } });
 }
 
@@ -72,6 +73,7 @@ function build(root) {
         ),
         els.mxCard = h('div.card.role-out'),
         els.pairCard = h('div.card.role-out'),
+        els.simCard = h('div.card.role-tool.sim-card'),
         els.phaseCard = h('div.card.role-out'),
         els.checkCard = h('div.card.role-check'),
         els.toolCard = h('div.card.role-tool'),
@@ -493,6 +495,7 @@ function recompute() {
   drawCurves(res);
   renderMatrix(res);
   renderPair(res);
+  renderSim(res);
   renderCheck(res);
   startPhase(res);
   renderTools(res);
@@ -522,9 +525,12 @@ function renderKPIs(res) {
   const inv = res.cv.pairs.length;
   put(els.kpis, 
     kpi(`Lv${res.lv} 가장 강한 엔티티`, E.length > 1 ? E[best].name : '—', E.length > 1 ? [`상대 평균 승률 ${pct(mx.score[best])} (무승부 절반)`] : ['엔티티를 2개 이상 넣으세요'], '.hero'),
-    kpi('CP와 실제 강함의 순위 상관', Number.isFinite(res.cv.rho) ? res.cv.rho.toFixed(2) : '—', [E.length >= 3 ? 'CP(전투력 숫자) 순서와 실제 승률 순서가 같으면 1, 반대면 −1' : '엔티티 3개 이상일 때'], Number.isFinite(res.cv.rho) && res.cv.rho < 0.5 ? '.bad' : ''),
-    kpi('CP가 높은데 지는 쌍', `${inv}쌍`, inv ? [`${res.cv.pairs[0].hi.name} → ${res.cv.pairs[0].lo.name} 승률 ${pct(res.cv.pairs[0].win)}`] : ['없음'], inv ? '.bad' : ''),
-    kpi('계산 방식', mx.allExact ? '공식 계산' : '일부 시뮬레이션', [mx.allExact ? '모든 대결을 공식으로 계산해 매번 같은 값이 나옵니다' : `변동·특성이 있는 대결은 ${comma(state.sim.runs)}번 시뮬레이션 (95% 범위 표시)`, MODES[state.rules.mode].split(' (')[0]]),
+    kpi('CP와 실제 강함의 순위 상관', Number.isFinite(res.cv.rho) ? res.cv.rho.toFixed(2) : '—', [E.length >= 3 ? '1 = CP 순서와 승률 순서가 같음 · −1 = 정반대 · 0.5 아래면 CP 수식이 상성을 못 담은 것' : '엔티티 3개 이상일 때'], Number.isFinite(res.cv.rho) && res.cv.rho < 0.5 ? '.bad' : ''),
+    kpi('CP가 높은데 지는 쌍', `${inv}쌍`, inv ? [`CP가 더 높은 ${josa(res.cv.pairs[0].hi.name, '이', '가')} ${res.cv.pairs[0].lo.name}에게 ${pct(res.cv.pairs[0].win)}만 이김`] : ['CP 순서대로 모두 이김'], inv ? '.bad' : ''),
+    // 최강·최약의 평균 승률 차 — 한 숫자로 보는 전체 격차. 계산 방식(공식/시뮬레이션, 시간/턴)은 아래 줄에
+    kpi('최강·최약 승률 격차', E.length > 1 ? `${((Math.max(...mx.score) - Math.min(...mx.score)) * 100).toFixed(1)}%p` : '—',
+      [E.length > 1 ? `최강 ${E[best].name} ${pct(mx.score[best])} · 최약 ${E[mx.score.indexOf(Math.min(...mx.score))].name} ${pct(Math.min(...mx.score))}` : '엔티티를 2개 이상 넣으세요',
+        `${mx.allExact ? '모든 대결을 공식 계산' : `변동·특성 있는 대결은 ${comma(state.sim.runs)}번 시뮬레이션`} · ${MODES[state.rules.mode].split(' (')[0]}`]),
   );
 }
 
@@ -591,11 +597,12 @@ function renderMatrix(res) {
     const tone = c.win >= 0.5 ? '--tor-up' : '--tor-down';
     const d = deltaOf(i, j);
     const sig = c.exact ? Math.abs(c.win - c.lose) > 1e-9 : (c.ci[0] > 0.5 || c.ci[1] < 0.5 - c.draw); // 시뮬레이션이 50%를 걸치면 흐리게
+    // 칸마다 작은 아치 게이지: 이기면(50% 이상) 키 그라데이션, 지면 청회색. 호의 길이 = 승률
     return h(`td.mx-cell${sig ? '' : '.mx-unsure'}`, {
-      style: `background: color-mix(in srgb, var(${tone}) ${Math.round(8 + t * 42)}%, transparent)`,
       title: `${E[i].name} 대 ${E[j].name}: 승 ${pct(c.win)} · 패 ${pct(c.lose)} · 무 ${pct(c.draw)}${c.exact ? ' (공식 계산)' : ` · 95% 구간 ${pct(c.ci[0])}~${pct(c.ci[1])}`}`,
       onclick: () => { state.pairA = i; state.pairB = j; renderPair(last); els.pairCard.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     },
+    arcGauge(c.win, { size: 46, stroke: 3.5, tone: tone === '--tor-up' ? 'key' : 'steel', text: pct(c.win, 0), title: `${E[i].name} 대 ${E[j].name} 승률 ${pct(c.win)}` }),
     h('b', {}, pct(c.win)),
     !c.exact ? h('small', {}, `±${((c.ci[1] - c.ci[0]) * 50).toFixed(1)}`) : null,
     c.draw > 0.005 ? h('small', {}, `무 ${pct(c.draw, 0)}`) : null,
@@ -642,7 +649,9 @@ function renderPair(res) {
       select(E.map((e, i) => [i, e.name]), ib, (v) => { state.pairB = +v; save(); renderPair(last); }, '상대'),
       h('span.muted.small', {}, `Lv${lv}`)),
     h('div.pair-kpis', {},
-      ...[['승', d.winA], ['무승부', d.draw], ['패', d.winB]].map(([l, v]) => h('div.pair-kpi', {}, h('span', {}, l), h('b', {}, pct(v, 2)), !d.exact && l === '승' ? h('small', {}, `95% ${pct(d.ci[0])}~${pct(d.ci[1])}`) : null)),
+      // 승률은 아치 게이지로 (호 = A의 승률), 무승부·패는 숫자 타일
+      h('div.pair-gauge', {}, arcGauge(d.winA, { size: 132, text: pct(d.winA, 2), label: `${A.name} 승`, sub: !d.exact ? `95% ${pct(d.ci[0])}~${pct(d.ci[1])}` : (d.exact ? '공식 계산' : ''), tone: d.winA >= 0.5 ? 'key' : 'steel', title: `${A.name}이(가) ${B.name}을(를) 이길 확률 ${pct(d.winA, 2)}` })),
+      ...[['무승부', d.draw], ['패', d.winB]].map(([l, v]) => h('div.pair-kpi', {}, h('span', {}, l), h('b', {}, pct(v, 2)))),
       mode === 'turn' && d.exact ? h('div.pair-kpi', {}, h('span', {}, `${A.name} 선공 확률`), h('b', {}, pct(d.ex.firstA, 1))) : null),
     h('div.two-col', {},
       h('div', {}, h('h3.sub', {}, `${A.name} → ${B.name}`), h('dl.pct-list', {}, ...prof(prep.pa, prep.hpB).map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v))))),
@@ -759,7 +768,7 @@ function mcBlock(sim, d, A, B) {
   );
 }
 
-function drawDuration(canvas, sim, A, B) {
+function drawDuration(canvas, sim, A, B, key = 'battle:chartDur') {
   if (typeof Chart === 'undefined') return;
   const turn = state.rules.mode === 'turn';
   const xs = sim.rawDur, w = sim.outcome, n = xs.length;
@@ -779,8 +788,8 @@ function drawDuration(canvas, sim, A, B) {
   const grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
   const ds = [[`${A.name} 승`, colorOf(ia), 0], [`${B.name} 승`, colorOf(ib), 1], ['무승부', cssVar('--text-3'), 2]]
     .filter(([, , k]) => count[k].some(Boolean))
-    .map(([label, c, k]) => ({ label, data: count[k].map(v => (v / n) * 100), backgroundColor: c, borderRadius: 2, stack: 's' }));
-  chartDur = drawChart('battle:chartDur', canvas, {
+    .map(([label, c, k]) => ({ label, data: count[k].map(v => (v / n) * 100), backgroundColor: c, stipple: true, stack: 's' }));
+  chartDur = drawChart(key, canvas, {
     type: 'bar', data: { labels, datasets: ds },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -828,6 +837,205 @@ function drawHpTimeline(canvas, L, A, B) {
         legend: { labels: { color: ink, boxWidth: 12, boxHeight: 3 } },
         tooltip: { callbacks: { title: (it) => (turn ? `${it[0].raw.x}턴` : `${(+it[0].raw.x.toFixed(2))}초`), label: (it) => (it.raw.text ? `${it.dataset.label}: ${it.raw.text}` : `${it.dataset.label}: ${it.raw.y.toFixed(0)}%`) } },
       },
+    },
+  });
+}
+
+// ── 배틀 시뮬레이터: Kalivra의 FIGHT(한 명 대 상대/전체, 횟수만큼) · M.C(한 쌍 1만 번 상세) ─────
+const MC_RUNS = 10000;
+const FIGHT_LOGS = 100;
+let simLast = null; // { kind: 'fight' | 'mc', … } — 설정이 바뀌면 지움
+function renderSim(res, { keep = false } = {}) {
+  const E = state.entities;
+  if (!keep) simLast = null;
+  if (E.length < 2) { put(els.simCard, h('div.card-head', {}, h('h2', {}, '배틀 시뮬레이터')), h('p.muted', {}, '엔티티를 2개 이상 넣으세요.')); return; }
+  const fs = (state.fight ??= { a: 0, b: 'all', count: 100, lv: null });
+  if (!(fs.a < E.length)) fs.a = 0;
+  if (fs.b !== 'all' && !(+fs.b < E.length && +fs.b !== fs.a)) fs.b = 'all';
+  const lvIn = h('input', { type: 'number', min: 1, max: state.maxLevel, step: 1, value: fs.lv ?? res.lv, 'aria-label': '배틀 레벨', oninput: (e) => { const v = Math.round(+e.target.value); if (v >= 1 && v <= state.maxLevel) { fs.lv = v; save(); } } });
+  const cntIn = h('input', { type: 'number', min: 1, max: 5000, step: 1, value: fs.count, 'aria-label': '전투 횟수', oninput: (e) => { const v = Math.round(+e.target.value); if (v >= 1 && v <= 5000) { fs.count = v; save(); } } });
+  els.simOut = h('div.sim-out');
+  put(els.simCard,
+    h('div.card-head', {}, h('h2', {}, '배틀 시뮬레이터'), h('span.hint', {}, 'Kalivra의 FIGHT · M.C와 같은 화면 — 이 탭의 규칙 그대로 실제 전투를 돌립니다 (시드 고정)')),
+    h('div.sim-controls', {},
+      field('공격 쪽', select(E.map((e, i) => [i, e.name]), fs.a, (v) => { fs.a = +v; if (String(fs.b) === v) fs.b = 'all'; save(); renderSim(last); }, '공격 쪽')),
+      h('span.sim-vs', {}, '대'),
+      field('상대', select([['all', '전체 (리그)'], ...E.map((e, i) => [i, e.name]).filter(([i]) => i !== fs.a)], fs.b, (v) => { fs.b = v === 'all' ? 'all' : +v; save(); }, '상대')),
+      field('레벨', lvIn),
+      field('횟수', cntIn),
+      h('div.sim-btns', {},
+        h('button.btn', { type: 'button', title: `상대 한 명과 ${comma(MC_RUNS)}번 — 선공 승률·남은 체력·오버킬까지`, onclick: () => runMC(res) }, 'M.C'),
+        h('button.btn.primary', { type: 'button', title: '상대(또는 전체)마다 횟수만큼 전투 — 승률·평균 길이·전투 로그', onclick: () => runFight(res) }, 'FIGHT'))),
+    h('p.muted.small', {}, `FIGHT = 상대마다 "횟수"만큼 전투(앞 ${FIGHT_LOGS}전투는 로그로 넘겨 봄), 상대가 한 명이면 구간별 승률도 · M.C = 상대 한 명과 ${comma(MC_RUNS)}번, 선공일 때 승률·승리 시 남은 체력·평균 오버킬·DPT까지.`),
+    els.simOut,
+  );
+  if (keep && simLast) (simLast.kind === 'fight' ? showFight : showMC)(simLast);
+  else put(els.simOut, h('p.muted', {}, 'FIGHT 또는 M.C를 누르세요. 규칙이나 스탯을 바꾸면 결과는 지워집니다.'));
+}
+const simLv = (res) => Math.min(state.maxLevel, Math.max(1, state.fight?.lv ?? res.lv));
+const lenUnit = () => (state.rules.mode === 'turn' ? '턴' : '초');
+const fmtLen = (x) => (Number.isFinite(x) ? `${num(x, state.rules.mode === 'turn' ? 1 : 2)}${lenUnit()}` : '—');
+
+function runFight(res) {
+  const E = state.entities, fs = state.fight, lv = simLv(res), A = E[fs.a];
+  const opps = fs.b === 'all' ? E.filter((_, i) => i !== fs.a) : [E[fs.b]];
+  put(els.simOut, h('p.muted', {}, '전투 중…'));
+  setTimeout(() => {
+    const t0 = performance.now();
+    const rows = opps.map((B, k) => ({ B, r: fightBatch(state, res.f, A, B, lv, { runs: fs.count, seed: seedMix(state.sim.seed, 4242 + k), logs: FIGHT_LOGS }) }));
+    const phases = opps.length === 1 ? phaseSplit(state, res.f, A, opps[0], { runs: Math.max(200, Math.round(state.sim.runs / 10)), seed: seedMix(state.sim.seed, 4343) }) : null;
+    simLast = { kind: 'fight', A, lv, rows, phases, ms: performance.now() - t0, count: fs.count };
+    showFight(simLast);
+  }, 20);
+}
+
+function showFight(S) {
+  const { A, lv, rows, phases } = S;
+  const chart = h('canvas', { role: 'img', 'aria-label': '상대별 승률과 평균 전투 길이' });
+  const statCard = (ent) => {
+    const st = statsAt(state, ent, lv), i = state.entities.indexOf(ent);
+    return h('div.sim-stat', { style: `border-left-color:${colorOf(i)}` }, h('b', {}, ent.name),
+      h('dl', {}, ...state.stats.map(s => h('div', {}, h('dt', {}, s.name || s.id), h('dd', {}, num(st[s.id], 2))))));
+  };
+  put(els.simOut,
+    h('p.muted.small', {}, `Lv${lv} · 상대마다 ${comma(S.count)}전투 · ${MODES[state.rules.mode].split(' (')[0]} · 계산 ${num(S.ms, 0)}ms`),
+    h('div.sim-grid', {},
+      h('div', {}, h('h3.sub', {}, '승률 · 평균 길이'), h('div.chart-box', {}, chart)),
+      h('div.sim-logs', {},
+        phases ? h('div.sim-phase', {},
+          h('h3.sub', {}, `구간별 승률 (Lv1~${state.maxLevel})`),
+          h('div.sim-phase-row', {}, ...phases.map(p => h('div', {},
+            h('span', {}, `Lv${p.from}~${p.to}`), h('b', {}, pct(p.win)),
+            h('i.sim-bar', {}, h('i', { style: `width:${(p.win * 100).toFixed(1)}%;background:var(${p.win >= 0.5 ? '--good' : '--bad'})` }))))),
+          h('p.muted.small', {}, `${phases.every(p => p.exact) ? '레벨마다 공식 계산' : '레벨마다 공식 계산 또는 시뮬레이션'}의 평균 · 구간 경계는 왼쪽 '템플릿 · 레벨'에서 (Kalivra는 1/3씩 나누고 레벨마다 10전투)`)) : null,
+        ...rows.map(({ B, r }, k) => fightGroup(A, B, r, k === 0))),
+      h('div', {}, h('h3.sub', {}, `스탯 (Lv${lv})`), h('div.sim-stats', {}, statCard(A), ...rows.map(({ B }) => statCard(B))))),
+  );
+  if (typeof Chart === 'undefined') return;
+  const grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
+  drawChart('battle:simFight', chart, {
+    type: 'bar',
+    data: {
+      labels: rows.map(x => x.B.name),
+      datasets: [
+        { label: `${A.name} 승률 (%)`, data: rows.map(x => x.r.winA * 100), backgroundColor: cssVar('--good'), borderRadius: 3, yAxisID: 'y' },
+        { label: `평균 길이 (${lenUnit()})`, data: rows.map(x => x.r.avgLen), backgroundColor: cssVar('--role-tool'), borderRadius: 3, yAxisID: 'y2' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false }, ticks: { color: tick } },
+        y: { min: 0, max: 100, position: 'left', grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` }, title: { display: true, text: '승률', color: tick } },
+        y2: { min: 0, position: 'right', grid: { display: false }, ticks: { color: tick }, title: { display: true, text: `평균 길이 (${lenUnit()})`, color: tick } },
+      },
+      plugins: {
+        legend: { labels: { color: ink, boxWidth: 12, boxHeight: 8 } },
+        tooltip: { callbacks: { label: (it) => (it.datasetIndex === 0 ? `승률 ${it.raw.toFixed(1)}% (무 ${pct(rows[it.dataIndex].r.draw)})` : `평균 ${fmtLen(it.raw)} · 이긴 판 ${fmtLen(rows[it.dataIndex].r.avgLenWin)}`) } },
+      },
+    },
+  });
+}
+
+/** 상대 한 명의 결과 묶음: 머리(평균 길이·승률) + 전투 로그 ◀ 전투 i / n ▶ */
+function fightGroup(A, B, r, open) {
+  const turn = state.rules.mode === 'turn';
+  let i = 0;
+  const box = h('div.battle-log.sim-log');
+  const label = h('span.sim-nav-label');
+  const show = () => {
+    const L = r.logs[i];
+    const res = L.w === 1 ? `${A.name} 승` : L.w === 2 ? `${B.name} 승` : '무승부';
+    label.textContent = `전투 ${i + 1} / ${r.logs.length} — ${res} · ${fmtLen(L.t)}${L.first == null ? '' : ` · ${L.first ? A.name : B.name} 선공`}`;
+    const name = (w) => (w === 'A' ? A.name : w === 'B' ? B.name : '');
+    const out = [];
+    let cur = null;
+    for (const e of L.ev.slice(0, 500)) {
+      if (turn && e.t !== cur) { cur = e.t; out.push(h('div.log-turn', {}, `턴 ${e.t}`)); }
+      out.push(h(`div.log-line.${e.type}${turn ? '' : '.timed'}`, {},
+        turn ? null : h('span.log-t', {}, `${(+e.t.toFixed(2)).toLocaleString('ko-KR')}초`),
+        h('span.log-who', {}, name(e.who)),
+        h('span.log-text', {}, e.type === 'hit' || e.type === 'crit' ? `→ ${e.type === 'crit' ? e.text : `${e.text} 데미지`}` : e.text,
+          h('small.log-hp', {}, `${A.name} ${num(e.hpA, 0)} · ${B.name} ${num(e.hpB, 0)}`))));
+    }
+    put(box, ...out, L.ev.length > 500 ? h('p.muted.small', {}, `… ${L.ev.length - 500}줄 더`) : null);
+  };
+  const nav = (d) => () => { i = (i + d + r.logs.length) % r.logs.length; show(); };
+  show();
+  const win = r.winA;
+  return h('details.sim-group', { open },
+    h('summary', {}, h('span', {}, `VS ${B.name}`),
+      h('span.muted.small', {}, `평균 ${fmtLen(r.avgLen)}`),
+      h(`span.sim-tag.${win >= 0.5 ? 'good' : 'bad'}`, { title: `무 ${pct(r.draw)} · 95% ${pct(r.ci[0])}~${pct(r.ci[1])}` }, `승 ${pct(win)}`)),
+    h('div.sim-nav', {}, h('button.mini-btn', { type: 'button', 'aria-label': '이전 전투', onclick: nav(-1) }, '◀'), label, h('button.mini-btn', { type: 'button', 'aria-label': '다음 전투', onclick: nav(1) }, '▶')),
+    box);
+}
+
+function runMC(res) {
+  const E = state.entities, fs = state.fight;
+  if (fs.b === 'all') { toast('M.C는 상대를 한 명 고르세요'); return; }
+  const lv = simLv(res), A = E[fs.a], B = E[fs.b];
+  put(els.simOut, h('p.muted', {}, `${comma(MC_RUNS)}번 전투 중…`));
+  setTimeout(() => {
+    const t0 = performance.now();
+    const mc = monteCarlo(state, res.f, A, B, lv, { runs: MC_RUNS, seed: seedMix(state.sim.seed, 4444) });
+    const ex = duel(state, res.f, A, B, lv, { runs: state.sim.runs });
+    simLast = { kind: 'mc', A, B, lv, mc, ex, ms: performance.now() - t0 };
+    showMC(simLast);
+  }, 20);
+}
+
+function showMC(S) {
+  const { A, B, lv, mc, ex } = S;
+  const turn = state.rules.mode === 'turn';
+  const cell = (label, value, sub, tone) => h('div', {}, h('span', {}, label), h('b', { style: tone ? `color:var(${tone})` : null }, value), sub ? h('small', {}, sub) : null);
+  const fw = mc.first;
+  const lenCanvas = h('canvas', { role: 'img', 'aria-label': '전투 길이 분포 (이긴 쪽별)' });
+  const hpCanvas = h('canvas', { role: 'img', 'aria-label': '승리 시 남은 체력 분포' });
+  put(els.simOut,
+    h('p.muted.small', {}, `${A.name} 대 ${B.name} · Lv${lv} · ${comma(mc.runs)}번 · ${MODES[state.rules.mode].split(' (')[0]}`),
+    h('div.mc-kpis', {},
+      cell('전체 승률', pct(mc.winA, 2), `95% ${pct(mc.ci[0])}~${pct(mc.ci[1])}${ex.exact ? ` · 공식 ${pct(ex.winA, 2)}` : ''}${mc.draw > 0.0005 ? ` · 무 ${pct(mc.draw)}` : ''}`, mc.winA >= 0.5 ? '--good' : '--bad'),
+      fw ? cell('선공일 때 승률', pct(fw.winFirst), `선공 ${pct(fw.share)} · 후공일 때 ${pct(fw.winSecond)}`, Math.abs(fw.winFirst - fw.winSecond) > 0.2 ? '--bad' : null)
+        : cell('선공일 때 승률', '—', '시간 기반은 둘 다 0초에 시작 (선공 없음)'),
+      cell('평균 길이', fmtLen(mc.avgLen), `${A.name} 이긴 판 ${fmtLen(mean(Array.from(mc.rawDur).filter((_, i) => mc.outcome[i] === 1)))}`),
+      cell('계산 시간', `${num(S.ms, 0)}ms`, `${comma(mc.runs)}전투`),
+      cell('실현 치명타율', pct(mc.critRate), `적중 중 · 공격 중 ${pct(mc.critPerAttack)} (Kalivra 표기)`),
+      cell('실현 회피율', pct(mc.dodgeRate), `${B.name}의 공격 중 빗나간 비율`),
+      cell(`평균 ${turn ? 'DPT' : 'DPS'}`, num(mc.dpt, 1), `${josa(A.name, '이', '가')} 가한 데미지 ÷ 전투 길이 (${turn ? '턴당' : '초당'})`),
+      cell('평균 오버킬', num(mc.overkill, 1), `${josa(A.name, '이', '가')} 이긴 판에서 마지막 공격이 체력을 넘긴 양`)),
+    h('div.two-col', {},
+      h('div', {}, h('h3.sub', {}, `전투 길이 분포 (${lenUnit()})`), h('div.chart-box', {}, lenCanvas)),
+      h('div', {}, h('h3.sub', {}, '승리 시 남은 체력 분포'), h('div.chart-box', {}, hpCanvas))),
+    h('p.muted.small', {}, '남은 체력: 이긴 쪽이 전투가 끝났을 때 남긴 체력(절댓값). 오른쪽에 몰려 있으면 여유 있게, 왼쪽(0 근처)에 몰려 있으면 아슬아슬하게 이긴 것입니다.'),
+  );
+  setTimeout(() => { drawDuration(lenCanvas, mc, A, B, 'battle:simLen'); drawWinHp(hpCanvas, mc, A, B); }, 0);
+}
+
+function drawWinHp(canvas, mc, A, B) {
+  if (typeof Chart === 'undefined') return;
+  const all = [...mc.hpWinA, ...mc.hpWinB];
+  if (!all.length) return;
+  const max = Math.max(1, ...all), bins = 10, w = Math.max(1, Math.ceil(max / bins));
+  const count = (arr) => { const c = new Array(bins).fill(0); for (const v of arr) c[Math.min(bins - 1, Math.floor(v / w))]++; return c.map(x => (x / mc.runs) * 100); };
+  const ia = state.entities.indexOf(A), ib = state.entities.indexOf(B);
+  const grid = cssVar('--grid'), tick = cssVar('--text-3'), ink = cssVar('--text-2');
+  drawChart('battle:simHp', canvas, {
+    type: 'bar',
+    data: {
+      labels: Array.from({ length: bins }, (_, k) => `${comma(k * w)}~${comma((k + 1) * w - 1)}`),
+      datasets: [
+        { label: `${A.name} 승`, data: count(mc.hpWinA), backgroundColor: colorOf(ia), stipple: true },
+        { label: `${B.name} 승`, data: count(mc.hpWinB), backgroundColor: colorOf(ib), stipple: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false }, ticks: { color: tick, maxTicksLimit: 6 }, title: { display: true, text: '남은 체력', color: tick } },
+        y: { grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` }, title: { display: true, text: '전체 전투 중 비율', color: tick } },
+      },
+      plugins: { legend: { labels: { color: ink, boxWidth: 12, boxHeight: 8 } }, tooltip: { callbacks: { label: (it) => `${it.dataset.label}: ${it.raw.toFixed(1)}%` } } },
     },
   });
 }

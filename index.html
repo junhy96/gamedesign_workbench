@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>기획 워크벤치</title>
   <meta name="description" content="게임 시스템·BM 기획 검증 도구 모음 — 강화 확률·비용, 가챠·수집, 성장 표 엑셀 템플릿, 스탯·전투 승률, 패턴 프레임 검증">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23d8a272'/><path d='M9 22l5-12 4 8 2-4 3 8' stroke='%231c130a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/home.css">
   <script>
-    // 테마를 첫 렌더 전에 적용해 깜빡임 방지. 처음에는 라이트, 버튼으로 고른 적이 있으면 그 테마
+    // 테마를 첫 렌더 전에 적용해 깜빡임 방지. 처음에는 다크(기본 디자인), 버튼으로 고른 적이 있으면 그 테마
     if (!location.hash || location.hash === '#home') document.documentElement.classList.add('pre-home');
-    try { const t = localStorage.getItem('planwb:theme'); document.documentElement.dataset.theme = t ? JSON.parse(t) : 'light'; } catch {}
+    try { const t = localStorage.getItem('planwb:theme'); document.documentElement.dataset.theme = t ? JSON.parse(t) : 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }
   </script>
 </head>
 <body>
@@ -66,6 +66,7 @@
           <span class="hm-eb">게임 시스템·BM 기획 검증 도구</span>
           <h1><s>엑셀</s>은 평균 하나.<br>워크벤치는 <em>분포 전체</em>를.</h1>
           <p class="hm-lede">강화·가챠·성장·전투 밸런스를 몬테카를로 시뮬레이션과 마르코프 체인으로 계산해요. 평균뿐 아니라 운 나쁜 1%가 얼마를 쓰는지, 공식과 시뮬레이션이 서로 맞는지까지 브라우저에서 바로 확인합니다.</p>
+          <div class="hm-meter" aria-hidden="true"></div>
           <div class="hm-cta">
             <a class="hm-btn primary" href="#enhance">도구 바로 열기 →</a>
             <a class="hm-btn" href="#hm-features">기능 둘러보기</a>

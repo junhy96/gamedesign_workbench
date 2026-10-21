@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parse, compile } from '../js/battle/formula.js';
 import {
-  analyze, validate, compileRules, statsAt, tableAt, killDist, duelExact, duelSim, prepare, matrix, wilson, spearman,
+  analyze, validate, compileRules, statsAt, tableAt, killDist, duelExact, duelSim, prepare, matrix, wilson, spearman, fightBatch, monteCarlo, phaseSplit,
   crossovers, cpVsWin, fromKalivra, josa, battleOnce, duel, traitWarnings, phaseRanges, levelSweep, sweepPlan, phaseReport, cycles, solveTarget, solveScale, minChanges, battleSensitivity, contributions, scoreOf, withScale, withParam, applyScale, compareBuilds,
 } from '../js/battle/model.js';
 import { TEMPLATES } from '../js/battle/presets.js';
@@ -195,6 +195,60 @@ test('정확해 = 이 탭의 시뮬레이션 (무작위 설정 12개, 두 방식
       assert.ok(Math.abs(ex.draw - sm.draw) <= 4 * Math.sqrt(Math.max(ex.draw * (1 - ex.draw), 1e-4) / 20000), `${i} ${mode} 무승부`);
     }
   }
+});
+
+test('배틀 시뮬레이터 FIGHT·M.C: 같은 시드 = 같은 결과, 승률은 공식 계산과 4σ 안, 로그는 앞 100판까지', () => {
+  let seed = 7; const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const mk = (id) => ent(id, { hp: 200 + r() * 300, atk: 25 + r() * 30, def: r() * 30, acc: 80 + r() * 20, eva: r() * 20, cric: r() * 30, crid: 1.5, aspd: 0.6 + r() });
+  for (const mode of ['time', 'turn']) {
+    const cfg = cfgOf([mk('A'), mk('B')], { mode });
+    const { f } = compileRules(cfg);
+    const [A, B] = cfg.entities;
+    const ex = duelExact(cfg, f, A, B, 1);
+    const fb = fightBatch(cfg, f, A, B, 1, { runs: 300, seed: 5 });
+    assert.deepEqual(fightBatch(cfg, f, A, B, 1, { runs: 300, seed: 5 }).winA, fb.winA);
+    assert.equal(fb.logs.length, 100);
+    close(fb.winA + fb.winB + fb.draw, 1, 1e-12);
+    const mc = monteCarlo(cfg, f, A, B, 1, { runs: 10000, seed: 9 });
+    const se = Math.sqrt(Math.max(ex.winA * (1 - ex.winA), 1e-4) / 10000);
+    assert.ok(Math.abs(mc.winA - ex.winA) <= 4 * se, `${mode}: ${mc.winA} vs ${ex.winA}`);
+    assert.equal(mc.hpWinA.length, Math.round(mc.winA * 10000));
+    assert.equal(mc.first === null, mode === 'time');
+  }
+});
+
+test('M.C 지표: 승률 = 선공 비율 × 선공 승률 + 후공 비율 × 후공 승률, 선공 비율 ≈ 공격 속도 비, 회피율 = 1 − 상대 실현 명중, DPT·오버킬', () => {
+  // 턴 교대, 확률이 섞인 대결
+  const cfg = cfgOf([ent('A', { hp: 300, atk: 40, acc: 90, eva: 20, cric: 20, crid: 1.5, aspd: 1.5 }), ent('B', { hp: 320, atk: 38, acc: 85, eva: 10, cric: 10, crid: 1.5, aspd: 1 })], { mode: 'turn' });
+  const { f } = compileRules(cfg);
+  const [A, B] = cfg.entities;
+  const mc = monteCarlo(cfg, f, A, B, 1, { runs: 10000, seed: 3 });
+  close(mc.first.share * mc.first.winFirst + (1 - mc.first.share) * mc.first.winSecond, mc.winA, 1e-12);
+  assert.ok(Math.abs(mc.first.share - 0.6) <= 4 * Math.sqrt(0.24 / 10000), String(mc.first.share)); // 1.5 ÷ (1.5 + 1)
+  assert.ok(mc.first.winFirst > mc.first.winSecond);
+  const pb = prepare(cfg, f, A, B, 1).pb; // B가 A를 칠 때의 명중 = 85 − 20 = 65%
+  assert.ok(Math.abs(mc.dodgeRate - (1 - pb.hit)) < 0.02, `${mc.dodgeRate} vs ${1 - pb.hit}`);
+  assert.ok(Math.abs(mc.critRate - 0.2) < 0.02 && mc.critPerAttack < mc.critRate);
+  // 항상 명중·치명 없음·변동 없음: A는 30씩 4번에 100을 넘기고(오버킬 20), B는 한 번도 못 침
+  const det = cfgOf([ent('A', { hp: 100, atk: 30, acc: 100, crid: 1.5, aspd: 1 }), ent('B', { hp: 100, atk: 0, acc: 100, crid: 1.5, aspd: 1 })], { mode: 'turn', damage: 'a.atk' });
+  const g = compileRules(det).f;
+  const m2 = monteCarlo(det, g, det.entities[0], det.entities[1], 1, { runs: 200, seed: 1 });
+  assert.equal(m2.winA, 1); close(m2.overkill, 20, 1e-12); close(m2.dpt, 30, 1e-12); close(m2.avgLen, 4, 1e-12);
+  assert.equal(m2.hpWinA[0], 100);
+});
+
+test('구간별 승률(Phase Analysis): 구간 경계를 따르고, 공식으로 풀리면 레벨별 정확해의 평균', () => {
+  const cfg = cfgOf([ent('A', { hp: { b: 300, g: 20 }, atk: { b: 30, g: 4 }, acc: 90, crid: 1.5, aspd: 1 }), ent('B', { hp: { b: 400, g: 10 }, atk: { b: 35, g: 1 }, acc: 90, crid: 1.5, aspd: 1 })], {}, { maxLevel: 9 });
+  const { f } = compileRules(cfg);
+  const [A, B] = cfg.entities;
+  const ps = phaseSplit(cfg, f, A, B);
+  assert.deepEqual(ps.map(p => [p.from, p.to]), phaseRanges(cfg).map(p => [p.from, p.to]));
+  for (const p of ps) {
+    assert.ok(p.exact);
+    let s = 0; for (let lv = p.from; lv <= p.to; lv++) s += duelExact(cfg, f, A, B, lv).winA;
+    close(p.win, s / (p.to - p.from + 1), 1e-12);
+  }
+  assert.ok(ps[0].win < ps.at(-1).win); // A가 레벨당 더 크게 성장 → 후반에 강해짐
 });
 
 test('데미지 변동이 있으면 정확해 대신 시뮬레이션 + 신뢰 구간', () => {

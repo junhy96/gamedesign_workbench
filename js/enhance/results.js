@@ -218,7 +218,7 @@ export function drawChart(ctx, els, mc) {
   };
   ctx.chart = liveChart('enhance:dist', els.canvas, {
     type: 'bar',
-    data: { datasets: [{ data, backgroundColor: series, hoverBackgroundColor: series + 'cc', borderRadius: { topLeft: 4, topRight: 4 }, borderSkipped: 'start', barPercentage: 0.9, categoryPercentage: 1 }] },
+    data: { datasets: [{ data, backgroundColor: series, stipple: true, barPercentage: 0.94, categoryPercentage: 1 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 6 } },
@@ -259,7 +259,7 @@ export function renderResources(els, res) {
     res.destroyCostTotal > 0 ? h('div.bm-line', {},
       h('span', {}, '파괴 복구 기대 비용'), h('b', {}, won(res.destroyCostTotal)),
       h('span.muted', {}, `총비용의 ${fmtPct(res.destroyCostTotal / total)}`),
-    ) : null,
+    ) : '',
   );
 }
 

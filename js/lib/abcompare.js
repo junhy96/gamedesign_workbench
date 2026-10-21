@@ -13,14 +13,20 @@ export function savePreset(tool, name, state) {
 }
 export const deletePreset = (tool, name) => store.set(KEY(tool), listPresets(tool).filter(p => p.name !== name));
 
-/** 지표 두 벌 → 비교 행 [{ label, a, b, diff, pct, better, fmt }] */
+/**
+ * 지표 두 벌 → 비교 행 [{ label, a, b, diff, pct, good, fmt, fmtB, mixed }]
+ * A·B는 각자의 형식(fmt)으로 표시한다. 단위나 지표 이름이 다르면(예: 턴제 "턴·턴당 피해" 대 실시간 "초·DPS") 차이·변화율은 계산하지 않는다(mixed).
+ */
 export function compareMetrics(A, B) {
   return A.map((m, i) => {
     const n = B[i];
-    const diff = n.value - m.value;
-    const pct = m.value ? diff / Math.abs(m.value) : NaN;
-    const good = m.better === 'lower' ? diff < 0 : m.better === 'higher' ? diff > 0 : null;
-    return { label: m.label, a: m.value, b: n.value, diff, pct, good: diff === 0 ? null : good, fmt: m.fmt || ((v) => comma(v)) };
+    const fmt = m.fmt || ((v) => comma(v)), fmtB = n.fmt || fmt;
+    const mixed = fmt(1) !== fmtB(1) || m.label !== n.label;
+    const diff = mixed ? NaN : n.value - m.value;
+    const pct = !mixed && m.value ? diff / Math.abs(m.value) : NaN;
+    const good = mixed || diff === 0 ? null : m.better === 'lower' ? diff < 0 : m.better === 'higher' ? diff > 0 : null;
+    const label = m.label === n.label ? m.label : `${m.label} / ${n.label}`;
+    return { label, a: m.value, b: n.value, diff, pct, good, fmt, fmtB, mixed };
   });
 }
 
@@ -55,10 +61,10 @@ export function renderABCard(el, opts) {
           h('div.row2', {}, h('label.field', {}, h('span', {}, 'A'), sel('a')), h('label.field', {}, h('span', {}, 'B'), sel('b'))),
           h('div.tool-actions', {},
             h('button.btn.small.primary', { type: 'button', onclick: run }, '비교'),
-            h('button.btn.small', { type: 'button', onclick: () => lastRows && downloadText(`${tool}-ab.csv`, toCSV([['지표', 'A', 'B', 'B − A', '변화율'], ...lastRows.map(r => [r.label, r.a, r.b, r.diff, Number.isFinite(r.pct) ? r.pct : ''])]), 'text/csv;charset=utf-8') }, '결과 CSV'),
-            h('button.btn.small', { type: 'button', onclick: () => lastRows && downloadJSON(`${tool}-ab.json`, { a: nameOf(pick.a), b: nameOf(pick.b), rows: lastRows.map(({ fmt, ...r }) => r) }) }, '결과 JSON')),
+            h('button.btn.small', { type: 'button', onclick: () => lastRows && downloadText(`${tool}-ab.csv`, toCSV([['지표', 'A', 'B', 'B − A', '변화율'], ...lastRows.map(r => [r.label, r.a, r.b, Number.isFinite(r.diff) ? r.diff : '', Number.isFinite(r.pct) ? r.pct : ''])]), 'text/csv;charset=utf-8') }, '결과 CSV'),
+            h('button.btn.small', { type: 'button', onclick: () => lastRows && downloadJSON(`${tool}-ab.json`, { a: nameOf(pick.a), b: nameOf(pick.b), rows: lastRows.map(({ fmt, fmtB, ...r }) => ({ ...r, diff: Number.isFinite(r.diff) ? r.diff : null, pct: Number.isFinite(r.pct) ? r.pct : null })) }) }, '결과 JSON')),
           out)),
-      opts.note ? h('p.muted.small', {}, opts.note) : null,
+      opts.note ? h('p.muted.small', {}, opts.note) : '',
     );
   };
   async function run() {
@@ -73,8 +79,8 @@ export function renderABCard(el, opts) {
     out.replaceChildren(h('table.mini.ab-table', {},
       h('thead', {}, h('tr', {}, h('th.left', {}, '지표'), h('th', {}, `A · ${nameOf(pick.a)}`), h('th', {}, `B · ${nameOf(pick.b)}`), h('th', {}, 'B − A'), h('th', {}, '변화'))),
       h('tbody', {}, ...rows.map(r => h('tr', {},
-        h('td.left', {}, r.label), h('td', {}, r.fmt(r.a)), h('td', {}, r.fmt(r.b)),
-        h(`td${r.good === true ? '.pos' : r.good === false ? '.neg' : ''}`, {}, `${r.diff > 0 ? '+' : r.diff < 0 ? '−' : ''}${r.fmt(Math.abs(r.diff))}`),
+        h('td.left', {}, r.label), h('td', {}, r.fmt(r.a)), h('td', {}, r.fmtB(r.b)),
+        h(`td${r.good === true ? '.pos' : r.good === false ? '.neg' : ''}`, {}, r.mixed ? h('span.muted', { title: 'A와 B의 단위가 달라(예: 턴 / 초) 차이를 계산하지 않습니다' }, '단위 다름') : `${r.diff > 0 ? '+' : r.diff < 0 ? '−' : ''}${r.fmt(Math.abs(r.diff))}`),
         h(`td${r.good === true ? '.pos' : r.good === false ? '.neg' : ''}`, {}, Number.isFinite(r.pct) ? `${r.pct > 0 ? '+' : ''}${(r.pct * 100).toFixed(1)}%` : '—'))))));
   }
   draw();

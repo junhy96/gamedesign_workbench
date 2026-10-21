@@ -55,7 +55,7 @@ export function renderDist(el, key, sorted, { unit = '', fmt = (v) => comma(v), 
       cell('평균', st.mean, 'dist.mean'), cell('중앙값', st.median, 'dist.median'),
       cell('P10', st.p10, 'dist.pct'), cell('P50', st.p50), cell('P90', st.p90), cell('P99', st.p99)),
     h('div.chart-box', {}, canvas),
-    note ? h('p.muted.small', {}, note) : null,
+    note ? h('p.muted.small', {}, note) : '',
   );
   const hg = histogram(sorted);
   const marks = [['P10', st.p10], ['P50', st.p50], ['P90', st.p90], ['P99', st.p99]];
@@ -78,7 +78,7 @@ export function renderDist(el, key, sorted, { unit = '', fmt = (v) => comma(v), 
   };
   drawChart(key, canvas, {
     type: 'bar',
-    data: { labels: hg.labels, datasets: [{ data: hg.counts.map(c => c / st.n * 100), backgroundColor: bar, borderRadius: 2, barPercentage: 1, categoryPercentage: 0.92 }] },
+    data: { labels: hg.labels, datasets: [{ data: hg.counts.map(c => c / st.n * 100), backgroundColor: bar, stipple: true, barPercentage: 1, categoryPercentage: 0.92 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: { x: { grid: { display: false }, ticks: { color: tick, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } }, y: { grid: { color: grid }, ticks: { color: tick, callback: (v) => `${v}%` }, title: { display: true, text: '비율', color: tick } } },
