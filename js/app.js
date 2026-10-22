@@ -99,7 +99,6 @@ const setHome = () => {
   document.body.classList.toggle('home', home || currentTab().startsWith('hm-'));
   document.documentElement.classList.remove('pre-home');
   if (home) for (const g of groups) { g.classList.remove('active'); g.querySelector('.nav-cur').textContent = ''; }
-  if (home) initHomeShader();   // 첫 화면 배경(WebGPU)은 홈이 처음 보일 때만 늦게 불러온다
   return home || currentTab().startsWith('hm-');
 };
 
@@ -125,6 +124,7 @@ document.getElementById('brand-home')?.addEventListener('click', (e) => {
   setHome();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+initHomeShader();   // 모든 화면 뒤 배경(WebGPU): 한가할 때 늦게 불러온다
 if (!setHome()) show(currentTab());
 else { show('enhance'); setHome(); for (const b of tabs) b.removeAttribute('aria-current'); }   // 도구는 뒤에서 미리 준비
 

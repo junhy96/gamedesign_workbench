@@ -18,6 +18,8 @@
   </script>
 </head>
 <body>
+  <!-- 모든 화면 뒤에 깔리는 배경(WebGPU, js/home/shader-bg.js). 뷰포트에 고정, 콘텐츠 아래 -->
+  <div class="hm-bg" aria-hidden="true"><canvas></canvas></div>
   <header class="app-header">
     <a class="brand" href="./" id="brand-home" title="처음 화면으로">
       <span class="brand-mark" aria-hidden="true"></span>
@@ -62,7 +64,6 @@
   </header>
 
   <section id="home" aria-label="기획 워크벤치 소개">
-    <div class="hm-bg" aria-hidden="true"><canvas></canvas></div>
     <div class="hm-wrap">
       <div class="hm-hero">
         <div class="hm-glass">

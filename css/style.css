@@ -1428,3 +1428,13 @@ textarea { padding: 10px 12px; }
   .stat-row + .stat-row { border-top: 1px solid var(--line); padding-top: 10px; }
   .ent-grid, .item-grid { grid-template-columns: 1fr; }
 }
+
+/* ── 결과 없음 안내 ──────────────────────────────────────
+   입력이 모자라 계산이 멈추면(오류 목록 ul.errors 가 보일 때) 뒤따르는 결과 카드·지표 위에 안내를 덮는다. 모든 도구 공통(오류 목록이 결과 카드 앞 형제) */
+ul.errors:not([hidden]) ~ .card.role-out, ul.errors:not([hidden]) ~ .kpis { position: relative; }
+ul.errors:not([hidden]) ~ .card.role-out::after, ul.errors:not([hidden]) ~ .kpis::after {
+  content: "수치를 모두 입력하면 결과가 표시됩니다 · 위의 빨간 안내를 확인하세요";
+  position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; text-align: center; padding: 20px;
+  border-radius: inherit; color: var(--text-2); font-size: 14px; font-weight: 500; line-height: 1.5;
+  background: color-mix(in srgb, var(--bg) 60%, transparent); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
