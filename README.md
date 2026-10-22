@@ -304,7 +304,7 @@ index.html              셸(분류 메뉴 — BM·성장(강화·가챠·성장 
 css/style.css           디자인 토큰(라이트/다크) + 레이아웃
 css/home.css            첫 화면(소개) 레이아웃
 js/app.js               탭 전환, 테마 전환
-js/home/shader-bg.js    첫 화면 배경: Shaders(WebGPU, MIT) MeshGradient를 CDN ESM 번들로 홈이 보일 때만 불러옴. 텔레메트리 끔, WebGPU 없음·움직임 줄이기면 CSS 배경 유지
+js/home/shader-bg.js    첫 화면 배경: Shaders(WebGPU, MIT) 레이어 3장(메시 그라데이션·커서가 미는 먼지·커서 잔광)을 CDN ESM 번들로 홈이 보일 때만 불러옴. 텔레메트리 끔, WebGPU 없음·움직임 줄이기면 CSS 배경 유지. 레이어 켜고 끄기는 파일 위 FX
 js/lib/util.js          숫자 포맷, 저장소, 공유 링크, 파일 입출력
 js/lib/snapshots.js     전 탭 스냅샷: 저장 키 묶음, 탭별 핵심 지표 계산·비교, 프로젝트 파일 (DOM 없음) · snapshot-view.js 화면
 js/lib/zip.js           압축 없는 ZIP 만들기·읽기 (CRC32)
