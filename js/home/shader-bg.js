@@ -3,14 +3,14 @@
 //   2 WaveDistortion   앞 레이어(메시)를 잔잔한 사인파로 일렁이게 한다. 세기는 천천히 숨 쉬듯 오르내림(auto-animate)
 //   3 Chrome ×2 + Blob 어둡고 반투명한 광택 입체: 검은 유광 정12면체(천천히 회전), 크롬 구, 출렁이는 어두운 구.
 //                    뿌옇게 번지는 건 셰이더가 아니라 유리 창(.hm-glass 등)의 backdrop-filter 가 덮는 부분에서만 일어난다
-//   4 CursorTrail      커서를 따라오는 부드러운 잔광 (screen 블렌드, 다크) / 어두운 탄색 (multiply, 라이트)
+//   4 Liquify          커서 주변을 액체처럼 일렁이게 하는 왜곡 (색을 뿌리지 않음). 앞 레이어 전부에 걸린다
 // - npm 설치·번들러 없이 CDN ESM 번들을 홈이 보일 때만 늦게 불러온다 (약 2.6MB, 도구 화면에는 영향 없음)
 // - 텔레메트리는 끈다 (사이트 약속: 서버 전송 없음). 마우스 추적은 라이브러리가 window 에서 하므로 캔버스가 뒤에 있어도 된다
 // - 색은 CSS 토큰(--bg, --key-1..3, --glow)에서 읽어, 테마 전환 때 레이어별로 다시 넣는다
 // - WebGPU 없는 브라우저·움직임 줄이기 설정이면 켜지 않고, 실패하면 캔버스를 숨겨 기존 CSS 배경만 남긴다
 // 라이브러리: https://github.com/shader-effects-inc/shaders (MIT) · 가이드: https://shaders.com/docs/guide
 const CDN = 'https://cdn.jsdelivr.net/npm/shaders@4.0.5/dist/js/bundle.js';
-const ID = { mesh: 'hm-mesh', wave: 'hm-wave', ribbon: 'hm-ribbon', ring: 'hm-ring', trail: 'hm-trail' };
+const ID = { mesh: 'hm-mesh', wave: 'hm-wave', ribbon: 'hm-ribbon', ring: 'hm-ring', cursor: 'hm-cursor' };
 
 // 레이어 켜고 끄기·세기 조절은 여기서 (visible:false 면 비용 0)
 const FX = {
@@ -19,8 +19,9 @@ const FX = {
   // 정12면체(검은 유광)는 오른쪽(폰 목업 뒤). spinSpeed: 초당 회전수(0.06 ≈ 17초에 한 바퀴)
   ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.85, spinSpeed: 0.06, opacity: 0.62 },
   // 비단 리본(shaders.com 첫 화면 같은 흐르는 띠): 왼쪽 아래에서 오른쪽 위로 가로지르며 천천히 물결친다. 색은 골드·브론즈(키 컬러)
-  ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.55 },
-  trail: { visible: true,  radius: 0.9, length: 0.6 },
+  ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.45 },
+  // 커서 효과: 색을 뿌리지 않고 커서 주변 배경(비단·정12면체)을 액체처럼 일렁이게 한다. intensity: 세기(0~20), radius: 반경(0.1~1.5), stiffness/damping: 되돌아오는 탄성·감쇠
+  cursor: { visible: true,  intensity: 7, radius: 0.55, stiffness: 4, damping: 3 },
 };
 
 let shader = null;
@@ -58,9 +59,6 @@ function themeProps() {
     [ID.ribbon]: dark
       ? { stops: [{ color: '#0b0b0c', position: 0 }, { color: '#6a4322', position: 0.3 }, { color: k2, position: 0.55 }, { color: k1, position: 0.68 }, { color: '#3a2410', position: 1 }], blendMode: 'screen', opacity: FX.ribbon.opacity }
       : { stops: [{ color: '#f1f0ec', position: 0 }, { color: k2, position: 0.35 }, { color: k3, position: 0.6 }, { color: '#e3cdb3', position: 1 }], blendMode: 'normal', opacity: 0.3 },
-    [ID.trail]: dark
-      ? { colorA: k2, colorB: mix(k1, glow, 0.5), blendMode: 'screen', opacity: 0.3 }
-      : { colorA: k3, colorB: k2, blendMode: 'multiply', opacity: 0.2 },
   };
 }
 
@@ -93,9 +91,9 @@ function components() {
       rotation: { type: 'auto-animate', mode: 'loop', outputMin: 0, outputMax: 360, speed: FX.ring.spinSpeed },
       shape: { type: 'dodecahedron3D', radius: 0.3, rotX: 24, rotY: 32, rotZ: 0 },
     } },
-    { type: 'CursorTrail', id: ID.trail, props: {
-      ...t[ID.trail], visible: FX.trail.visible,
-      radius: FX.trail.radius, length: FX.trail.length, shrink: 1, softness: 0.85, colorSpace: 'oklab',
+    // 커서 효과: Liquify 를 맨 위 형제로 두면 앞서 그린 모든 레이어가 커서 주변에서 액체처럼 밀렸다가 탄성으로 돌아온다 (렌더 패스 1개)
+    { type: 'Liquify', id: ID.cursor, props: {
+      visible: FX.cursor.visible, intensity: FX.cursor.intensity, radius: FX.cursor.radius, stiffness: FX.cursor.stiffness, damping: FX.cursor.damping, edges: 'mirror',
     } },
   ];
 }
