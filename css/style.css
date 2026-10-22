@@ -56,17 +56,17 @@
     --key-1: #f2d3a8; --key-2: #d8a272; --key-3: #9c5d2d;
     --on-key: #1c130a; --on-status: #14120e;
     --glow: #f4e24a; --glow-shadow: 0 0 0 1px rgb(244 226 74 / .6), 0 0 14px 3px rgb(244 226 74 / .55);
-    --bg: #0b0b0a;
-    --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .09), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(140 132 122 / .14), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .07), transparent 65%);
-    --flow-1: #1c1b1a; --flow-2: #2e2d2a; --flow-3: #45423c;   /* 흐르는 배경: 바탕 → 차콜 → 따뜻한 차콜 */
-    --surface: #131312; --surface-2: #1c1b19;
+    --bg: #0b0b0c;   /* 레퍼런스 샘플 기준 중립(살짝 차가운) 검정: 가장자리 #020203, 틈 #18191c~#2e2f32, 패널 #38393b */
+    --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(170 176 140 / .06), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(150 152 158 / .13), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .06), transparent 65%);
+    --flow-1: #17181b; --flow-2: #27282c; --flow-3: #3a3b3f;   /* 흐르는 배경: 바탕 → 차콜 → 밝은 차콜 (중립, 노란기 없음) */
+    --surface: #141416; --surface-2: #1c1c1f;
     --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
-    --line: #282723; --line-strong: #3b3934;
-    --text: #f3f1eb; --text-2: #cbc7bd; --text-3: #a39e95;
+    --line: #27282b; --line-strong: #393a3e;
+    --text: #f2f2f1; --text-2: #c7c7c4; --text-3: #9c9c99;
     --accent: #d8a272; --accent-soft: rgb(216 162 114 / .13); --accent-ink: #ebbd8d;
     --series-1: #d8a272; --series-2: #aab070; --series-3: #b27a52; --series-4: #8ea3b4;   /* 골드 · 올리브 · 브라운 · 스틸 */
-    --grid: #1c1b19;
+    --grid: #1c1c1f;
     --good: #a8cc8c; --good-soft: rgb(168 204 140 / .12);
     --warn: #e6c45a; --warn-soft: rgb(230 196 90 / .12);
     --bad: #ef8066; --bad-soft: rgb(236 122 99 / .13);
@@ -88,17 +88,17 @@
   --key-1: #f2d3a8; --key-2: #d8a272; --key-3: #9c5d2d;
   --on-key: #1c130a; --on-status: #14120e;
   --glow: #f4e24a; --glow-shadow: 0 0 0 1px rgb(244 226 74 / .6), 0 0 14px 3px rgb(244 226 74 / .55);
-  --bg: #0b0b0a;
-  --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .09), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(140 132 122 / .14), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .07), transparent 65%);
-    --flow-1: #1c1b1a; --flow-2: #2e2d2a; --flow-3: #45423c;   /* 흐르는 배경: 바탕 → 차콜 → 따뜻한 차콜 */
-  --surface: #131312; --surface-2: #1c1b19;
+  --bg: #0b0b0c;   /* 레퍼런스 샘플 기준 중립(살짝 차가운) 검정: 가장자리 #020203, 틈 #18191c~#2e2f32, 패널 #38393b */
+  --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(170 176 140 / .06), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(150 152 158 / .13), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .06), transparent 65%);
+    --flow-1: #17181b; --flow-2: #27282c; --flow-3: #3a3b3f;   /* 흐르는 배경: 바탕 → 차콜 → 밝은 차콜 (중립, 노란기 없음) */
+  --surface: #141416; --surface-2: #1c1c1f;
   --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
-  --line: #282723; --line-strong: #3b3934;
-  --text: #f3f1eb; --text-2: #cbc7bd; --text-3: #a39e95;
+  --line: #27282b; --line-strong: #393a3e;
+  --text: #f2f2f1; --text-2: #c7c7c4; --text-3: #9c9c99;
   --accent: #d8a272; --accent-soft: rgb(216 162 114 / .13); --accent-ink: #ebbd8d;
   --series-1: #d8a272; --series-2: #aab070; --series-3: #b27a52; --series-4: #8ea3b4;   /* 골드 · 올리브 · 브라운 · 스틸 */
-  --grid: #1c1b19;
+  --grid: #1c1c1f;
   --good: #a8cc8c; --good-soft: rgb(168 204 140 / .12);
   --warn: #e6c45a; --warn-soft: rgb(230 196 90 / .12);
   --bad: #ef8066; --bad-soft: rgb(236 122 99 / .13);

@@ -19,12 +19,11 @@ body.home main{display:none}
 @font-face{font-family:"DNFForgedBlade";font-style:normal;font-weight:700;font-display:swap;src:url("https://cdn.df.nexon.com/img/common/font/DNFForgedBlade-Bold.otf") format("opentype")}
 /* 제목: 본문(Pretendard)과 대비되는 날카로운 세리프 전용 서체. 움직이는 배경 위에서도 읽히도록 살짝 그림자 */
 .hm-hero h1{font-family:"DNFForgedBlade","Pretendard Variable",Pretendard,sans-serif;font-size:clamp(2.4rem,5.4vw,4.4rem);line-height:1.2;letter-spacing:0;margin:18px 0 18px;font-weight:700;text-shadow:0 2px 24px color-mix(in srgb,var(--bg) 60%,transparent)}
-/* 헤드라인 두 단어 강조: '엑셀'은 초록(스프레드시트 아이콘 포함), '워크벤치'는 키 컬러 그라데이션. 둘 다 본문보다 한 단계 크게 */
+/* 헤드라인 두 단어 강조: '엑셀'은 올리브(스프레드시트 아이콘 포함), '워크벤치'는 키 컬러 그라데이션. 둘 다 본문보다 한 단계 크게 */
 .hm-hero h1 .xl,.hm-hero h1 .wb{font-size:1.22em;line-height:1;vertical-align:-.03em}
-.hm-hero h1 .xl{color:var(--xl-green,#2f9e5e);display:inline-flex;align-items:center;gap:.14em;white-space:nowrap}
+.hm-hero h1 .xl{color:var(--series-2,#aab070);display:inline-flex;align-items:center;gap:.14em;white-space:nowrap}   /* 엑셀 = 팔레트의 올리브(--series-2): 골드 '워크벤치'와 대조 */
 .hm-hero h1 .xl-ico{width:.78em;height:.78em;flex:none;filter:drop-shadow(0 2px 6px rgb(0 0 0 / .25))}
 .hm-hero h1 .wb{background:var(--key-grad);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
-:root[data-theme="light"] .hm-hero h1 .xl{--xl-green:#1d7a45}
 /* 본문·보조 글자: 회색 대신 본문색을 써서 배경 위 대비 확보 */
 .hm-lede{font-size:1.12rem;color:var(--text);opacity:.88;max-width:52ch;line-height:1.65;margin:0 0 28px}
 /* 레퍼런스의 진행 막대: 키 그라데이션 + 끝의 글로우 점 */
