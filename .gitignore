@@ -1,5 +1,7 @@
 node_modules/
 .DS_Store
 Thumbs.db
-.claude/
+# .claude/ 는 개인 설정이라 제외하되, 공유용 스킬(.claude/skills/)만 저장소에 포함
+.claude/*
+!.claude/skills/
 _test/
