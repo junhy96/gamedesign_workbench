@@ -186,66 +186,75 @@ function renderSide() {
   );
 }
 
-// ── 엔티티 × 스탯 표 ────────────────────────────────────
+// ── 엔티티 × 스탯: 카드/폼 ──────────────────────────────
+// 엔티티마다 카드 하나(머리: 선택·이름·변동·특성·삭제, 몸: 스탯별 [Lv1 값][레벨당 증가] 한 줄).
+// 스탯 자체의 설정(수식 이름·설명·성장 방식·허용 범위)은 접이식 '스탯 설정' 패널로 분리해 표 머리가 폼이 되던 것을 없앴다.
+// 레벨표 입력은 줄 오른쪽 '표' 버튼으로 전환하고 '공식'으로 되돌린다. 특성 편집은 카드 안에 펼친다.
 function renderEntities() {
   const S = state.stats, E = state.entities;
   const sel = new Set(state.selected || []);
-  const statHead = (s, i) => h('th.stat-col', {},
-    h('div.stat-head', {},
-      h('input.stat-id', { type: 'text', value: s.id, 'aria-label': '스탯 이름(수식용)', title: '수식에서 쓰는 이름', onchange: (e) => renameStat(i, e.target.value.trim()) }),
-      h('input.stat-name', { type: 'text', value: s.name ?? '', 'aria-label': '스탯 설명', placeholder: '설명', oninput: (e) => { s.name = e.target.value; save(); } }),
-      select(Object.entries(GROWTHS).map(([k, v]) => [k, k === 'linear' ? '선형' : '등비 (g%)']), s.growth, (v) => { s.growth = v; schedule(0); }, `${s.id} 성장 방식`),
-      h('div.stat-range', { title: '이 스탯이 가질 수 있는 값의 범위 — 계산 중 이 범위로 자름 (비우면 제한 없음)' },
-        h('span.range-cap', {}, '허용 범위', tip('b.range')),
-        numIn(s, 'min', { allowEmpty: true, placeholder: '최소 없음', label: `${s.id} 최솟값` }),
-        h('span.range-sep', {}, '~'),
-        numIn(s, 'max', { allowEmpty: true, placeholder: '최대 없음', label: `${s.id} 최댓값` })),
-      h('button.icon-x', { type: 'button', title: '스탯 삭제', disabled: S.length <= 1, onclick: () => removeStat(i) }, '×'),
-    ));
-  const cell = (e, s) => {
+  // 스탯 설정 한 줄: 수식 이름 · 설명 · 성장 방식 · 허용 범위 · 삭제
+  const statRow = (s, i) => h('div.stat-row', {},
+    h('input.stat-id', { type: 'text', value: s.id, 'aria-label': '스탯 이름(수식용)', title: '수식에서 쓰는 이름', onchange: (e) => renameStat(i, e.target.value.trim()) }),
+    h('input.stat-name', { type: 'text', value: s.name ?? '', 'aria-label': '스탯 설명', placeholder: '설명 (예: 체력)', oninput: (e) => { s.name = e.target.value; save(); } }),
+    select(Object.keys(GROWTHS).map((k) => [k, k === 'linear' ? '선형 (+/Lv)' : '등비 (%/Lv)']), s.growth, (v) => { s.growth = v; schedule(0); }, `${s.id} 성장 방식`),
+    h('div.stat-range', { title: '이 스탯이 가질 수 있는 값의 범위 — 계산 중 이 범위로 자름 (비우면 제한 없음)' },
+      numIn(s, 'min', { allowEmpty: true, placeholder: '최소', label: `${s.id} 최솟값` }),
+      h('span.range-sep', {}, '~'),
+      numIn(s, 'max', { allowEmpty: true, placeholder: '최대', label: `${s.id} 최댓값` }),
+      tip('b.range')),
+    h('button.icon-x', { type: 'button', title: '스탯 삭제', disabled: S.length <= 1, onclick: () => removeStat(i) }, '×'));
+  // 엔티티 카드의 스탯 한 줄: [스탯 라벨] [Lv1 값] [레벨당 증가] [표↔공식 전환]
+  const statLine = (e, s) => {
     const sv = e.stats[s.id] ??= { b: 0, g: 0 };
+    const label = h('div.es-label', {}, h('b', {}, s.id), s.name ? h('small', {}, s.name) : null);
     if (sv.table) {
-      return h('td.stat-cell', {},
+      return h('div.es-row.table', {}, label,
         h('input.table-in', {
           type: 'text', value: sv.table.map(([l, v]) => `${l}:${v}`).join(' '), spellcheck: false, 'aria-label': `${e.name} ${s.id} 표`, title: '레벨:값 을 띄어 씀 (사이는 직선 보간)',
           oninput: (ev) => { const pts = parseTable(ev.target.value); if (pts) { sv.table = pts; ev.target.classList.remove('bad-input'); schedule(); } else ev.target.classList.add('bad-input'); },
         }),
-        h('button.mini-btn', { type: 'button', title: '입력 방식을 공식(Lv1 기본값 + 레벨당 성장)으로 되돌리기', onclick: () => { delete sv.table; renderEntities(); schedule(0); } }, '공식으로 입력'), tip('b.inputmode'));
+        h('button.mini-btn', { type: 'button', title: '입력 방식을 공식(Lv1 값 + 레벨당 성장)으로 되돌리기', onclick: () => { delete sv.table; renderEntities(); schedule(0); } }, '공식'));
     }
-    return h('td.stat-cell', {},
-      h('div.bg', {},
-        h('label.bg-row', {}, h('span.cap', { title: '레벨 1일 때의 값' }, 'Lv1'), numIn(sv, 'b', { label: `${e.name} ${s.id} Lv1 기본값` })),
-        h('label.bg-row', {}, h('span.cap', { title: s.growth === 'geo' ? '레벨이 1 오를 때마다 곱해지는 증가율(%)' : '레벨이 1 오를 때마다 더해지는 값' }, s.growth === 'geo' ? '%/Lv' : '+/Lv'), numIn(sv, 'g', { label: `${e.name} ${s.id} 레벨당 ${s.growth === 'geo' ? '증가율 %' : '증가량'}`, cls: 'g' }))),
-      h('button.mini-btn', { type: 'button', title: '입력 방식을 레벨별 표(레벨:값, 사이는 직선)로 바꾸기', onclick: () => { sv.table = [[1, sv.b ?? 0], [state.maxLevel, (sv.b ?? 0) + (sv.g ?? 0) * (state.maxLevel - 1)]]; renderEntities(); schedule(0); } }, '레벨표로 입력'));
+    return h('div.es-row', {}, label,
+      numIn(sv, 'b', { label: `${e.name} ${s.id} Lv1 기본값` }),
+      h('div.es-g', {},
+        numIn(sv, 'g', { label: `${e.name} ${s.id} 레벨당 ${s.growth === 'geo' ? '증가율 %' : '증가량'}` }),
+        h('span.es-unit', { title: s.growth === 'geo' ? '레벨이 1 오를 때마다 곱해지는 증가율(%)' : '레벨이 1 오를 때마다 더해지는 값' }, s.growth === 'geo' ? '%' : '+')),
+      h('button.mini-btn', { type: 'button', title: '입력 방식을 레벨별 표(레벨:값, 사이는 직선)로 바꾸기', onclick: () => { sv.table = [[1, sv.b ?? 0], [state.maxLevel, (sv.b ?? 0) + (sv.g ?? 0) * (state.maxLevel - 1)]]; renderEntities(); schedule(0); } }, '표'));
   };
+  const card = (e, i) => h(`div.ent-card${sel.has(e.id) ? '.selected' : ''}`, { style: `--ent-color:${colorOf(i)}` },
+    h('div.ent-head', {},
+      h('label.ent-pick', { title: '일괄 편집 대상으로 선택' }, h('input', { type: 'checkbox', checked: sel.has(e.id), 'aria-label': `${e.name} 선택 (일괄 편집)`, onchange: (ev) => { if (ev.target.checked) sel.add(e.id); else sel.delete(e.id); state.selected = [...sel]; save(); renderEntities(); } })),
+      h('span.swatch', { style: `background:${colorOf(i)}` }),
+      h('input.name-in', { type: 'text', value: e.name, 'aria-label': '엔티티 이름', oninput: (ev) => { e.name = ev.target.value; schedule(300); } }),
+      h('label.ent-var', { title: '데미지 ±비율 (0.1 = ±10%). 0이 아니면 시뮬레이션' }, h('span', {}, '변동 ±'), numIn(e, 'variance', { min: 0, max: 0.99, step: 0.05, label: `${e.name} 데미지 변동` })),
+      traitButton(`e:${e.id}`, e),
+      h('button.icon-x', { type: 'button', title: '엔티티 삭제', disabled: E.length <= 1, onclick: () => { E.splice(i, 1); state.pairA = 0; state.pairB = Math.min(1, E.length - 1); rebuild(); } }, '×')),
+    h('div.es-grid', {},
+      h('div.es-row.head', {}, h('span', {}, '스탯'), h('span', {}, 'Lv1 값'), h('span', {}, '레벨당 증가'), h('span', {}, '')),
+      ...S.map(s => statLine(e, s))),
+    openTraits.has(`e:${e.id}`) ? h('div.trait-panel', {}, traitEditor(e, `${e.name}의 특성`, renderEntities)) : null);
   els.bulk = { stat: S[0]?.id, part: 'b', op: 'mult', value: 1.1 };
-  put(els.entCard, 
-    h('div.card-head', {}, h('h2', {}, '엔티티와 스탯'), h('span.hint', {}, '칸마다 Lv1 = 레벨 1 기본값, +/Lv = 레벨당 증가량(등비면 %/Lv = 증가율) · "레벨표로 입력"을 누르면 레벨:값 표로 직접 넣음 (사이는 직선)')),
-    h('div.table-wrap', {}, h('table.stages.ent-table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th.left', {}, '엔티티'), h('th', { title: '데미지 ±비율 (0.1 = ±10%). 0이 아니면 시뮬레이션' }, '변동'), h('th', { title: '발동 시점 × 조건 × 효과. 있으면 시뮬레이션' }, '특성'), ...S.map(statHead), h('th', {}, ''))),
-      h('tbody', {}, ...E.flatMap((e, i) => [h('tr', {},
-        h('td', {}, h('input', { type: 'checkbox', checked: sel.has(e.id), 'aria-label': `${e.name} 선택 (일괄 편집)`, onchange: (ev) => { if (ev.target.checked) sel.add(e.id); else sel.delete(e.id); state.selected = [...sel]; save(); } })),
-        h('td.left', {}, h('span.swatch', { style: `background:${colorOf(i)}` }), h('input.ent-name', { type: 'text', value: e.name, 'aria-label': '엔티티 이름', oninput: (ev) => { e.name = ev.target.value; schedule(300); } })),
-        h('td', {}, numIn(e, 'variance', { min: 0, max: 0.99, step: 0.05, label: `${e.name} 데미지 변동`, cls: 'short' })),
-        h('td', {}, traitButton(`e:${e.id}`, e)),
-        ...S.map(s => cell(e, s)),
-        h('td.x', {}, h('button.icon-x', { type: 'button', title: '엔티티 삭제', disabled: E.length <= 1, onclick: () => { E.splice(i, 1); state.pairA = 0; state.pairB = Math.min(1, E.length - 1); rebuild(); } }, '×')),
-      )])),
-    )),
-    ...E.filter(e => openTraits.has(`e:${e.id}`)).map(e => h('div.trait-panel', {}, traitEditor(e, `${e.name}의 특성`, renderEntities))),
+  put(els.entCard,
+    h('div.card-head', {}, h('h2', {}, '엔티티와 스탯'), h('span.hint', {}, '카드 하나 = 엔티티 하나. 줄마다 Lv1 값과 레벨당 증가(등비 스탯은 %)를 넣고, "표"를 누르면 레벨:값 표로 직접 넣습니다 (사이는 직선)')),
+    h('div.tool-actions.ent-tools', {},
+      h('button.btn.small', { type: 'button', onclick: addEntity }, '+ 엔티티'),
+      h('button.btn.small', { type: 'button', onclick: addStat }, '+ 스탯'),
+      h('button.btn.small', { type: 'button', 'aria-expanded': String(!!els.statOpen), title: '스탯의 수식 이름·설명·성장 방식·허용 범위', onclick: () => { els.statOpen = !els.statOpen; renderEntities(); } }, els.statOpen ? '스탯 설정 닫기' : '스탯 설정'),
+      h('button.btn.small', { type: 'button', onclick: toggleCSV }, '표 붙여넣기 (CSV)')),
+    els.statOpen ? h('div.stat-settings', {},
+      h('div.stat-row.head', {}, h('span', {}, '수식 이름'), h('span', {}, '설명'), h('span', {}, '성장 방식'), h('span', {}, '허용 범위 (비우면 제한 없음)'), h('span', {}, '')),
+      ...S.map(statRow)) : null,
+    h('div.ent-grid', {}, ...E.map(card)),
     h('div.table-foot', {},
-      h('div.tool-actions', {},
-        h('button.btn.small', { type: 'button', onclick: addEntity }, '+ 엔티티'),
-        h('button.btn.small', { type: 'button', onclick: addStat }, '+ 스탯'),
-        h('button.btn.small', { type: 'button', onclick: toggleCSV }, '표 붙여넣기 (CSV)'),
-      ),
       h('div.tool-actions.bulk', {},
         h('span.muted.small', {}, '일괄:'),
         select(S.map(s => [s.id, s.id]), els.bulk.stat, (v) => { els.bulk.stat = v; }, '일괄 편집 스탯'),
-        select([['b', '기본값'], ['g', '성장값']], 'b', (v) => { els.bulk.part = v; }, '일괄 편집 대상'),
+        select([['b', 'Lv1 값'], ['g', '레벨당 증가']], 'b', (v) => { els.bulk.part = v; }, '일괄 편집 대상'),
         select([['mult', '× 곱하기'], ['add', '+ 더하기'], ['set', '= 바꾸기']], 'mult', (v) => { els.bulk.op = v; }, '일괄 연산'),
         h('input.short', { type: 'number', value: 1.1, step: 'any', 'aria-label': '일괄 값', oninput: (e) => { els.bulk.value = parseFloat(e.target.value); } }),
-        h('button.btn.small', { type: 'button', onclick: applyBulk }, '선택(없으면 전체)에 적용'),
+        h('button.btn.small', { type: 'button', onclick: applyBulk }, sel.size ? `선택한 ${sel.size}개에 적용` : '전체에 적용'),
       ),
     ),
     els.csvBox = h('div.csv-import', { hidden: !els.csvOpen }),
@@ -402,7 +411,9 @@ function traitEditor(owner, title, rerender) {
   );
 }
 
-// ── 아이템 ──────────────────────────────────────────────
+// ── 아이템: 카드/폼 ─────────────────────────────────────
+// 아이템마다 카드 하나(머리: 켜기 스위치·이름·대상·특성·삭제, 몸: 수정자 줄 [스탯][고정 +][% +][× 배율][×] 와 '+ 수정자').
+// 전에는 수정자마다 표 행이 늘어나 버튼이 흩어졌는데, 카드 안에 모았다. 특성 편집은 카드 안에 펼친다.
 function renderItems() {
   const I = state.items, E = state.entities, S = state.stats;
   const targetSel = (it) => {
@@ -410,30 +421,27 @@ function renderItems() {
     const opts = [['all', '전체'], ...E.map(e => [e.id, e.name]), ...(v === 'multi' ? [['multi', `${it.targets.length}명 (가져온 값)`]] : []), ['none', '없음']];
     return select(opts, v, (x) => { if (x === 'multi') return; it.targets = x === 'all' ? 'all' : x === 'none' ? [] : [x]; schedule(0); }, `${it.name} 대상`);
   };
-  put(els.itemCard, 
-    h('div.card-head', {}, h('h2', {}, '아이템 (스탯 수정자)'), h('span.hint', {}, '스탯 = (값 + Σ고정) × (1 + Σ% ÷ 100) × Π배율 — 아이템 순서와 무관')),
-    I.length ? h('div.table-wrap', {}, h('table.stages.item-table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, '켜기'), h('th.left', {}, '아이템'), h('th.left', {}, '대상'), h('th', {}, '특성'), h('th.left', {}, '스탯'), h('th', {}, '고정 +'), h('th', {}, '% +'), h('th', {}, '× 배율'), h('th', {}, ''))),
-      h('tbody', {}, ...I.flatMap((it, ii) => {
-        const mods = it.mods.length ? it.mods : [null];
-        const rows = mods.map((m, mi) => h(`tr${mi ? '.sub' : ''}`, {},
-          h('td', {}, mi ? '' : h('input', { type: 'checkbox', checked: it.active !== false, 'aria-label': `${it.name} 켜기`, onchange: (e) => { it.active = e.target.checked; schedule(0); } })),
-          h('td.left', {}, mi ? '' : h('input.ent-name', { type: 'text', value: it.name, 'aria-label': '아이템 이름', oninput: (e) => { it.name = e.target.value; save(); } })),
-          h('td.left', {}, mi ? '' : targetSel(it)),
-          h('td', {}, mi ? '' : traitButton(`i:${it.id}`, it, renderItems)),
-          h('td.left', {}, m ? select(S.map(s => [s.id, s.id]), m.stat, (v) => { m.stat = v; schedule(0); }, '수정할 스탯') : h('span.muted', {}, '—')),
-          h('td', {}, m ? numIn(m, 'flat', { allowEmpty: true, placeholder: '0', label: '고정 증가' }) : ''),
-          h('td', {}, m ? numIn(m, 'pct', { allowEmpty: true, placeholder: '0', label: '% 증가' }) : ''),
-          h('td', {}, m ? numIn(m, 'mult', { allowEmpty: true, placeholder: '1', label: '배율' }) : ''),
-          h('td.x', {},
-            mi === mods.length - 1 ? h('button.mini-btn', { type: 'button', title: '수정자 추가', onclick: () => { it.mods.push({ stat: S[0].id, flat: 0 }); renderItems(); } }, '+') : null,
-            m ? h('button.icon-x', { type: 'button', title: '수정자 삭제', onclick: () => { it.mods.splice(mi, 1); renderItems(); schedule(0); } }, '×') : null,
-            mi === 0 ? h('button.mini-btn', { type: 'button', title: '아이템 삭제', onclick: () => { I.splice(ii, 1); renderItems(); schedule(0); } }, '삭제') : null),
-        ));
-        return rows;
-      })),
-    )) : h('p.muted', {}, '아이템이 없습니다.'),
-    ...I.filter(it => openTraits.has(`i:${it.id}`)).map(it => h('div.trait-panel', {}, traitEditor(it, `아이템 ${it.name}의 특성 (대상 엔티티에 붙음)`, renderItems))),
+  const modRow = (it, m, mi) => h('div.mod-row', {},
+    select(S.map(s => [s.id, s.id]), m.stat, (v) => { m.stat = v; schedule(0); }, '수정할 스탯'),
+    numIn(m, 'flat', { allowEmpty: true, placeholder: '0', label: '고정 증가' }),
+    numIn(m, 'pct', { allowEmpty: true, placeholder: '0', label: '% 증가' }),
+    numIn(m, 'mult', { allowEmpty: true, placeholder: '1', label: '배율' }),
+    h('button.icon-x', { type: 'button', title: '수정자 삭제', onclick: () => { it.mods.splice(mi, 1); renderItems(); schedule(0); } }, '×'));
+  const card = (it, ii) => h(`div.item-card${it.active === false ? '.off' : ''}`, {},
+    h('div.item-head', {},
+      h('label.switch.inline', { title: '끄면 계산에서 제외' }, h('input', { type: 'checkbox', checked: it.active !== false, 'aria-label': `${it.name} 켜기`, onchange: (e) => { it.active = e.target.checked; renderItems(); schedule(0); } })),
+      h('input.name-in', { type: 'text', value: it.name, 'aria-label': '아이템 이름', oninput: (e) => { it.name = e.target.value; save(); } }),
+      h('label.item-target', {}, h('span', {}, '대상'), targetSel(it)),
+      traitButton(`i:${it.id}`, it, renderItems),
+      h('button.icon-x', { type: 'button', title: '아이템 삭제', onclick: () => { I.splice(ii, 1); renderItems(); schedule(0); } }, '×')),
+    h('div.mod-grid', {},
+      h('div.mod-row.head', {}, h('span', {}, '스탯'), h('span', { title: '비우면 0' }, '고정 +'), h('span', { title: '비우면 0' }, '% +'), h('span', { title: '비우면 1' }, '× 배율'), h('span', {}, '')),
+      ...(it.mods.length ? it.mods.map((m, mi) => modRow(it, m, mi)) : [h('p.muted.small', {}, '수정자가 없습니다 — 아래에서 추가')]),
+      h('button.mini-btn.add', { type: 'button', title: '수정자 추가', onclick: () => { it.mods.push({ stat: S[0].id, flat: 0 }); renderItems(); } }, '+ 수정자')),
+    openTraits.has(`i:${it.id}`) ? h('div.trait-panel', {}, traitEditor(it, `아이템 ${it.name}의 특성 (대상 엔티티에 붙음)`, renderItems)) : null);
+  put(els.itemCard,
+    h('div.card-head', {}, h('h2', {}, '아이템 (스탯 수정자)'), h('span.hint', {}, '스탯 = (값 + Σ고정) × (1 + Σ% ÷ 100) × Π배율 — 아이템 순서와 무관 · 빈 칸은 고정 0, % 0, 배율 1')),
+    I.length ? h('div.item-grid', {}, ...I.map(card)) : h('p.muted', {}, '아이템이 없습니다.'),
     h('div.table-foot', {}, h('button.btn.small', { type: 'button', onclick: () => { I.push({ id: uid('i', I), name: `아이템 ${I.length + 1}`, active: true, targets: 'all', mods: [{ stat: S[0].id, flat: 0 }] }); renderItems(); } }, '+ 아이템')),
     buildsBlock(),
   );
