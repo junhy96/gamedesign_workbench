@@ -2,7 +2,7 @@
    색은 style.css 토큰(키 그라데이션 --key-grad, 글로우 --glow)만 쓴다. */
 #home{display:none}
 body.home #home{display:block}
-body.home main,body.home .app-footer{display:none}
+body.home main{display:none}
 #home{color:var(--text);padding:0 24px 40px}
 .hm-wrap{max-width:1240px;margin:0 auto}
 .hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
