@@ -1,7 +1,7 @@
 // 첫 화면(홈) 배경: Shaders(WebGPU) 라이브러리로 히어로 뒤에 레이어 세 장을 깐다.
 //   1 MeshGradient     차콜(회색) 메시 그라데이션이 시간에 따라 흐른다(speed·drift). swirl 은 커서 X에 연결해 마우스를 따라 살짝 비틀린다
 //   2 WaveDistortion   앞 레이어(메시)를 잔잔한 사인파로 일렁이게 한다. 세기는 천천히 숨 쉬듯 오르내림(auto-animate)
-//   3 Chrome ×2 + Blob 어둡고 반투명한 광택 입체: 크롬 토러스(링, 천천히 회전·커서 기울기), 크롬 구, 출렁이는 어두운 구.
+//   3 Chrome ×2 + Blob 어둡고 반투명한 광택 입체: 크롬 토러스(링, 화면 평면에서 천천히 회전 + 커서 시차), 크롬 구(커서 시차), 출렁이는 어두운 구.
 //                    뿌옇게 번지는 건 셰이더가 아니라 유리 창(.hm-glass 등)의 backdrop-filter 가 덮는 부분에서만 일어난다
 //   4 CursorTrail      커서를 따라오는 부드러운 잔광 (screen 블렌드, 다크) / 어두운 탄색 (multiply, 라이트)
 // - npm 설치·번들러 없이 CDN ESM 번들을 홈이 보일 때만 늦게 불러온다 (약 2.6MB, 도구 화면에는 영향 없음)
@@ -17,7 +17,7 @@ const FX = {
   mesh:  { visible: true,  speed: 1.0, drift: 0.7, swirlReach: 0.3 },   // speed: 그라데이션이 흐르는 빠르기, swirlReach: 커서 좌우 끝에서 swirl ±값
   wave:  { visible: true,  strengthMin: 0.05, strengthMax: 0.14, frequency: 1.6, speed: 0.25 },   // 물결: 세기 범위(숨 쉬듯 오르내림)·파수·빠르기
   // 입체: 링은 오른쪽(폰 목업 뒤), 작은 구는 왼쪽 아래(유리 창 뒤로 반쯤 가려져 번진다), 출렁이는 구는 오른쪽 아래
-  ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.8, spinSpeed: 0.02, tiltReach: 18, opacity: 0.6 },   // spinSpeed: 초당 회전수, tiltReach: 커서 끝에서 기울기(도)
+  ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.8, spinSpeed: 0.02, parallax: 0.06, opacity: 0.6 },   // spinSpeed: 초당 회전수, parallax: 커서를 따라 움직이는 폭(0~1)
   ball:  { visible: true,  center: { x: 0.2, y: 0.74 }, scale: 0.5, opacity: 0.55 },
   orb:   { visible: true,  center: { x: 0.93, y: 0.86 }, scale: 0.8, opacity: 0.5 },
   trail: { visible: true,  radius: 0.9, length: 0.6 },
@@ -77,14 +77,19 @@ function components() {
       waveType: 'sine', frequency: FX.wave.frequency, speed: FX.wave.speed, angle: 20, edges: 'mirror',
       strength: { type: 'auto-animate', mode: 'ping-pong', outputMin: FX.wave.strengthMin, outputMax: FX.wave.strengthMax, speed: 0.06, easing: 'sine' },
     } },
-    // 어두운 크롬 입체. 3D 도형의 회전은 아래 spin() 루프가 매 프레임 shader.update 로 넣는다 (3D 하위 속성의 동적 속성은 JS API 에서 적용되지 않았음)
+    // 어두운 크롬 입체. 회전·시차는 라이브러리의 동적 속성(auto-animate / mouse-position)으로, JS 에서 매 프레임 갱신하지 않는다
     { type: 'Chrome', id: ID.ring, props: {
-      ...t[ID.ring], visible: FX.ring.visible, opacity: FX.ring.opacity, center: FX.ring.center, scale: FX.ring.scale,
+      ...t[ID.ring], visible: FX.ring.visible, opacity: FX.ring.opacity, scale: FX.ring.scale,
       environment: 1, envRotation: 20, softness: 0.45, spectral: 0.5, dispersion: 0.15, shadows: 0.5, curvature: 0.5, waviness: 0.1, speed: 0.3, edgeSoftness: 0.08,
-      shape: ringShape(0),
+      // 기울인 링을 화면 평면에서 천천히 돌린다(rotation 은 값만 바뀌는 uniform). shape 자체를 매 프레임 갱신하면 다시 컴파일되어 화면이 비는 문제가 있었음
+      rotation: { type: 'auto-animate', mode: 'loop', outputMin: 0, outputMax: 360, speed: FX.ring.spinSpeed },
+      // 커서를 따라 살짝 이동(시차). reach 만큼만 움직이고 origin 으로 돌아온다
+      center: { type: 'mouse-position', originX: FX.ring.center.x, originY: FX.ring.center.y, reach: FX.ring.parallax, smoothing: 0.12, momentum: 0.25 },
+      shape: { type: 'torus3D', radius: 0.27, tube: 0.085, rotX: 58, rotY: 18, rotZ: 0 },
     } },
     { type: 'Chrome', id: ID.ball, props: {
-      ...t[ID.ball], visible: FX.ball.visible, opacity: FX.ball.opacity, center: FX.ball.center, scale: FX.ball.scale,
+      ...t[ID.ball], visible: FX.ball.visible, opacity: FX.ball.opacity, scale: FX.ball.scale,
+      center: { type: 'mouse-position', originX: FX.ball.center.x, originY: FX.ball.center.y, reach: 0.03, smoothing: 0.15, momentum: 0.2 },
       environment: 1, envRotation: 300, softness: 0.5, spectral: 0.4, dispersion: 0.1, shadows: 0.4, speed: 0.2, edgeSoftness: 0.1,
       shape: { type: 'sphere3D', radius: 0.3 },
     } },
@@ -99,20 +104,6 @@ function components() {
       radius: FX.trail.radius, length: FX.trail.length, shrink: 1, softness: 0.85, colorSpace: 'oklab',
     } },
   ];
-}
-
-// 링(토러스) 도형: rotY 는 계속 돌고, rotX·rotZ 는 커서 위치를 천천히 따라간다(스프링 느낌으로 출렁)
-let spinY = 0, tiltX = 55, tiltZ = 0, mouseX = 0.5, mouseY = 0.5, lastT = 0, running = true;
-const ringShape = (rotY) => ({ type: 'torus3D', radius: 0.27, tube: 0.085, rotX: tiltX, rotY, rotZ: tiltZ });
-function spin(now) {
-  requestAnimationFrame(spin);
-  if (!shader || !running || !FX.ring.visible) { lastT = now; return; }
-  const dt = Math.min(0.1, (now - (lastT || now)) / 1000); lastT = now;
-  spinY = (spinY + 360 * FX.ring.spinSpeed * dt) % 360;
-  const k = 1 - Math.pow(0.02, dt);   // 초당 98% 수렴
-  tiltX += ((55 + (mouseY - 0.5) * 2 * FX.ring.tiltReach) - tiltX) * k;
-  tiltZ += (((mouseX - 0.5) * FX.ring.tiltReach) - tiltZ) * k;
-  shader.update(ID.ring, { shape: ringShape(spinY) });
 }
 
 const idle = () => new Promise((r) => ('requestIdleCallback' in window ? requestIdleCallback(r, { timeout: 1500 }) : setTimeout(r, 300)));
@@ -134,14 +125,12 @@ export function initHomeShader() {
         onReady: () => wrap.classList.add('on'),
         onError: (reason) => { wrap.classList.remove('on'); console.warn('[home shader]', reason); },   // 종료 오류(기기 손실 등): 캔버스를 다시 투명하게
       });
-      window.addEventListener('mousemove', (e) => { mouseX = e.clientX / innerWidth; mouseY = e.clientY / innerHeight; }, { passive: true });
-      requestAnimationFrame(spin);
       document.addEventListener('themechange', () => {
         const t = themeProps();
         for (const id of Object.keys(t)) shader?.update(id, t[id]);
       });
       // 도구 화면으로 가면(#home 이 display:none) 렌더를 멈추고, 돌아오면 재개
-      new MutationObserver(() => { running = document.body.classList.contains('home'); running ? shader?.resume() : shader?.pause(); })
+      new MutationObserver(() => (document.body.classList.contains('home') ? shader?.resume() : shader?.pause()))
         .observe(document.body, { attributes: true, attributeFilter: ['class'] });
     })
     .catch(() => { wrap.classList.remove('on'); });
