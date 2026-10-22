@@ -3,8 +3,15 @@
 #home{display:none}
 body.home #home{display:block}
 body.home main{display:none}
-#home{color:var(--text);padding:0 24px 40px}
-.hm-wrap{max-width:1240px;margin:0 auto}
+#home{color:var(--text);padding:0 24px 40px;position:relative;isolation:isolate}
+/* 첫 화면 배경: Shaders(WebGPU) 메시 그라데이션 캔버스(js/home/shader-bg.js). 히어로 높이만큼 깔고 아래로 갈수록 사라진다.
+   켜지기 전·WebGPU 없음·실패 시에는 투명이라 기존 CSS 배경만 보인다 */
+#home .hm-bg{position:absolute;left:0;top:0;width:100%;height:min(100svh,920px);overflow:hidden;z-index:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease;-webkit-mask-image:linear-gradient(to bottom,#000 45%,transparent 100%);mask-image:linear-gradient(to bottom,#000 45%,transparent 100%)}
+/* 라이브러리가 캔버스에 px 인라인 크기를 써 넣으므로, 크기는 감싼 div가 정하고 캔버스는 !important 로 그 크기를 따른다 (안 그러면 좁은 화면에서 가로 넘침) */
+#home .hm-bg canvas{display:block;width:100%!important;height:100%!important}
+#home .hm-bg.on{opacity:.6}
+:root[data-theme="light"] #home .hm-bg.on{opacity:.38}
+.hm-wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1}
 .hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
 .hm-eb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:2px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft);color:var(--accent-ink);font-weight:600;font-size:.9rem}
 .hm-hero h1{font-size:clamp(2.3rem,5.2vw,4.2rem);line-height:1.12;letter-spacing:-.04em;margin:18px 0 16px;font-weight:400}
