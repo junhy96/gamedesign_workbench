@@ -1421,5 +1421,6 @@ textarea { padding: 10px 12px; }
 .ent-card .trait-panel, .item-card .trait-panel { margin-top: 0; background: color-mix(in srgb, var(--surface-2) 45%, transparent); border-color: var(--panel-line); border-radius: 10px; }
 @media (max-width: 760px) {
   .stat-row { grid-template-columns: 1fr 1fr; } .stat-row.head { display: none; } .stat-row .stat-range { grid-column: 1 / -1; }
+  .stat-row + .stat-row { border-top: 1px solid var(--line); padding-top: 10px; }
   .ent-grid, .item-grid { grid-template-columns: 1fr; }
 }
