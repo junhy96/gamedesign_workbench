@@ -10,16 +10,16 @@
 // - WebGPU 없는 브라우저·움직임 줄이기 설정이면 켜지 않고, 실패하면 캔버스를 숨겨 기존 CSS 배경만 남긴다
 // 라이브러리: https://github.com/shader-effects-inc/shaders (MIT) · 가이드: https://shaders.com/docs/guide
 const CDN = 'https://cdn.jsdelivr.net/npm/shaders@4.0.5/dist/js/bundle.js';
-const ID = { mesh: 'hm-mesh', wave: 'hm-wave', ring: 'hm-ring', ball: 'hm-ball', orb: 'hm-orb', trail: 'hm-trail' };
+const ID = { mesh: 'hm-mesh', wave: 'hm-wave', glow1: 'hm-glow1', glow2: 'hm-glow2', glow3: 'hm-glow3', ring: 'hm-ring', trail: 'hm-trail' };
 
 // 레이어 켜고 끄기·세기 조절은 여기서 (visible:false 면 비용 0)
 const FX = {
   mesh:  { visible: true,  speed: 1.0, drift: 0.7, swirlReach: 0.3 },   // speed: 그라데이션이 흐르는 빠르기, swirlReach: 커서 좌우 끝에서 swirl ±값
   wave:  { visible: true,  strengthMin: 0.05, strengthMax: 0.14, frequency: 1.6, speed: 0.25 },   // 물결: 세기 범위(숨 쉬듯 오르내림)·파수·빠르기
-  // 입체: 링은 오른쪽(폰 목업 뒤), 작은 구는 왼쪽 아래(유리 창 뒤로 반쯤 가려져 번진다), 출렁이는 구는 오른쪽 아래
-  ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.85, spinSpeed: 0.02, opacity: 0.8 },   // 정12면체. spinSpeed: 초당 회전수
-  ball:  { visible: true,  center: { x: 0.2, y: 0.74 }, scale: 0.5, opacity: 0.55 },
-  orb:   { visible: true,  center: { x: 0.93, y: 0.86 }, scale: 0.8, opacity: 0.5 },
+  // 정12면체(검은 유광)는 오른쪽(폰 목업 뒤). spinSpeed: 초당 회전수(0.06 ≈ 17초에 한 바퀴)
+  ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.85, spinSpeed: 0.06, opacity: 0.62 },
+  // 빛 덩어리: 유리 뒤에서 부드럽게 번지는 보라·파랑 글로우 (레퍼런스 사진 색 그대로). 왼쪽 아래·오른쪽 아래·위
+  glow:  { visible: true,  size: 0.6, opacity: 0.5 },
   trail: { visible: true,  radius: 0.9, length: 0.6 },
 };
 
@@ -52,10 +52,12 @@ function themeProps() {
       { color: f3, position: 0.86 },
       { color: mix(f3, k3, 0.18), position: 1 },
     ] },
-    // 입체: 다크는 어두운 크롬에 골드·스틸 반사, 라이트는 더 어두운 크롬 (흰색은 밝은 바탕에서 안 보임)
-    [ID.ring]: dark ? { tint: '#6e6e76', warmColor: k1, coolColor: '#a9bccb' } : { tint: '#3a3a3e', warmColor: k3, coolColor: '#577489' },   // 검은 유광: 몸체는 어둡지만 반사 하이라이트가 밝아야 검은 배경에서 형태가 읽힌다
-    [ID.ball]: dark ? { tint: '#8c8c92', warmColor: k2, coolColor: '#8ea3b4' } : { tint: '#56565a', warmColor: k3, coolColor: '#577489' },
-    [ID.orb]: dark ? { colorA: '#4a4a50', colorB: '#141416', highlightColor: '#ffffff' } : { colorA: '#8a8a8f', colorB: '#4a4a4e', highlightColor: '#ffffff' },
+    // 정12면체: 다크는 어두운 몸체에 밝은 반사, 라이트는 더 어두운 크롬 (흰색은 밝은 바탕에서 안 보임)
+    [ID.ring]: dark ? { tint: '#4a4a52', warmColor: k1, coolColor: '#a9bccb' } : { tint: '#3a3a3e', warmColor: k3, coolColor: '#577489' },
+    // 빛 덩어리: 레퍼런스 사진에서 샘플한 보라(#630d97)·짙은 보라(#390a5d)·라벤더(#6f53a5)·남색(#10144b). 다크는 screen 으로 더해 빛나게, 라이트는 파스텔로 옅게
+    [ID.glow1]: dark ? { colorA: '#7a22c4', colorB: '#390a5d', blendMode: 'screen', opacity: FX.glow.opacity } : { colorA: '#b48ee0', colorB: '#e2d6f3', blendMode: 'normal', opacity: 0.3 },
+    [ID.glow2]: dark ? { colorA: '#2b3fd0', colorB: '#10144b', blendMode: 'screen', opacity: FX.glow.opacity } : { colorA: '#8f9fe0', colorB: '#d8ddf3', blendMode: 'normal', opacity: 0.3 },
+    [ID.glow3]: dark ? { colorA: '#9b63d8', colorB: '#4a2a80', blendMode: 'screen', opacity: FX.glow.opacity * 0.85 } : { colorA: '#c4a9e8', colorB: '#eadff6', blendMode: 'normal', opacity: 0.24 },
     [ID.trail]: dark
       ? { colorA: k2, colorB: mix(k1, glow, 0.5), blendMode: 'screen', opacity: 0.3 }
       : { colorA: k3, colorB: k2, blendMode: 'multiply', opacity: 0.2 },
@@ -77,27 +79,19 @@ function components() {
       waveType: 'sine', frequency: FX.wave.frequency, speed: FX.wave.speed, angle: 20, edges: 'mirror',
       strength: { type: 'auto-animate', mode: 'ping-pong', outputMin: FX.wave.strengthMin, outputMax: FX.wave.strengthMax, speed: 0.06, easing: 'sine' },
     } },
-    // 어두운 크롬 입체. 회전은 라이브러리의 auto-animate 로, JS 에서 매 프레임 갱신하지 않는다. 커서 반응은 메시 swirl 과 잔광이 맡는다
+    // 빛 덩어리: Blob 을 아주 부드럽게(softness 1) 두면 사진처럼 번지는 색 구름이 된다. speed 로 천천히 출렁인다
+    ...[[ID.glow1, { x: 0.2, y: 0.78 }, 1], [ID.glow2, { x: 0.9, y: 0.86 }, 2], [ID.glow3, { x: 0.56, y: 0.16 }, 3]].map(([id, center, seed]) => ({
+      type: 'Blob', id, props: {
+        ...t[id], visible: FX.glow.visible, center, size: FX.glow.size, deformation: 0.45, softness: 1, highlightIntensity: 0,
+        speed: 0.25, seed, colorSpace: 'oklab',
+      },
+    })),
+    // 검은 유광 정12면체. 회전은 라이브러리의 auto-animate 로(화면 평면). 위치는 고정값(mouse-position 은 마우스가 움직이기 전엔 값이 없어 안 그려짐)
     { type: 'Chrome', id: ID.ring, props: {
-      ...t[ID.ring], visible: FX.ring.visible, opacity: FX.ring.opacity, scale: FX.ring.scale,
-      environment: 1.6, envRotation: 20, softness: 0.22, spectral: 0.45, dispersion: 0.12, shadows: 0.7, curvature: 0.3, waviness: 0.04, speed: 0.3, edgeSoftness: 0.05,
-      // 기울인 링을 화면 평면에서 천천히 돌린다(rotation 은 값만 바뀌는 uniform). shape 자체를 매 프레임 갱신하면 다시 컴파일되어 화면이 비는 문제가 있었음
+      ...t[ID.ring], visible: FX.ring.visible, opacity: FX.ring.opacity, scale: FX.ring.scale, center: FX.ring.center,
+      environment: 1.25, envRotation: 20, softness: 0.25, spectral: 0.4, dispersion: 0.1, shadows: 0.75, curvature: 0.3, waviness: 0.04, speed: 0.3, edgeSoftness: 0.05,
       rotation: { type: 'auto-animate', mode: 'loop', outputMin: 0, outputMax: 360, speed: FX.ring.spinSpeed },
-      // 위치는 고정값. mouse-position 시차를 쓰면 마우스가 한 번도 움직이기 전에는 위치값이 없어 입체가 안 그려진다
-      center: FX.ring.center,
-      shape: { type: 'dodecahedron3D', radius: 0.3, rotX: 24, rotY: 32, rotZ: 0 },   // 정12면체. 기울여 두고 화면 평면에서 돌린다
-    } },
-    { type: 'Chrome', id: ID.ball, props: {
-      ...t[ID.ball], visible: FX.ball.visible, opacity: FX.ball.opacity, scale: FX.ball.scale,
-      center: FX.ball.center,
-      environment: 1, envRotation: 300, softness: 0.5, spectral: 0.4, dispersion: 0.1, shadows: 0.4, speed: 0.2, edgeSoftness: 0.1,
-      shape: { type: 'sphere3D', radius: 0.3 },
-    } },
-    // 출렁이는 어두운 구: Blob 은 3D 조명이 있는 유기적 구, deformation 으로 천천히 출렁인다
-    { type: 'Blob', id: ID.orb, props: {
-      ...t[ID.orb], visible: FX.orb.visible, opacity: FX.orb.opacity, center: FX.orb.center,
-      size: 0.5 * FX.orb.scale, deformation: 0.3, softness: 0.45, highlightIntensity: 0.5,
-      highlightX: -0.4, highlightY: -0.5, highlightZ: 0.6, speed: 0.3, seed: 3, colorSpace: 'oklab',
+      shape: { type: 'dodecahedron3D', radius: 0.3, rotX: 24, rotY: 32, rotZ: 0 },
     } },
     { type: 'CursorTrail', id: ID.trail, props: {
       ...t[ID.trail], visible: FX.trail.visible,
