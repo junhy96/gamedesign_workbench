@@ -10,7 +10,7 @@
 // - WebGPU 없는 브라우저·움직임 줄이기 설정이면 켜지 않고, 실패하면 캔버스를 숨겨 기존 CSS 배경만 남긴다
 // 라이브러리: https://github.com/shader-effects-inc/shaders (MIT) · 가이드: https://shaders.com/docs/guide
 const CDN = 'https://cdn.jsdelivr.net/npm/shaders@4.0.5/dist/js/bundle.js';
-const ID = { mesh: 'hm-mesh', wave: 'hm-wave', glow1: 'hm-glow1', glow2: 'hm-glow2', glow3: 'hm-glow3', ring: 'hm-ring', trail: 'hm-trail' };
+const ID = { mesh: 'hm-mesh', wave: 'hm-wave', ribbon: 'hm-ribbon', ring: 'hm-ring', trail: 'hm-trail' };
 
 // 레이어 켜고 끄기·세기 조절은 여기서 (visible:false 면 비용 0)
 const FX = {
@@ -18,8 +18,8 @@ const FX = {
   wave:  { visible: true,  strengthMin: 0.05, strengthMax: 0.14, frequency: 1.6, speed: 0.25 },   // 물결: 세기 범위(숨 쉬듯 오르내림)·파수·빠르기
   // 정12면체(검은 유광)는 오른쪽(폰 목업 뒤). spinSpeed: 초당 회전수(0.06 ≈ 17초에 한 바퀴)
   ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.85, spinSpeed: 0.06, opacity: 0.62 },
-  // 빛 덩어리: 유리 뒤에서 부드럽게 번지는 보라·파랑 글로우 (레퍼런스 사진 색 그대로). 왼쪽 아래·오른쪽 아래·위
-  glow:  { visible: true,  size: 0.6, opacity: 0.5 },
+  // 비단 리본(shaders.com 첫 화면 같은 흐르는 띠): 왼쪽 아래에서 오른쪽 위로 가로지르며 천천히 물결친다. 색은 원래의 회색·검정 톤
+  ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.6 },
   trail: { visible: true,  radius: 0.9, length: 0.6 },
 };
 
@@ -54,10 +54,10 @@ function themeProps() {
     ] },
     // 정12면체: 다크는 어두운 몸체에 밝은 반사, 라이트는 더 어두운 크롬 (흰색은 밝은 바탕에서 안 보임)
     [ID.ring]: dark ? { tint: '#4a4a52', warmColor: k1, coolColor: '#a9bccb' } : { tint: '#3a3a3e', warmColor: k3, coolColor: '#577489' },
-    // 빛 덩어리: 레퍼런스 사진에서 샘플한 보라(#630d97)·짙은 보라(#390a5d)·라벤더(#6f53a5)·남색(#10144b). 다크는 screen 으로 더해 빛나게, 라이트는 파스텔로 옅게
-    [ID.glow1]: dark ? { colorA: '#7a22c4', colorB: '#390a5d', blendMode: 'screen', opacity: FX.glow.opacity } : { colorA: '#b48ee0', colorB: '#e2d6f3', blendMode: 'normal', opacity: 0.3 },
-    [ID.glow2]: dark ? { colorA: '#2b3fd0', colorB: '#10144b', blendMode: 'screen', opacity: FX.glow.opacity } : { colorA: '#8f9fe0', colorB: '#d8ddf3', blendMode: 'normal', opacity: 0.3 },
-    [ID.glow3]: dark ? { colorA: '#9b63d8', colorB: '#4a2a80', blendMode: 'screen', opacity: FX.glow.opacity * 0.85 } : { colorA: '#c4a9e8', colorB: '#eadff6', blendMode: 'normal', opacity: 0.24 },
+    // 리본 색: 다크는 검정→밝은 회색→흰빛→차콜(screen 으로 빛나는 비단), 라이트는 회색 계열을 보통 블렌드로
+    [ID.ribbon]: dark
+      ? { stops: [{ color: '#0b0b0c', position: 0 }, { color: '#6e6e76', position: 0.35 }, { color: '#d6d6db', position: 0.6 }, { color: '#4a4a52', position: 1 }], blendMode: 'screen', opacity: FX.ribbon.opacity }
+      : { stops: [{ color: '#f1f0ec', position: 0 }, { color: '#9a9893', position: 0.35 }, { color: '#5f5d58', position: 0.6 }, { color: '#c9c7c0', position: 1 }], blendMode: 'normal', opacity: 0.35 },
     [ID.trail]: dark
       ? { colorA: k2, colorB: mix(k1, glow, 0.5), blendMode: 'screen', opacity: 0.3 }
       : { colorA: k3, colorB: k2, blendMode: 'multiply', opacity: 0.2 },
@@ -79,13 +79,13 @@ function components() {
       waveType: 'sine', frequency: FX.wave.frequency, speed: FX.wave.speed, angle: 20, edges: 'mirror',
       strength: { type: 'auto-animate', mode: 'ping-pong', outputMin: FX.wave.strengthMin, outputMax: FX.wave.strengthMax, speed: 0.06, easing: 'sine' },
     } },
-    // 빛 덩어리: Blob 을 아주 부드럽게(softness 1) 두면 사진처럼 번지는 색 구름이 된다. speed 로 천천히 출렁인다
-    ...[[ID.glow1, { x: 0.2, y: 0.78 }, 1], [ID.glow2, { x: 0.9, y: 0.86 }, 2], [ID.glow3, { x: 0.56, y: 0.16 }, 3]].map(([id, center, seed]) => ({
-      type: 'Blob', id, props: {
-        ...t[id], visible: FX.glow.visible, center, size: FX.glow.size, deformation: 0.45, softness: 1, highlightIntensity: 0,
-        speed: 0.25, seed, colorSpace: 'oklab',
-      },
-    })),
+    // 비단 리본: Strands(흐르는 빛의 띠). 가장자리를 많이 풀어(softness) 리본이 비단처럼 번지고, 색은 띠를 따라 천천히 흐른다
+    { type: 'Strands', id: ID.ribbon, props: {
+      ...t[ID.ribbon], visible: FX.ribbon.visible,
+      lineCount: FX.ribbon.lines, lineWidth: FX.ribbon.width, softness: FX.ribbon.softness, amplitude: FX.ribbon.amplitude, frequency: FX.ribbon.frequency, spread: FX.ribbon.spread,
+      speed: FX.ribbon.speed, colorSpace: 'oklab', colorScale: 1, colorVariance: 0.6, colorSpeed: 0.3, pinEdges: false,
+      start: { x: -0.1, y: 0.62 }, end: { x: 1.1, y: 0.3 },
+    } },
     // 검은 유광 정12면체. 회전은 라이브러리의 auto-animate 로(화면 평면). 위치는 고정값(mouse-position 은 마우스가 움직이기 전엔 값이 없어 안 그려짐)
     { type: 'Chrome', id: ID.ring, props: {
       ...t[ID.ring], visible: FX.ring.visible, opacity: FX.ring.opacity, scale: FX.ring.scale, center: FX.ring.center,
