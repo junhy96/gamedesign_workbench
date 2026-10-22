@@ -6,21 +6,32 @@ body.home main{display:none}
 #home{color:var(--text);padding:0 24px 40px;position:relative;isolation:isolate}
 /* 첫 화면 배경: Shaders(WebGPU) 메시 그라데이션 캔버스(js/home/shader-bg.js). 히어로 높이만큼 깔고 아래로 갈수록 사라진다.
    켜지기 전·WebGPU 없음·실패 시에는 투명이라 기존 CSS 배경만 보인다 */
-#home .hm-bg{position:absolute;left:0;top:0;width:100%;height:min(100svh,920px);overflow:hidden;z-index:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease;-webkit-mask-image:linear-gradient(to bottom,#000 45%,transparent 100%);mask-image:linear-gradient(to bottom,#000 45%,transparent 100%)}
+/* 배경은 뷰포트에 고정: 스크롤해도 따라 내려오지 않고 그 자리에서 흐른다 (헤더의 blur 에도 비친다) */
+#home .hm-bg{position:fixed;left:0;top:0;width:100%;height:100vh;height:100svh;overflow:hidden;z-index:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease}
 /* 라이브러리가 캔버스에 px 인라인 크기를 써 넣으므로, 크기는 감싼 div가 정하고 캔버스는 !important 로 그 크기를 따른다 (안 그러면 좁은 화면에서 가로 넘침) */
 #home .hm-bg canvas{display:block;width:100%!important;height:100%!important}
 #home .hm-bg.on{opacity:.6}
 :root[data-theme="light"] #home .hm-bg.on{opacity:.38}
 .hm-wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1}
 .hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
+/* 히어로 글은 유리 창 안에: 뒤의 입체·그라데이션이 이 창이 덮는 부분만 뿌옇게 번진다(backdrop-filter). 창 밖은 선명 */
+.hm-glass{padding:36px 38px 34px;border-radius:22px;border:1px solid var(--glass-win-line,var(--panel-line));background:var(--glass-win,var(--card-bg));-webkit-backdrop-filter:blur(28px) saturate(1.35);backdrop-filter:blur(28px) saturate(1.35);box-shadow:inset 0 1px 0 var(--glass-hi),inset 1px 0 0 color-mix(in srgb,var(--glass-hi) 40%,transparent),0 30px 70px -40px rgb(0 0 0 / .8)}
+/* 다크에서는 창 채움을 더 어둡게(흰색 7%→2.5%), 테두리도 가늘고 어둡게 — 공용 유리 토큰(17%)은 입력 패널용이라 창에 쓰면 너무 밝다 */
+:root:not([data-theme="light"]) .hm-glass{--glass-win:linear-gradient(160deg,rgb(255 255 255 / .07),rgb(255 255 255 / .025));--glass-win-line:rgb(255 255 255 / .16)}
+@media (max-width:620px){.hm-glass{padding:26px 22px 24px;border-radius:18px}}
+@media (prefers-reduced-transparency:reduce){.hm-glass{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}}
 .hm-eb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft);color:var(--accent-ink);font-weight:600;font-size:.9rem}
 /* 제목 서체: 던파 연단된 칼날 Bold (© NEOPLE, 상업용 무료·수정 금지·원형 그대로 사용). 공식 CDN 에서 그대로 불러옴(약 3.8MB, swap 이라 오기 전엔 Pretendard 800).
    홈 h1 에만 쓰므로 다른 화면에는 비용 없음 */
 @font-face{font-family:"DNFForgedBlade";font-style:normal;font-weight:700;font-display:swap;src:url("https://cdn.df.nexon.com/img/common/font/DNFForgedBlade-Bold.otf") format("opentype")}
 /* 제목: 본문(Pretendard)과 대비되는 날카로운 세리프 전용 서체. 움직이는 배경 위에서도 읽히도록 살짝 그림자 */
 .hm-hero h1{font-family:"DNFForgedBlade","Pretendard Variable",Pretendard,sans-serif;font-size:clamp(2.4rem,5.4vw,4.4rem);line-height:1.2;letter-spacing:0;margin:18px 0 18px;font-weight:700;text-shadow:0 2px 24px color-mix(in srgb,var(--bg) 60%,transparent)}
-.hm-hero h1 em{font-style:normal;background:var(--key-grad);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
-.hm-hero h1 s{text-decoration:line-through;text-decoration-thickness:3px;text-decoration-color:color-mix(in srgb,var(--text-3) 80%,transparent);color:var(--text-3)}
+/* 헤드라인 두 단어 강조: '엑셀'은 초록(스프레드시트 아이콘 포함), '워크벤치'는 키 컬러 그라데이션. 둘 다 본문보다 한 단계 크게 */
+.hm-hero h1 .xl,.hm-hero h1 .wb{font-size:1.22em;line-height:1;vertical-align:-.03em}
+.hm-hero h1 .xl{color:var(--xl-green,#2f9e5e);display:inline-flex;align-items:center;gap:.14em;white-space:nowrap}
+:root[data-theme="light"] .hm-hero h1 .xl{--xl-green:#1d7a45}
+.hm-hero h1 .xl-ico{width:.78em;height:.78em;flex:none;filter:drop-shadow(0 2px 6px rgb(0 0 0 / .25))}
+.hm-hero h1 .wb{background:var(--key-grad);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
 /* 본문·보조 글자: 회색 대신 본문색을 써서 배경 위 대비 확보 */
 .hm-lede{font-size:1.12rem;color:var(--text);opacity:.88;max-width:52ch;line-height:1.65;margin:0 0 28px}
 /* 레퍼런스의 진행 막대: 키 그라데이션 + 끝의 글로우 점 */
@@ -48,7 +59,8 @@ body.home main{display:none}
 .hm-diff ul{margin:0;padding:0;list-style:none;display:grid;gap:10px}
 .hm-diff li{display:flex;gap:10px;align-items:flex-start;font-weight:500}
 .hm-diff li b{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:.8rem}
-.hm-x h3{color:var(--text-3)} .hm-x li{color:var(--text-3)} .hm-x li b{background:var(--surface-2);color:var(--text-3);border:1px solid var(--line-strong)}
+/* 비교 카드 '엑셀' 쪽: 제목·표시를 올리브로 두어 골드 '기획 워크벤치' 카드와 대조 */
+.hm-x h3{color:var(--series-2)} .hm-x li{color:var(--text-3)} .hm-x li b{background:color-mix(in srgb,var(--series-2) 14%,transparent);color:var(--series-2);border:1px solid color-mix(in srgb,var(--series-2) 45%,transparent)}
 .hm-o{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))!important;background:var(--key-grad) top/100% 2px no-repeat,var(--card-bg)!important;box-shadow:0 24px 60px -30px color-mix(in srgb,var(--key-2) 60%,transparent)} .hm-o h3{color:var(--accent-ink)} .hm-o li b{background:var(--key-grad);color:var(--on-key)}
 .hm-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
 .hm-card{display:flex;flex-direction:column;border-radius:var(--radius);border:1px solid var(--panel-line);background:var(--card-bg);-webkit-backdrop-filter:blur(22px) saturate(1.3);backdrop-filter:blur(22px) saturate(1.3);box-shadow:inset 0 1px 0 var(--glass-hi);overflow:hidden;text-decoration:none;color:inherit;transition:transform .25s cubic-bezier(.16,1,.3,1),border-color .2s,box-shadow .2s}
