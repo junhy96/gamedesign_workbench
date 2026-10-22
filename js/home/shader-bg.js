@@ -1,19 +1,19 @@
 // 첫 화면(홈) 배경: Shaders(WebGPU) 라이브러리로 히어로 뒤에 레이어 세 장을 깐다.
-//   1 MeshGradient  탄색 메시 그라데이션. swirl 을 커서 X에 연결해 마우스를 따라 살짝 비틀린다 (mouse 동적 속성)
-//   2 FloatingParticles  느리게 떠다니는 탄색 먼지. 커서가 밀어낸다 (cursorStrength)
-//   3 CursorTrail  커서를 따라오는 부드러운 잔광 (screen 블렌드, 다크) / 어두운 탄색 (multiply, 라이트)
+//   1 MeshGradient     탄색 메시 그라데이션이 시간에 따라 흐른다(speed·drift). swirl 은 커서 X에 연결해 마우스를 따라 살짝 비틀린다
+//   2 WaveDistortion   앞 레이어(메시)를 잔잔한 사인파로 일렁이게 한다. 세기는 천천히 숨 쉬듯 오르내림(auto-animate)
+//   3 CursorTrail      커서를 따라오는 부드러운 잔광 (screen 블렌드, 다크) / 어두운 탄색 (multiply, 라이트). 물결 위에 그려져 흔들리지 않는다
 // - npm 설치·번들러 없이 CDN ESM 번들을 홈이 보일 때만 늦게 불러온다 (약 2.6MB, 도구 화면에는 영향 없음)
 // - 텔레메트리는 끈다 (사이트 약속: 서버 전송 없음). 마우스 추적은 라이브러리가 window 에서 하므로 캔버스가 뒤에 있어도 된다
 // - 색은 CSS 토큰(--bg, --key-1..3, --glow)에서 읽어, 테마 전환 때 레이어별로 다시 넣는다
 // - WebGPU 없는 브라우저·움직임 줄이기 설정이면 켜지 않고, 실패하면 캔버스를 숨겨 기존 CSS 배경만 남긴다
 // 라이브러리: https://github.com/shader-effects-inc/shaders (MIT) · 가이드: https://shaders.com/docs/guide
 const CDN = 'https://cdn.jsdelivr.net/npm/shaders@4.0.5/dist/js/bundle.js';
-const ID = { mesh: 'hm-mesh', dust: 'hm-dust', trail: 'hm-trail' };
+const ID = { mesh: 'hm-mesh', wave: 'hm-wave', trail: 'hm-trail' };
 
 // 레이어 켜고 끄기·세기 조절은 여기서 (visible:false 면 비용 0)
 const FX = {
-  mesh:  { visible: true,  speed: 0.35, swirlReach: 0.35 },   // swirlReach: 커서가 왼쪽 끝↔오른쪽 끝일 때 swirl ±값
-  dust:  { visible: true,  count: 500, size: 1.4, cursorStrength: 0.6 },
+  mesh:  { visible: true,  speed: 1.0, drift: 0.7, swirlReach: 0.3 },   // speed: 그라데이션이 흐르는 빠르기, swirlReach: 커서 좌우 끝에서 swirl ±값
+  wave:  { visible: true,  strengthMin: 0.05, strengthMax: 0.14, frequency: 1.6, speed: 0.25 },   // 물결: 세기 범위(숨 쉬듯 오르내림)·파수·빠르기
   trail: { visible: true,  radius: 0.9, length: 0.6 },
 };
 
@@ -45,13 +45,9 @@ function themeProps() {
       { color: k2, position: 0.86 },
       { color: k1, position: 1 },
     ] },
-    // 다크: 밝은 탄색 먼지를 screen 으로 더하고, 라이트: 어두운 탄색을 보통 블렌드로 얹는다
-    [ID.dust]: dark
-      ? { particleColor: k1, blendMode: 'screen', opacity: 0.55 }
-      : { particleColor: k3, blendMode: 'normal', opacity: 0.35 },
     [ID.trail]: dark
-      ? { colorA: k2, colorB: mix(k1, glow, 0.5), blendMode: 'screen', opacity: 0.35 }
-      : { colorA: k3, colorB: k2, blendMode: 'multiply', opacity: 0.22 },
+      ? { colorA: k2, colorB: mix(k1, glow, 0.5), blendMode: 'screen', opacity: 0.3 }
+      : { colorA: k3, colorB: k2, blendMode: 'multiply', opacity: 0.2 },
   };
 }
 
@@ -60,15 +56,15 @@ function components() {
   return [
     { type: 'MeshGradient', id: ID.mesh, props: {
       ...t[ID.mesh], visible: FX.mesh.visible,
-      colorSpace: 'oklab', count: 5, smoothness: 3, variation: 0.25, drift: 0.55, speed: FX.mesh.speed, seed: 7,
+      colorSpace: 'oklab', count: 5, smoothness: 3, variation: 0.25, drift: FX.mesh.drift, speed: FX.mesh.speed, seed: 7,
       // 커서 X → swirl: 왼쪽이면 한쪽으로, 오른쪽이면 반대로 천천히 따라 비틀린다
       swirl: { type: 'mouse', axis: 'x', outputMin: -FX.mesh.swirlReach, outputMax: FX.mesh.swirlReach, smoothing: 0.08 },
     } },
-    { type: 'FloatingParticles', id: ID.dust, props: {
-      ...t[ID.dust], visible: FX.dust.visible,
-      shape: 'dot', count: FX.dust.count, particleSize: FX.dust.size, softness: 0.6,
-      speed: 0.08, angle: 90, speedVariance: 0.5, angleVariance: 60, randomness: 0.4, twinkle: 0.6,
-      cursorStrength: FX.dust.cursorStrength,
+    // 효과 레이어: 형제로 두면 앞서 그린 레이어(메시)에만 걸린다. 뒤에 오는 잔광은 그대로
+    { type: 'WaveDistortion', id: ID.wave, props: {
+      visible: FX.wave.visible,
+      waveType: 'sine', frequency: FX.wave.frequency, speed: FX.wave.speed, angle: 20, edges: 'mirror',
+      strength: { type: 'auto-animate', mode: 'ping-pong', outputMin: FX.wave.strengthMin, outputMax: FX.wave.strengthMax, speed: 0.06, easing: 'sine' },
     } },
     { type: 'CursorTrail', id: ID.trail, props: {
       ...t[ID.trail], visible: FX.trail.visible,
@@ -98,7 +94,7 @@ export function initHomeShader() {
       });
       document.addEventListener('themechange', () => {
         const t = themeProps();
-        for (const id of Object.values(ID)) shader?.update(id, t[id]);
+        for (const id of Object.keys(t)) shader?.update(id, t[id]);
       });
       // 도구 화면으로 가면(#home 이 display:none) 렌더를 멈추고, 돌아오면 재개
       new MutationObserver(() => (document.body.classList.contains('home') ? shader?.resume() : shader?.pause()))
