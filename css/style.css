@@ -11,7 +11,9 @@
   --on-key: #1d1309; --on-status: #ffffff;
   --glow: #f2c600; --glow-shadow: 0 0 0 1px rgb(242 198 0 / .55), 0 0 10px 2px rgb(242 198 0 / .45);
   --bg: #f1f0ec;
-  --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(201 138 82 / .30), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(127 138 78 / .18), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(176 111 57 / .14), transparent 65%), radial-gradient(700px 500px at 30% 30%, rgb(255 255 255 / .4), transparent 65%);
+  --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(120 112 100 / .16), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(127 138 78 / .10), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(176 111 57 / .07), transparent 65%), radial-gradient(700px 500px at 30% 30%, rgb(255 255 255 / .45), transparent 65%);
+  /* 첫 화면 흐르는 배경(js/home/shader-bg.js)의 색: 바탕 → 밝은 회색 → 차콜. 키 컬러는 커서 잔광에만 */
+  --flow-1: #e6e4df; --flow-2: #d3d0c9; --flow-3: #b9b5ad;
   --surface: #fbfaf8;
   --surface-2: #f0eee9;
   /* 유리 패널: 탁한(불투명도 높은) 젖빛 유리. 라이트는 흰 유리, 다크는 밝은 회색 유리 */
@@ -25,7 +27,7 @@
   --accent: #b06f39;
   --accent-soft: rgb(176 111 57 / .12);
   --accent-ink: #8d531f;
-  --series-1: #c07f45; --series-2: #7f8a4e; --series-3: #9a8a55; --series-4: #577489;
+  --series-1: #c07f45; --series-2: #7f8a4e; --series-3: #8a5a3c; --series-4: #577489;   /* 골드 · 올리브 · 브라운 · 스틸 */
   --grid: #e7e4dd;
   --good: #3f7f34; --good-soft: rgb(79 138 58 / .12);
   --warn: #946c00; --warn-soft: rgb(201 154 18 / .14);
@@ -46,7 +48,7 @@
   /* 민감도·승률 행렬: 올림/이김 = 키 컬러, 내림/짐 = 스틸 */
   --tor-down: #577489; --tor-up: #c07f45;
   /* 범주형 8색 (고정 순서) */
-  --cat-1: #b06f39; --cat-2: #7f8a4e; --cat-3: #577489; --cat-4: #9a8a55; --cat-5: #a5525e; --cat-6: #3f7f5a; --cat-7: #7560a3; --cat-8: #c4462f;
+  --cat-1: #b06f39; --cat-2: #7f8a4e; --cat-3: #8a5a3c; --cat-4: #9a8a55; --cat-5: #577489; --cat-6: #3f7f5a; --cat-7: #a5525e; --cat-8: #c4462f;   /* 골드 · 올리브 · 브라운 · 카키 · 스틸 · 짙은 올리브 · 모브 · 적동 */
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -55,14 +57,15 @@
     --on-key: #1c130a; --on-status: #14120e;
     --glow: #f4e24a; --glow-shadow: 0 0 0 1px rgb(244 226 74 / .6), 0 0 14px 3px rgb(244 226 74 / .55);
     --bg: #0b0b0a;
-    --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(216 162 114 / .36), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .18), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(156 93 45 / .22), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(244 226 74 / .07), transparent 65%);
+    --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .09), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(140 132 122 / .14), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .07), transparent 65%);
+    --flow-1: #1c1b1a; --flow-2: #2e2d2a; --flow-3: #45423c;   /* 흐르는 배경: 바탕 → 차콜 → 따뜻한 차콜 */
     --surface: #131312; --surface-2: #1c1b19;
     --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
     --line: #282723; --line-strong: #3b3934;
     --text: #f3f1eb; --text-2: #cbc7bd; --text-3: #a39e95;
     --accent: #d8a272; --accent-soft: rgb(216 162 114 / .13); --accent-ink: #ebbd8d;
-    --series-1: #d8a272; --series-2: #b5b98c; --series-3: #e8e1c3; --series-4: #8ea3b4;
+    --series-1: #d8a272; --series-2: #aab070; --series-3: #b27a52; --series-4: #8ea3b4;   /* 골드 · 올리브 · 브라운 · 스틸 */
     --grid: #1c1b19;
     --good: #a8cc8c; --good-soft: rgb(168 204 140 / .12);
     --warn: #e6c45a; --warn-soft: rgb(230 196 90 / .12);
@@ -77,7 +80,7 @@
     --role-tool: #9fb2c4; --role-tool-soft: rgb(159 178 196 / .1);
     --role-doc: #e2d4b0; --role-doc-soft: rgb(226 212 176 / .08);
     --tor-down: #8ea3b4; --tor-up: #d8a272;
-    --cat-1: #d8a272; --cat-2: #b5b98c; --cat-3: #8ea3b4; --cat-4: #e8e1c3; --cat-5: #c97b84; --cat-6: #7fae8e; --cat-7: #a38fc4; --cat-8: #ef8066;
+    --cat-1: #d8a272; --cat-2: #aab070; --cat-3: #b27a52; --cat-4: #e8e1c3; --cat-5: #8ea3b4; --cat-6: #7fae8e; --cat-7: #c97b84; --cat-8: #ef8066;   /* 골드 · 올리브 · 브라운 · 샌드 · 스틸 · 세이지 · 모브 · 적동 */
   }
 }
 :root[data-theme="dark"] {
@@ -86,14 +89,15 @@
   --on-key: #1c130a; --on-status: #14120e;
   --glow: #f4e24a; --glow-shadow: 0 0 0 1px rgb(244 226 74 / .6), 0 0 14px 3px rgb(244 226 74 / .55);
   --bg: #0b0b0a;
-  --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(216 162 114 / .36), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .18), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(156 93 45 / .22), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(244 226 74 / .07), transparent 65%);
+  --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .09), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(140 132 122 / .14), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .07), transparent 65%);
+    --flow-1: #1c1b1a; --flow-2: #2e2d2a; --flow-3: #45423c;   /* 흐르는 배경: 바탕 → 차콜 → 따뜻한 차콜 */
   --surface: #131312; --surface-2: #1c1b19;
   --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
   --line: #282723; --line-strong: #3b3934;
   --text: #f3f1eb; --text-2: #cbc7bd; --text-3: #a39e95;
   --accent: #d8a272; --accent-soft: rgb(216 162 114 / .13); --accent-ink: #ebbd8d;
-  --series-1: #d8a272; --series-2: #b5b98c; --series-3: #e8e1c3; --series-4: #8ea3b4;
+  --series-1: #d8a272; --series-2: #aab070; --series-3: #b27a52; --series-4: #8ea3b4;   /* 골드 · 올리브 · 브라운 · 스틸 */
   --grid: #1c1b19;
   --good: #a8cc8c; --good-soft: rgb(168 204 140 / .12);
   --warn: #e6c45a; --warn-soft: rgb(230 196 90 / .12);
@@ -108,7 +112,7 @@
   --role-tool: #9fb2c4; --role-tool-soft: rgb(159 178 196 / .1);
   --role-doc: #e2d4b0; --role-doc-soft: rgb(226 212 176 / .08);
   --tor-down: #8ea3b4; --tor-up: #d8a272;
-  --cat-1: #d8a272; --cat-2: #b5b98c; --cat-3: #8ea3b4; --cat-4: #e8e1c3; --cat-5: #c97b84; --cat-6: #7fae8e; --cat-7: #a38fc4; --cat-8: #ef8066;
+  --cat-1: #d8a272; --cat-2: #aab070; --cat-3: #b27a52; --cat-4: #e8e1c3; --cat-5: #8ea3b4; --cat-6: #7fae8e; --cat-7: #c97b84; --cat-8: #ef8066;   /* 골드 · 올리브 · 브라운 · 샌드 · 스틸 · 세이지 · 모브 · 적동 */
 }
 
 /* ── 기본 ───────────────────────────────────────────── */
