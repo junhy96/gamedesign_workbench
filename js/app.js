@@ -14,6 +14,7 @@ import { openSnapshots } from './lib/snapshot-view.js';
 import { refreshCharts } from './lib/chart.js';
 import { autoTips } from './lib/tip.js';
 import { installFieldChecks } from './lib/fieldcheck.js';
+import { initHomeShader } from './home/shader-bg.js';
 
 const TOOLS = {
   enhance: mountEnhance,
@@ -98,6 +99,7 @@ const setHome = () => {
   document.body.classList.toggle('home', home || currentTab().startsWith('hm-'));
   document.documentElement.classList.remove('pre-home');
   if (home) for (const g of groups) { g.classList.remove('active'); g.querySelector('.nav-cur').textContent = ''; }
+  if (home) initHomeShader();   // 첫 화면 배경(WebGPU)은 홈이 처음 보일 때만 늦게 불러온다
   return home || currentTab().startsWith('hm-');
 };
 
