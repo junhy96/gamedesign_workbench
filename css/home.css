@@ -73,7 +73,8 @@ body.home main{display:none}
 .hm-last h2{margin:0 0 6px;font-size:1.8rem;font-weight:600;letter-spacing:-.02em} .hm-last p{margin:0;opacity:.8}
 .hm-last .hm-btn{background:#14120f;color:#f2d3a8;border-color:#14120f}
 .hm-last .hm-btn:hover{background:#000}
-/* 좁은 화면: 글과 데모 영상을 같은 세로축(가운데)에 세로로 쌓는다 */
-@media (max-width:980px){.hm-hero{grid-template-columns:1fr;min-height:0;gap:36px;padding-top:32px;justify-items:center;text-align:center}.hm-glass{display:flex;flex-direction:column;align-items:center}.hm-cta,.hm-chips{justify-content:center}.hm-lede{margin:0 auto 24px}.hm-meter{width:100%;max-width:420px;margin:0 auto 26px}.hm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hm-diff{grid-template-columns:1fr}}
-@media (max-width:620px){#home{padding:0 16px 32px}.hm-grid{grid-template-columns:1fr}.hm-card.wide{grid-column:auto}.hm-card img,.hm-card.wide img{height:190px}.hm-last{padding:28px 22px}}
+/* 중간 폭(620~980px): 글과 데모 영상을 그대로 나란히 두되 영상을 줄이고 헤드라인을 한 단계 작게 */
+@media (max-width:980px){.hm-hero{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:28px;min-height:0;padding-top:28px}.hm-hero h1{font-size:clamp(1.8rem,4.4vw,2.6rem)}.hm-lede{font-size:.92rem}.hm-phone{width:min(230px,34vw)}.hm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hm-diff{grid-template-columns:1fr}}
+/* 휴대폰 폭(620px 이하): 글과 데모 영상을 같은 세로축(가운데)에 세로로 쌓는다 */
+@media (max-width:620px){#home{padding:0 16px 32px}.hm-hero{grid-template-columns:1fr;gap:32px;justify-items:center;text-align:center}.hm-hero h1{font-size:clamp(2rem,9vw,2.6rem)}.hm-glass{display:flex;flex-direction:column;align-items:center}.hm-cta,.hm-chips{justify-content:center}.hm-lede{margin:0 auto 24px}.hm-meter{width:100%;max-width:420px;margin:0 auto 26px}.hm-phone{width:min(300px,80vw)}.hm-grid{grid-template-columns:1fr}.hm-card.wide{grid-column:auto}.hm-card img,.hm-card.wide img{height:190px}.hm-last{padding:28px 22px}}
 @media (prefers-reduced-motion:reduce){.hm-phone video{display:none}.hm-phone{background:url(../media/shorts-poster.webp) center/cover}}
