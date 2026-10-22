@@ -79,3 +79,5 @@ body.home main{display:none}
 /* 휴대폰 폭(620px 이하): 글과 데모 영상을 같은 세로축(가운데)에 세로로 쌓는다 */
 @media (max-width:620px){#home{padding:0 16px 32px}.hm-hero{grid-template-columns:1fr;gap:32px;justify-items:center;text-align:center}.hm-hero h1{font-size:clamp(2rem,9vw,2.6rem)}.hm-glass{display:flex;flex-direction:column;align-items:center}.hm-cta,.hm-chips{justify-content:center}.hm-lede{margin:0 auto 24px}.hm-meter{width:100%;max-width:420px;margin:0 auto 26px}.hm-phone{width:min(300px,80vw)}.hm-grid{grid-template-columns:1fr}.hm-card.wide{grid-column:auto}.hm-card img,.hm-card.wide img{height:190px}.hm-last{padding:28px 22px}}
 @media (prefers-reduced-motion:reduce){.hm-phone video{display:none}.hm-phone{background:url(../media/shorts-poster.webp) center/cover}}
+/* 보조 버튼 호버: 키 컬러로 차오른다 */
+.hm-btn:not(.primary):hover{background:var(--key-grad);color:var(--on-key);border-color:transparent;box-shadow:0 14px 36px -14px color-mix(in srgb,var(--key-2) 70%,transparent)}

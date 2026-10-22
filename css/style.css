@@ -1438,3 +1438,13 @@ ul.errors:not([hidden]) ~ .card.role-out::after, ul.errors:not([hidden]) ~ .kpis
   border-radius: inherit; color: var(--text-2); font-size: 14px; font-weight: 500; line-height: 1.5;
   background: color-mix(in srgb, var(--bg) 60%, transparent); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
+
+/* ── 호버: 버튼은 키 컬러로 차오르고, 상단 메뉴는 대분류 밑에 키 컬러 선 + 중분류 글자색 ───── */
+.btn:not(.primary):hover, .btn:not(.primary):focus-visible { background: var(--key-grad); color: var(--on-key); border-color: transparent; box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--key-2) 70%, transparent); }
+.btn:not(.primary):disabled:hover { background: color-mix(in srgb, var(--surface) 40%, transparent); color: var(--text-2); border-color: var(--line-strong); box-shadow: none; }
+.nav-trigger:hover, .nav-direct:hover, .nav-group:hover .nav-trigger, .nav-group.open .nav-trigger, .nav-group:focus-within .nav-trigger {
+  background: var(--key-grad) left bottom / 100% 2px no-repeat, var(--surface-2); color: var(--accent-ink);
+}
+.nav-menu button:hover, .nav-menu button:focus-visible { background: var(--accent-soft); }
+.nav-menu button:hover b, .nav-menu button:focus-visible b { color: var(--accent-ink); }
+.nav-menu button:hover span, .nav-menu button:focus-visible span { color: var(--text-2); }
