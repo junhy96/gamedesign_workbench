@@ -1373,3 +1373,53 @@ textarea { padding: 10px 12px; }
 .option { gap: 12px; }
 .desc, .option .desc, .preset-note, .field small { line-height: 1.6; }
 .pair-kpi { padding: 12px 16px; border: 1px solid var(--panel-line); }
+
+/* ── 엔티티·아이템 카드/폼 (전투 밸런스) ─────────────────
+   엔티티·아이템을 표 대신 카드로: 머리(이름·설정·삭제) + 몸(스탯 줄 / 수정자 줄). 스탯 설정은 접이식 패널 */
+.ent-tools { margin-bottom: 14px; }
+.stat-settings { display: grid; gap: 8px; margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--panel-line); background: color-mix(in srgb, var(--surface-2) 40%, transparent); }
+.stat-row { display: grid; grid-template-columns: 120px minmax(120px, 1fr) 140px 220px 30px; gap: 8px; align-items: center; }
+.stat-row.head { font-size: 11.5px; font-weight: 600; color: var(--text-3); padding: 0 2px; }
+.stat-row input.stat-id { font-family: var(--mono); font-weight: 700; font-size: 12.5px; }
+.stat-row select { width: 100%; }
+.stat-row .stat-range { display: flex; align-items: center; gap: 6px; }
+.stat-row .stat-range input { width: 100%; min-width: 0; }
+.stat-row .stat-range .range-sep { color: var(--text-3); font-size: 12px; }
+.ent-grid, .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.ent-card, .item-card {
+  border: 1px solid var(--panel-line); border-radius: 14px; padding: 14px 16px 12px; min-width: 0; display: grid; gap: 12px; align-content: start;
+  background: color-mix(in srgb, var(--surface-2) 40%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-hi) 45%, transparent);
+}
+.ent-card { border-left: 3px solid var(--ent-color, var(--line-strong)); }
+.ent-card.selected { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+.item-card.off { opacity: .55; }
+.ent-head, .item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ent-head .name-in, .item-head .name-in { flex: 1 1 110px; min-width: 90px; font-weight: 700; font-size: 14.5px; }
+.ent-head .icon-x, .item-head .icon-x { margin-left: auto; }
+.ent-pick { display: flex; align-items: center; }
+.ent-var, .item-target { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.ent-var input { width: 76px; }
+.item-target select { width: auto; }
+.es-grid, .mod-grid { display: grid; gap: 6px; }
+.es-row { display: grid; grid-template-columns: minmax(96px, 1.1fr) 1fr 1fr 44px; gap: 8px; align-items: center; }
+.es-row.table { grid-template-columns: minmax(96px, 1.1fr) 2fr 44px; }
+.es-row.head, .mod-row.head { font-size: 11px; font-weight: 600; color: var(--text-3); padding: 0 2px; }
+.es-label { display: grid; line-height: 1.2; min-width: 0; }
+.es-label b { font-family: var(--mono); font-size: 12.5px; }
+.es-label small { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.es-row input[type="number"] { width: 100%; min-width: 0; text-align: right; }
+.es-row input.table-in { width: 100%; min-width: 0; text-align: left; font-family: var(--mono); font-size: 12px; border: 1px solid var(--panel-line); background: color-mix(in srgb, var(--surface) 58%, transparent); }
+.es-g { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.es-g input { flex: 1; }
+.es-unit { font-size: 11px; color: var(--text-3); width: 14px; text-align: center; flex: none; }
+.es-row .mini-btn, .mod-row .icon-x { justify-self: end; margin: 0; }
+.mod-row { display: grid; grid-template-columns: minmax(84px, 1fr) 1fr 1fr 1fr 30px; gap: 8px; align-items: center; }
+.mod-row input[type="number"], .mod-row select { width: 100%; min-width: 0; }
+.mod-row input[type="number"] { text-align: right; }
+.mini-btn { padding: 3px 9px; font-size: 11.5px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 40%, transparent); }
+.mini-btn.add { justify-self: start; padding: 4px 11px; font-size: 12px; margin-top: 2px; }
+.ent-card .trait-panel, .item-card .trait-panel { margin-top: 0; background: color-mix(in srgb, var(--surface-2) 45%, transparent); border-color: var(--panel-line); border-radius: 10px; }
+@media (max-width: 760px) {
+  .stat-row { grid-template-columns: 1fr 1fr; } .stat-row.head { display: none; } .stat-row .stat-range { grid-column: 1 / -1; }
+  .ent-grid, .item-grid { grid-template-columns: 1fr; }
+}
