@@ -13,7 +13,8 @@ body.home main{display:none}
 .hm-bg.on{opacity:.55}
 :root[data-theme="light"] .hm-bg.on{opacity:.38}
 .hm-wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1}
-.hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
+/* 넓은 화면: 글 칸은 최대 600px, 영상 칸은 내용 폭(auto)으로 두고 둘을 한 묶음으로 가운데 모아 사이가 비지 않게 */
+.hm-hero{display:grid;grid-template-columns:minmax(0,600px) auto;justify-content:center;gap:72px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
 /* 히어로 글 블록: 박스 없이 배경 위에 바로 놓는다 (유리 창은 뺐음) */
 .hm-glass{padding:0;border:0;background:none;box-shadow:none}
 .hm-eb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft);color:var(--accent-ink);font-weight:600;font-size:.9rem}
@@ -74,7 +75,7 @@ body.home main{display:none}
 .hm-last .hm-btn{background:#14120f;color:#f2d3a8;border-color:#14120f}
 .hm-last .hm-btn:hover{background:#000}
 /* 중간 폭(620~980px): 글과 데모 영상을 그대로 나란히 두되 영상을 줄이고 헤드라인을 한 단계 작게 */
-@media (max-width:980px){.hm-hero{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:28px;min-height:0;padding-top:28px}.hm-hero h1{font-size:clamp(1.8rem,4.4vw,2.6rem)}.hm-lede{font-size:.92rem}.hm-phone{width:min(230px,34vw)}.hm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hm-diff{grid-template-columns:1fr}}
+@media (max-width:980px){.hm-hero{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);justify-content:stretch;gap:28px;min-height:0;padding-top:28px}.hm-hero h1{font-size:clamp(1.8rem,4.4vw,2.6rem)}.hm-lede{font-size:.92rem}.hm-phone{width:min(230px,34vw)}.hm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hm-diff{grid-template-columns:1fr}}
 /* 휴대폰 폭(620px 이하): 글과 데모 영상을 같은 세로축(가운데)에 세로로 쌓는다 */
 @media (max-width:620px){#home{padding:0 16px 32px}.hm-hero{grid-template-columns:1fr;gap:32px;justify-items:center;text-align:center}.hm-hero h1{font-size:clamp(2rem,9vw,2.6rem)}.hm-glass{display:flex;flex-direction:column;align-items:center}.hm-cta,.hm-chips{justify-content:center}.hm-lede{margin:0 auto 24px}.hm-meter{width:100%;max-width:420px;margin:0 auto 26px}.hm-phone{width:min(300px,80vw)}.hm-grid{grid-template-columns:1fr}.hm-card.wide{grid-column:auto}.hm-card img,.hm-card.wide img{height:190px}.hm-last{padding:28px 22px}}
 @media (prefers-reduced-motion:reduce){.hm-phone video{display:none}.hm-phone{background:url(../media/shorts-poster.webp) center/cover}}
