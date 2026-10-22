@@ -1320,3 +1320,26 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .mx-table td.mx-cell:hover { outline: 1px solid var(--accent); }
 .pair-kpis { align-items: center; }
 .pair-gauge { padding: 0 10px 0 2px; }
+
+/* ── 유리 입력 칸·표시 블록 ─────────────────────────────
+   입력·셀렉트·텍스트영역·세그먼트 버튼·보조 버튼·지표 칸을 둥근 젖빛 유리로 통일. 투명 줄이기 설정이면 불투명 면 */
+input[type="number"], input[type="text"], input[type="password"], input.formula, select, textarea, .seg-tabs button {
+  border-radius: 10px; border-color: var(--panel-line);
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-hi) 60%, transparent);
+}
+input[type="number"]:focus, input[type="text"]:focus, input[type="password"]:focus, input.formula:focus, select:focus, textarea:focus {
+  background: color-mix(in srgb, var(--surface) 78%, transparent); box-shadow: 0 0 0 3px var(--accent-soft), inset 0 1px 0 color-mix(in srgb, var(--glass-hi) 60%, transparent);
+}
+.btn:not(.primary) { background: color-mix(in srgb, var(--surface) 40%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-hi) 50%, transparent); }
+.btn:not(.primary):hover { background: var(--accent-soft); }
+.badge, .chip, .side-sum { border-radius: 999px; }
+/* 지표 칸(왼쪽 선 장식 유지)·옵션 묶음도 둥글게 */
+.dist-cell, .mc-kpis > div, .mode-kpis > div, .inv-summary > div, .pair-kpi, .pct-list div { border-radius: 10px; padding-left: 12px; }
+.option { border: 1px solid var(--panel-line); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--surface) 30%, transparent); }
+.side-sec > summary { border-radius: 10px; margin: 4px 6px 0; padding: 12px 12px; }
+.side-sec + .side-sec { border-top: 0; }
+@media (prefers-reduced-transparency: reduce) {
+  input[type="number"], input[type="text"], input[type="password"], input.formula, select, textarea, .seg-tabs button, .btn:not(.primary) { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
