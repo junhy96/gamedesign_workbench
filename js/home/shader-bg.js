@@ -3,7 +3,7 @@
 //   2 WaveDistortion   앞 레이어(메시)를 잔잔한 사인파로 일렁이게 한다. 세기는 천천히 숨 쉬듯 오르내림(auto-animate)
 //   3 Chrome ×2 + Blob 어둡고 반투명한 광택 입체: 검은 유광 정12면체(천천히 회전), 크롬 구, 출렁이는 어두운 구.
 //                    뿌옇게 번지는 건 셰이더가 아니라 유리 창(.hm-glass 등)의 backdrop-filter 가 덮는 부분에서만 일어난다
-//   4 Liquify          커서 주변을 액체처럼 일렁이게 하는 왜곡 (색을 뿌리지 않음). 앞 레이어 전부에 걸린다
+//   4 CursorRipples    커서에서 퍼지는 물결 파문으로 앞 레이어를 굴절 (색을 뿌리지 않음). 앞 레이어 전부에 걸린다
 // - npm 설치·번들러 없이 CDN ESM 번들을 홈이 보일 때만 늦게 불러온다 (약 2.6MB, 도구 화면에는 영향 없음)
 // - 텔레메트리는 끈다 (사이트 약속: 서버 전송 없음). 마우스 추적은 라이브러리가 window 에서 하므로 캔버스가 뒤에 있어도 된다
 // - 색은 CSS 토큰(--bg, --key-1..3, --glow)에서 읽어, 테마 전환 때 레이어별로 다시 넣는다
@@ -20,8 +20,8 @@ const FX = {
   ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.85, spinSpeed: 0.06, opacity: 0.62 },
   // 비단 리본(shaders.com 첫 화면 같은 흐르는 띠): 왼쪽 아래에서 오른쪽 위로 가로지르며 천천히 물결친다. 색은 골드·브론즈(키 컬러)
   ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.45 },
-  // 커서 효과: 색을 뿌리지 않고 커서 주변 배경(비단·정12면체)을 액체처럼 일렁이게 한다. intensity: 세기(0~20), radius: 반경(0.1~1.5), stiffness/damping: 되돌아오는 탄성·감쇠
-  cursor: { visible: true,  intensity: 7, radius: 0.55, stiffness: 4, damping: 3 },
+  // 커서 효과: 커서에서 물결 파문이 동심원으로 퍼지며 뒤 레이어(비단·정12면체)를 굴절시킨다. intensity: 세기(0~20), decay: 파문이 사라지는 빠르기, radius: 반경, chromaticSplit: 가장자리 색 분리(0 = 없음)
+  cursor: { visible: true,  intensity: 8, decay: 6, radius: 0.5, chromaticSplit: 0.4 },
 };
 
 let shader = null;
@@ -91,9 +91,9 @@ function components() {
       rotation: { type: 'auto-animate', mode: 'loop', outputMin: 0, outputMax: 360, speed: FX.ring.spinSpeed },
       shape: { type: 'dodecahedron3D', radius: 0.3, rotX: 24, rotY: 32, rotZ: 0 },
     } },
-    // 커서 효과: Liquify 를 맨 위 형제로 두면 앞서 그린 모든 레이어가 커서 주변에서 액체처럼 밀렸다가 탄성으로 돌아온다 (렌더 패스 1개)
-    { type: 'Liquify', id: ID.cursor, props: {
-      visible: FX.cursor.visible, intensity: FX.cursor.intensity, radius: FX.cursor.radius, stiffness: FX.cursor.stiffness, damping: FX.cursor.damping, edges: 'mirror',
+    // 커서 효과: CursorRipples 를 맨 위 형제로 두면 앞서 그린 모든 레이어 위로 커서 파문이 퍼진다 (렌더 패스 1개)
+    { type: 'CursorRipples', id: ID.cursor, props: {
+      visible: FX.cursor.visible, intensity: FX.cursor.intensity, decay: FX.cursor.decay, radius: FX.cursor.radius, chromaticSplit: FX.cursor.chromaticSplit, edges: 'mirror',
     } },
   ];
 }
