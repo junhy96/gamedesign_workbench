@@ -206,9 +206,17 @@ body::after {
 
 main { flex: 1; width: 100%; max-width: 1360px; margin: 0 auto; padding: 32px 28px 40px; }
 .app-footer {
-  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  padding: 16px 24px; color: var(--text-3); font-size: 12.5px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 16px 24px 22px; color: var(--text-3); font-size: 12.5px; border-top: 1px solid var(--line);
 }
+.app-footer .footer-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+/* 오픈소스 고지(Kalivra): 푸터 맨 아래, 본문보다 한 단계 작은 글자 */
+.oss-notice { padding-top: 12px; border-top: 1px dashed var(--line); font-size: 12px; line-height: 1.65; max-width: 920px; }
+.oss-notice p { margin: 0 0 6px; }
+.oss-notice p:last-child { margin-bottom: 0; }
+.oss-notice .oss-title { font-weight: 600; color: var(--text-2); }
+.oss-notice a { color: inherit; text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.oss-notice a:hover { color: var(--accent-ink); }
 
 /* ── 공통 컴포넌트 ──────────────────────────────────── */
 /* 유리 패널(글라스모피즘): 반투명 면 + 뒤를 흐림 + 위쪽 가는 하이라이트. 투명 줄이기 설정이면 불투명 면으로 */
