@@ -14,12 +14,8 @@ body.home main{display:none}
 :root[data-theme="light"] .hm-bg.on{opacity:.38}
 .hm-wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1}
 .hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
-/* 히어로 글은 유리 창 안에: 뒤의 입체·그라데이션이 이 창이 덮는 부분만 뿌옇게 번진다(backdrop-filter). 창 밖은 선명 */
-.hm-glass{padding:36px 38px 34px;border-radius:22px;border:1px solid var(--glass-win-line,var(--panel-line));background:var(--glass-win,var(--card-bg));-webkit-backdrop-filter:blur(28px) saturate(1.35);backdrop-filter:blur(28px) saturate(1.35);box-shadow:inset 0 1px 0 var(--glass-hi),inset 1px 0 0 color-mix(in srgb,var(--glass-hi) 40%,transparent),0 30px 70px -40px rgb(0 0 0 / .8)}
-/* 다크에서는 창 채움을 더 어둡게(흰색 7%→2.5%), 테두리도 가늘고 어둡게 — 공용 유리 토큰(17%)은 입력 패널용이라 창에 쓰면 너무 밝다 */
-:root:not([data-theme="light"]) .hm-glass{--glass-win:linear-gradient(160deg,rgb(255 255 255 / .07),rgb(255 255 255 / .025));--glass-win-line:rgb(255 255 255 / .16)}
-@media (max-width:620px){.hm-glass{padding:26px 22px 24px;border-radius:18px}}
-@media (prefers-reduced-transparency:reduce){.hm-glass{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}}
+/* 히어로 글 블록: 박스 없이 배경 위에 바로 놓는다 (유리 창은 뺐음) */
+.hm-glass{padding:0;border:0;background:none;box-shadow:none}
 .hm-eb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft);color:var(--accent-ink);font-weight:600;font-size:.9rem}
 /* 제목 서체: 던파 연단된 칼날 Bold (© NEOPLE, 상업용 무료·수정 금지·원형 그대로 사용). 공식 CDN 에서 그대로 불러옴(약 3.8MB, swap 이라 오기 전엔 Pretendard 800).
    홈 h1 에만 쓰므로 다른 화면에는 비용 없음 */
@@ -33,7 +29,7 @@ body.home main{display:none}
 .hm-hero h1 .xl-ico{width:.78em;height:.78em;flex:none;filter:drop-shadow(0 2px 6px rgb(0 0 0 / .25))}
 .hm-hero h1 .wb{background:var(--key-grad);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
 /* 본문·보조 글자: 회색 대신 본문색을 써서 배경 위 대비 확보 */
-.hm-lede{font-size:1.12rem;color:var(--text);opacity:.88;max-width:52ch;line-height:1.65;margin:0 0 28px}
+.hm-lede{font-size:.98rem;color:var(--text);opacity:.86;max-width:52ch;line-height:1.65;margin:0 0 26px}
 /* 레퍼런스의 진행 막대: 키 그라데이션 + 끝의 글로우 점 */
 .hm-meter{position:relative;height:4px;border-radius:2px;background:var(--key-grad);max-width:460px;margin:0 0 30px}
 .hm-meter::after{content:"";position:absolute;right:-5px;top:50%;width:11px;height:11px;margin-top:-5.5px;border-radius:50%;background:#fffbe0;box-shadow:var(--glow-shadow)}
@@ -77,6 +73,7 @@ body.home main{display:none}
 .hm-last h2{margin:0 0 6px;font-size:1.8rem;font-weight:600;letter-spacing:-.02em} .hm-last p{margin:0;opacity:.8}
 .hm-last .hm-btn{background:#14120f;color:#f2d3a8;border-color:#14120f}
 .hm-last .hm-btn:hover{background:#000}
-@media (max-width:980px){.hm-hero{grid-template-columns:1fr;min-height:0;gap:36px;padding-top:32px}.hm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hm-diff{grid-template-columns:1fr}}
+/* 좁은 화면: 글과 데모 영상을 같은 세로축(가운데)에 세로로 쌓는다 */
+@media (max-width:980px){.hm-hero{grid-template-columns:1fr;min-height:0;gap:36px;padding-top:32px;justify-items:center;text-align:center}.hm-glass{display:flex;flex-direction:column;align-items:center}.hm-cta,.hm-chips{justify-content:center}.hm-lede{margin:0 auto 24px}.hm-meter{width:100%;max-width:420px;margin:0 auto 26px}.hm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hm-diff{grid-template-columns:1fr}}
 @media (max-width:620px){#home{padding:0 16px 32px}.hm-grid{grid-template-columns:1fr}.hm-card.wide{grid-column:auto}.hm-card img,.hm-card.wide img{height:190px}.hm-last{padding:28px 22px}}
 @media (prefers-reduced-motion:reduce){.hm-phone video{display:none}.hm-phone{background:url(../media/shorts-poster.webp) center/cover}}
