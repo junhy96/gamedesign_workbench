@@ -14,9 +14,11 @@ body.home main{display:none}
 .hm-wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1}
 .hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
 .hm-eb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft);color:var(--accent-ink);font-weight:600;font-size:.9rem}
-/* 제목: 본문(Pretendard)과 다른 명조 900 으로 강조. 서체가 아직 안 왔으면 Pretendard 800 으로 보이다가 교체(display=swap).
-   움직이는 배경 위에서도 읽히도록 살짝 그림자 */
-.hm-hero h1{font-family:"Noto Serif KR","Pretendard Variable",Pretendard,serif;font-size:clamp(2.4rem,5.4vw,4.4rem);line-height:1.18;letter-spacing:-.02em;margin:18px 0 18px;font-weight:900;text-shadow:0 2px 24px color-mix(in srgb,var(--bg) 60%,transparent)}
+/* 제목 서체: 던파 연단된 칼날 Bold (© NEOPLE, 상업용 무료·수정 금지·원형 그대로 사용). 공식 CDN 에서 그대로 불러옴(약 3.8MB, swap 이라 오기 전엔 Pretendard 800).
+   홈 h1 에만 쓰므로 다른 화면에는 비용 없음 */
+@font-face{font-family:"DNFForgedBlade";font-style:normal;font-weight:700;font-display:swap;src:url("https://cdn.df.nexon.com/img/common/font/DNFForgedBlade-Bold.otf") format("opentype")}
+/* 제목: 본문(Pretendard)과 대비되는 날카로운 세리프 전용 서체. 움직이는 배경 위에서도 읽히도록 살짝 그림자 */
+.hm-hero h1{font-family:"DNFForgedBlade","Pretendard Variable",Pretendard,sans-serif;font-size:clamp(2.4rem,5.4vw,4.4rem);line-height:1.2;letter-spacing:0;margin:18px 0 18px;font-weight:700;text-shadow:0 2px 24px color-mix(in srgb,var(--bg) 60%,transparent)}
 .hm-hero h1 em{font-style:normal;background:var(--key-grad);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
 .hm-hero h1 s{text-decoration:line-through;text-decoration-thickness:3px;text-decoration-color:color-mix(in srgb,var(--text-3) 80%,transparent);color:var(--text-3)}
 /* 본문·보조 글자: 회색 대신 본문색을 써서 배경 위 대비 확보 */
