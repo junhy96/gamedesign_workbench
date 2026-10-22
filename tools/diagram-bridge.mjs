@@ -25,11 +25,12 @@ const CLAUDE = process.platform === 'win32' ? 'claude.cmd' : 'claude';
 
 const allowOrigin = (origin) => !!origin && ALLOWED_ORIGINS.some((re) => re.test(origin));
 
+// 명령은 고정 문자열만 셸에 넘기고(Windows 의 claude.cmd 때문에 shell 필요), 사용자 글은 표준 입력으로 넣는다 — 인용·이스케이프 문제 없음
 function run(cmd, args, { cwd, timeout = 20_000, input } = {}) {
   return new Promise((resolve) => {
     let out = '', err = '', done = false;
     let child;
-    try { child = spawn(cmd, args, { cwd, shell: process.platform === 'win32', windowsHide: true }); }
+    try { child = spawn([cmd, ...args].join(' '), { cwd, shell: true, windowsHide: true }); }
     catch (e) { resolve({ code: -1, out: '', err: String(e) }); return; }
     const timer = setTimeout(() => { if (!done) { done = true; child.kill(); resolve({ code: -2, out, err: err + '\n[timeout]' }); } }, timeout);
     child.stdout.on('data', (d) => { out += d; });
@@ -82,9 +83,10 @@ function buildPrompt({ prompt, variant, brand, fonts }) {
 async function draw(body) {
   const dir = await mkdtemp(join(tmpdir(), 'wb-diagram-'));
   try {
-    const args = ['-p', buildPrompt(body), '--output-format', 'text', '--dangerously-skip-permissions', '--permission-prompts', 'none', '--max-turns', '40', '--no-session-persistence'];
-    if (body.model) args.push('--model', String(body.model));
-    const r = await run(CLAUDE, args, { cwd: dir, timeout: TIMEOUT_MS });
+    // 프롬프트(사용자 설명 포함)는 표준 입력으로, 인자는 고정 플래그만
+    const args = ['-p', '"Follow the instructions given on standard input."', '--output-format', 'text', '--dangerously-skip-permissions', '--permission-prompts', 'none', '--max-turns', '40', '--no-session-persistence'];
+    if (body.model && /^[\w.-]+$/.test(String(body.model))) args.push('--model', String(body.model));
+    const r = await run(CLAUDE, args, { cwd: dir, timeout: TIMEOUT_MS, input: buildPrompt(body) });
     // 결과 파일: diagram.html 우선, 없으면 가장 최근 .html
     let file = join(dir, 'diagram.html');
     try { await access(file); } catch {
@@ -126,6 +128,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(raw || '{}');
       if (!body.prompt || !String(body.prompt).trim()) { send(res, 400, { ok: false, error: 'prompt 가 비었습니다' }, origin); return; }
       console.log(`[diagram] ${new Date().toLocaleTimeString()} ${String(body.prompt).slice(0, 60)}…`);
+      if (!(await claudeVersion())) { send(res, 503, { ok: false, error: 'Claude Code(claude 명령)를 찾지 못했습니다 — 설치 후 브리지를 다시 켜세요' }, origin); return; }
       const result = await draw(body);
       console.log(`[diagram] ${result.ok ? 'ok' : 'fail: ' + result.error}`);
       send(res, result.ok ? 200 : 500, result, origin); return;
