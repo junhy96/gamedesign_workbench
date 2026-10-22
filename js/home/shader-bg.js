@@ -18,8 +18,8 @@ const FX = {
   wave:  { visible: true,  strengthMin: 0.05, strengthMax: 0.14, frequency: 1.6, speed: 0.25 },   // 물결: 세기 범위(숨 쉬듯 오르내림)·파수·빠르기
   // 정12면체(검은 유광)는 오른쪽(폰 목업 뒤). spinSpeed: 초당 회전수(0.06 ≈ 17초에 한 바퀴)
   ring:  { visible: true,  center: { x: 0.74, y: 0.42 }, scale: 0.85, spinSpeed: 0.06, opacity: 0.62 },
-  // 비단 리본(shaders.com 첫 화면 같은 흐르는 띠): 왼쪽 아래에서 오른쪽 위로 가로지르며 천천히 물결친다. 색은 원래의 회색·검정 톤
-  ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.6 },
+  // 비단 리본(shaders.com 첫 화면 같은 흐르는 띠): 왼쪽 아래에서 오른쪽 위로 가로지르며 천천히 물결친다. 색은 골드·브론즈(키 컬러)
+  ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.55 },
   trail: { visible: true,  radius: 0.9, length: 0.6 },
 };
 
@@ -53,11 +53,11 @@ function themeProps() {
       { color: mix(f3, k3, 0.18), position: 1 },
     ] },
     // 정12면체: 다크는 어두운 몸체에 밝은 반사, 라이트는 더 어두운 크롬 (흰색은 밝은 바탕에서 안 보임)
-    [ID.ring]: dark ? { tint: '#4a4a52', warmColor: k1, coolColor: '#a9bccb' } : { tint: '#3a3a3e', warmColor: k3, coolColor: '#577489' },
-    // 리본 색: 다크는 검정→밝은 회색→흰빛→차콜(screen 으로 빛나는 비단), 라이트는 회색 계열을 보통 블렌드로
+    [ID.ring]: dark ? { tint: '#36363c', warmColor: k1, coolColor: '#a9bccb' } : { tint: '#3a3a3e', warmColor: k3, coolColor: '#577489' },
+    // 리본 색: 골드·브론즈 비단(키 컬러). 다크는 검정→브론즈→골드→샌드 하이라이트→짙은 브론즈를 screen 으로, 라이트는 탄색을 보통 블렌드로
     [ID.ribbon]: dark
-      ? { stops: [{ color: '#0b0b0c', position: 0 }, { color: '#6e6e76', position: 0.35 }, { color: '#d6d6db', position: 0.6 }, { color: '#4a4a52', position: 1 }], blendMode: 'screen', opacity: FX.ribbon.opacity }
-      : { stops: [{ color: '#f1f0ec', position: 0 }, { color: '#9a9893', position: 0.35 }, { color: '#5f5d58', position: 0.6 }, { color: '#c9c7c0', position: 1 }], blendMode: 'normal', opacity: 0.35 },
+      ? { stops: [{ color: '#0b0b0c', position: 0 }, { color: '#6a4322', position: 0.3 }, { color: k2, position: 0.55 }, { color: k1, position: 0.68 }, { color: '#3a2410', position: 1 }], blendMode: 'screen', opacity: FX.ribbon.opacity }
+      : { stops: [{ color: '#f1f0ec', position: 0 }, { color: k2, position: 0.35 }, { color: k3, position: 0.6 }, { color: '#e3cdb3', position: 1 }], blendMode: 'normal', opacity: 0.3 },
     [ID.trail]: dark
       ? { colorA: k2, colorB: mix(k1, glow, 0.5), blendMode: 'screen', opacity: 0.3 }
       : { colorA: k3, colorB: k2, blendMode: 'multiply', opacity: 0.2 },
@@ -89,7 +89,7 @@ function components() {
     // 검은 유광 정12면체. 회전은 라이브러리의 auto-animate 로(화면 평면). 위치는 고정값(mouse-position 은 마우스가 움직이기 전엔 값이 없어 안 그려짐)
     { type: 'Chrome', id: ID.ring, props: {
       ...t[ID.ring], visible: FX.ring.visible, opacity: FX.ring.opacity, scale: FX.ring.scale, center: FX.ring.center,
-      environment: 1.25, envRotation: 20, softness: 0.25, spectral: 0.4, dispersion: 0.1, shadows: 0.75, curvature: 0.3, waviness: 0.04, speed: 0.3, edgeSoftness: 0.05,
+      environment: 1.1, envRotation: 20, softness: 0.25, spectral: 0.4, dispersion: 0.1, shadows: 0.75, curvature: 0.3, waviness: 0.04, speed: 0.3, edgeSoftness: 0.05,
       rotation: { type: 'auto-animate', mode: 'loop', outputMin: 0, outputMax: 360, speed: FX.ring.spinSpeed },
       shape: { type: 'dodecahedron3D', radius: 0.3, rotX: 24, rotY: 32, rotZ: 0 },
     } },

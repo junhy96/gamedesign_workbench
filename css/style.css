@@ -58,7 +58,7 @@
     --glow: #f4e24a; --glow-shadow: 0 0 0 1px rgb(244 226 74 / .6), 0 0 14px 3px rgb(244 226 74 / .55);
     --bg: #0b0b0c;   /* 레퍼런스 샘플 기준 중립(살짝 차가운) 검정: 가장자리 #020203, 틈 #18191c~#2e2f32, 패널 #38393b */
     --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(170 176 140 / .06), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(150 152 158 / .13), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .06), transparent 65%);
-    --flow-1: #17181b; --flow-2: #27282c; --flow-3: #3a3b3f;   /* 흐르는 배경: 바탕 → 차콜 → 밝은 차콜 (중립, 노란기 없음) */
+    --flow-1: #121316; --flow-2: #1d1e22; --flow-3: #2a2b2f;   /* 흐르는 배경: 바탕 → 차콜 (중립, 노란기 없음, 회색으로 뜨지 않게 어둡게) */
     --surface: #141416; --surface-2: #1c1c1f;
     --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
@@ -90,7 +90,7 @@
   --glow: #f4e24a; --glow-shadow: 0 0 0 1px rgb(244 226 74 / .6), 0 0 14px 3px rgb(244 226 74 / .55);
   --bg: #0b0b0c;   /* 레퍼런스 샘플 기준 중립(살짝 차가운) 검정: 가장자리 #020203, 틈 #18191c~#2e2f32, 패널 #38393b */
   --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(255 255 255 / .09), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(170 176 140 / .06), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(150 152 158 / .13), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(216 162 114 / .06), transparent 65%);
-    --flow-1: #17181b; --flow-2: #27282c; --flow-3: #3a3b3f;   /* 흐르는 배경: 바탕 → 차콜 → 밝은 차콜 (중립, 노란기 없음) */
+    --flow-1: #121316; --flow-2: #1d1e22; --flow-3: #2a2b2f;   /* 흐르는 배경: 바탕 → 차콜 (중립, 노란기 없음, 회색으로 뜨지 않게 어둡게) */
   --surface: #141416; --surface-2: #1c1c1f;
   --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
