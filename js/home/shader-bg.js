@@ -21,7 +21,7 @@ const FX = {
   // 비단 리본(shaders.com 첫 화면 같은 흐르는 띠): 왼쪽 아래에서 오른쪽 위로 가로지르며 천천히 물결친다. 색은 골드·브론즈(키 컬러)
   ribbon: { visible: true,  lines: 6, width: 0.08, softness: 0.7, amplitude: 2.4, frequency: 0.22, spread: 0.35, speed: 0.22, opacity: 0.45 },
   // 커서 효과: 커서에서 물결 파문이 동심원으로 퍼지며 뒤 레이어(비단·정12면체)를 굴절시킨다. intensity: 세기(0~20), decay: 파문이 사라지는 빠르기, radius: 반경, chromaticSplit: 가장자리 색 분리(0 = 없음)
-  cursor: { visible: true,  intensity: 8, decay: 6, radius: 0.5, chromaticSplit: 0.4 },
+  cursor: { visible: true,  intensity: 4, decay: 5, radius: 0.9, chromaticSplit: 0.25 },
 };
 
 let shader = null;
