@@ -13,6 +13,10 @@ body.home main{display:none}
 :root[data-theme="light"] #home .hm-bg.on{opacity:.38}
 .hm-wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1}
 .hm-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;min-height:calc(100svh - 70px);padding:24px 0}
+/* 히어로 글은 유리 창 안에: 뒤의 입체·그라데이션이 이 창이 덮는 부분만 뿌옇게 번진다(backdrop-filter). 창 밖은 선명 */
+.hm-glass{padding:36px 38px 34px;border-radius:22px;border:1px solid var(--panel-line);background:var(--card-bg);-webkit-backdrop-filter:blur(28px) saturate(1.35);backdrop-filter:blur(28px) saturate(1.35);box-shadow:inset 0 1px 0 var(--glass-hi),inset 1px 0 0 color-mix(in srgb,var(--glass-hi) 40%,transparent),0 30px 70px -40px rgb(0 0 0 / .8)}
+@media (max-width:620px){.hm-glass{padding:26px 22px 24px;border-radius:18px}}
+@media (prefers-reduced-transparency:reduce){.hm-glass{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}}
 .hm-eb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-soft);color:var(--accent-ink);font-weight:600;font-size:.9rem}
 /* 제목 서체: 던파 연단된 칼날 Bold (© NEOPLE, 상업용 무료·수정 금지·원형 그대로 사용). 공식 CDN 에서 그대로 불러옴(약 3.8MB, swap 이라 오기 전엔 Pretendard 800).
    홈 h1 에만 쓰므로 다른 화면에는 비용 없음 */
