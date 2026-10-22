@@ -31,14 +31,14 @@
 
 | 도구 | 무엇을 하나 |
 |---|---|
-| 자연어 다이어그램 | 문장 → Mermaid 다이어그램(Claude API), 코드 편집·미리보기, SVG·PNG·**PPT 도형** 내보내기. 블록 종류 자동 분류·색, 아니오 분기 빨간 선, 시퀀스 참여자별 색, 범례(INDEX) 자동 생성 |
+| 다이어그램 | 문장 → Claude Code 의 [diagram-design](https://github.com/cathrynlavery/diagram-design) 플러그인(MIT)이 그린 HTML+SVG. PC 에서 `node tools/diagram-bridge.mjs` 를 켜 두면 페이지가 자동 연결되어 그리기·미리보기·HTML/SVG/PNG 내보내기. 브리지가 없으면 설치 안내만 보임 (Mermaid·브라우저 API 호출은 제거) |
 | PDF 도구 ([/pdf](pdf/)) | 합치기·분할·압축·PDF↔JPG·워터마크·서명 등 13종, **파일 업로드 없이 브라우저 안에서만 처리** ([참고 분석](docs/pdf-reference-analysis.md)) |
 
 **되돌리기 (전 탭 공통)**: 헤더의 ↶ ↷ 또는 Ctrl+Z · Ctrl+Shift+Z(입력칸 밖에서). 탭이 설정을 저장할 때마다 한 단계(입력 0.3초 묶음), 탭마다 최대 50단계, 창을 닫으면 사라짐. 각 탭이 이미 가진 공유 링크 불러오기 경로로 되돌리므로 모든 탭에서 같은 방식으로 동작합니다.
 
 **스냅샷 (전 탭 공통)**: 헤더의 "스냅샷"에서 모든 탭(강화·가챠·성장 표·스탯 전투·프레임)의 지금 설정을 한 번에 저장하고, 나중에 지금 설정과 **탭별 핵심 지표를 비교**(바뀐 탭 표시, 지표마다 변화와 좋아짐·나빠짐 색)하거나 되돌립니다. 프로젝트 파일(JSON)로 저장·불러오기 하면 팀과 같은 설정을 나눌 수 있습니다.
 
-**PowerPoint 내보내기**: 패턴 프레임 타임라인과 자연어 다이어그램(Mermaid)을 PowerPoint에서 바로 편집할 수 있는 기본 도형(사각형·마름모·선·화살표·텍스트 상자)으로 저장합니다. SVG를 그림으로 붙이는 방식이 아니라, 화면의 SVG 요소를 하나씩 읽어 도형으로 바꿉니다.
+**PowerPoint 내보내기**: 패턴 프레임 타임라인을 PowerPoint에서 바로 편집할 수 있는 기본 도형(사각형·마름모·선·화살표·텍스트 상자)으로 저장합니다. SVG를 그림으로 붙이는 방식이 아니라, 화면의 SVG 요소를 하나씩 읽어 도형으로 바꿉니다.
 패턴 프레임 검증은 전투 기획서 '기술 일람' 양식(보라 헤더 바 · 정보 표 · 행 라벨 표 위 초 단위 축과 둥근 막대, 프리젠테이션 글꼴)으로 만듭니다: 패턴 타임라인 → 공격별 1장(공격 구간 확대, 0초 = 공격 시작) → 패턴별 판정 표 → 검증 결과. 애니메이션 띠는 캡처를 붙여 넣는 자리로 비워 둡니다.
 
 전체 기획과 설계 결정은 [docs/PLAN.md](docs/PLAN.md)에 정리했습니다.
@@ -333,7 +333,8 @@ js/gacha/presets.js     템플릿 3종 (방치형 소환 레벨 / 천장·픽업
 js/growth/model.js      성장 표: 레벨 곡선·일차별 진행(엑셀 수식과 같은 규칙의 참조 계산)·base/증가율 이분 탐색 (DOM 없음)
 js/growth/xlsx.js       수식이 살아 있는 .xlsx 쓰기(OOXML 직접 + zip.js, 차트·드롭다운 포함, DOM 없음) · presets.js 프리셋 · view.js 화면
 js/gacha/view.js        화면: 등급·확률 표, 목표 표, 달성 곡선·예산, 원인 분해, 검증
-js/diagram/*            자연어 다이어그램: Claude API 호출(llm.js), 예시, 화면
+js/diagram/view.js      다이어그램: 로컬 브리지 감지 → diagram-design 으로 그리기·미리보기·내보내기, 없으면 설치 안내
+tools/diagram-bridge.mjs  다이어그램 브리지(Node, 의존성 없음): 127.0.0.1:8787 에서 claude -p 로 diagram-design 실행
 js/lib/pptx.js          PowerPoint: PptxGenJS 지연 로드, 도형 사양 렌더, SVG → 편집 가능한 도형 변환
 js/lib/mermaid.js       Mermaid 지연 로드·렌더·내보내기용 오프스크린 렌더
 landing/                소개 페이지(랜딩 + 도구별 세부 8장, Tailwind CDN). 문구는 landing/_build.mjs에서 고치고 node landing/_build.mjs로 다시 생성

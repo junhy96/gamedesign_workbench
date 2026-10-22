@@ -1448,3 +1448,26 @@ ul.errors:not([hidden]) ~ .card.role-out::after, ul.errors:not([hidden]) ~ .kpis
 .nav-menu button:hover, .nav-menu button:focus-visible { background: var(--accent-soft); }
 .nav-menu button:hover b, .nav-menu button:focus-visible b { color: var(--accent-ink); }
 .nav-menu button:hover span, .nav-menu button:focus-visible span { color: var(--text-2); }
+
+/* ── 다이어그램(브리지 도구·설치 안내) ────────────────────
+   브리지 상태 띠, 설치 단계, 명령 복사 줄, 미리보기 무대(드롭 영역)·iframe */
+.dg-status { margin-bottom: 16px; }
+.dg-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--panel-line); font-size: 13px; color: var(--text-2); background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+.dg-banner b { font-size: 13.5px; }
+.dg-banner.on { border-color: color-mix(in srgb, var(--good) 45%, transparent); } .dg-banner.on b { color: var(--good); }
+.dg-banner.warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); } .dg-banner.warn b { color: var(--warn); }
+.dg-banner.off { border-color: color-mix(in srgb, var(--text-3) 45%, transparent); } .dg-banner.off b { color: var(--text-2); }
+.dg-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.dg-step { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--panel-line); background: color-mix(in srgb, var(--surface-2) 40%, transparent); display: grid; gap: 8px; }
+.dg-step-head { display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
+.dg-num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--key-grad); color: var(--on-key); flex: none; }
+.dg-step p { margin: 0; font-size: 13.5px; color: var(--text-2); line-height: 1.55; }
+.dg-cmds { display: grid; gap: 6px; }
+.dg-cmd { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-radius: 8px; background: color-mix(in srgb, var(--bg) 55%, transparent); border: 1px solid var(--line); }
+.dg-cmd code { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12.5px; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+.dg-stage { position: relative; min-height: 420px; border-radius: 12px; border: 1px dashed var(--panel-line); background: color-mix(in srgb, var(--bg) 40%, transparent); overflow: hidden; }
+.dg-stage.over { border-color: var(--accent); background: var(--accent-soft); }
+.dg-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: 10px; text-align: center; color: var(--text-3); font-size: 13.5px; }
+.dg-empty .btn { justify-self: center; cursor: pointer; }
+.dg-frame { display: block; width: 100%; height: min(72vh, 820px); border: 0; background: #fff; }
+@media (max-width: 760px) { .dg-cmd { flex-wrap: wrap; } .dg-frame { height: 60vh; } }

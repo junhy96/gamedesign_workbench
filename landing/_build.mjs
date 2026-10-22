@@ -291,7 +291,7 @@ function footer() {
   <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-14 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
     <div class="max-w-md">
       <a href="index.html" class="flex items-center gap-2.5 text-sm font-semibold text-zinc-100">${LOGO}<span>기획 워크벤치</span></a>
-      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 8개 도구의 계산은 브라우저 안에서만 실행됩니다(다이어그램 부가 도구만 직접 넣은 API 키로 Claude API를 부릅니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
+      <p class="ko mt-4 text-sm leading-relaxed text-zinc-500">게임 시스템·BM 기획자가 엑셀로 풀기 어려운 검증을 브라우저에서 바로 돌려 보는 도구 모음입니다. 모든 계산은 브라우저 안에서만 실행되며 서버로 아무것도 보내지 않습니다(다이어그램은 이 PC 의 Claude Code 플러그인이 그립니다). 템플릿 수치는 설계 예시이며 특정 게임의 실제 수치가 아닙니다.</p>
     </div>
     <div class="flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-400">
       <a href="${APP}#enhance" class="t-spring hover:text-zinc-100">워크벤치 열기</a>

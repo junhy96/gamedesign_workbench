@@ -5,6 +5,7 @@
   "description": "게임 기획 검증 도구 모음 — 빌드 없이 GitHub Pages로 배포",
   "scripts": {
     "test": "node --test",
-    "dev": "npx --yes serve@14.2.4 -l 5173 ."
+    "dev": "npx --yes serve@14.2.4 -l 5173 .",
+    "diagram-bridge": "node tools/diagram-bridge.mjs"
   }
 }
