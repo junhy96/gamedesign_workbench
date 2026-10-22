@@ -14,13 +14,14 @@
   --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(201 138 82 / .30), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(127 138 78 / .18), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(176 111 57 / .14), transparent 65%), radial-gradient(700px 500px at 30% 30%, rgb(255 255 255 / .4), transparent 65%);
   --surface: #fbfaf8;
   --surface-2: #f0eee9;
-  --glass: rgb(255 255 255 / .62); --glass-2: rgb(255 255 255 / .34); --glass-line: rgb(0 0 0 / .11); --glass-hi: rgb(255 255 255 / .95);
+  /* 유리 패널: 탁한(불투명도 높은) 젖빛 유리. 라이트는 흰 유리, 다크는 밝은 회색 유리 */
+  --glass: rgb(255 255 255 / .74); --glass-2: rgb(255 255 255 / .50); --glass-line: rgb(0 0 0 / .11); --glass-hi: rgb(255 255 255 / .95);
   --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(0 0 0 / .05); --vignette: rgb(0 0 0 / .06); --grain: .04;
   --line: #e2dfd8;
   --line-strong: #cbc7bd;
   --text: #151412;
   --text-2: #55524b;
-  --text-3: #77736a;
+  --text-3: #6b675e;
   --accent: #b06f39;
   --accent-soft: rgb(176 111 57 / .12);
   --accent-ink: #8d531f;
@@ -30,7 +31,7 @@
   --warn: #946c00; --warn-soft: rgb(201 154 18 / .14);
   --bad: #c0412b; --bad-soft: rgb(196 70 47 / .11);
   --shadow: 0 1px 2px rgb(60 40 20 / .05), 0 10px 28px -18px rgb(60 40 20 / .25);
-  --radius: 2px; --radius-sm: 2px;
+  --radius: 14px; --radius-sm: 8px;   /* 유리 느낌을 살리는 둥근 모서리 (카드·대화상자 14, 버튼·입력 칸 8) */
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
   /* 패턴 프레임: 보스 선딜·판정·후딜, 플레이어 무적·회피·반격, 판정 등급 */
   --tl-startup: #dcd9d1; --tl-recovery: #b5b1a7; --tl-active: #b06f39;
@@ -56,10 +57,10 @@
     --bg: #0b0b0a;
     --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(216 162 114 / .36), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .18), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(156 93 45 / .22), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(244 226 74 / .07), transparent 65%);
     --surface: #131312; --surface-2: #1c1b19;
-    --glass: rgb(255 255 255 / .085); --glass-2: rgb(255 255 255 / .025); --glass-line: rgb(255 255 255 / .17); --glass-hi: rgb(255 255 255 / .24);
+    --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
     --line: #282723; --line-strong: #3b3934;
-    --text: #efede7; --text-2: #b3afa5; --text-3: #85817a;
+    --text: #f3f1eb; --text-2: #cbc7bd; --text-3: #a39e95;
     --accent: #d8a272; --accent-soft: rgb(216 162 114 / .13); --accent-ink: #ebbd8d;
     --series-1: #d8a272; --series-2: #b5b98c; --series-3: #e8e1c3; --series-4: #8ea3b4;
     --grid: #1c1b19;
@@ -87,10 +88,10 @@
   --bg: #0b0b0a;
   --bg-art: radial-gradient(1000px 700px at 100% -5%, rgb(216 162 114 / .36), transparent 60%), radial-gradient(900px 700px at -5% 105%, rgb(181 185 140 / .18), transparent 60%), radial-gradient(700px 560px at 40% 50%, rgb(156 93 45 / .22), transparent 65%), radial-gradient(520px 420px at 72% 72%, rgb(244 226 74 / .07), transparent 65%);
   --surface: #131312; --surface-2: #1c1b19;
-  --glass: rgb(255 255 255 / .085); --glass-2: rgb(255 255 255 / .025); --glass-line: rgb(255 255 255 / .17); --glass-hi: rgb(255 255 255 / .24);
+  --glass: rgb(255 255 255 / .17); --glass-2: rgb(255 255 255 / .08); --glass-line: rgb(255 255 255 / .24); --glass-hi: rgb(255 255 255 / .38);
     --card-bg: linear-gradient(160deg, var(--glass), var(--glass-2)); --panel-line: var(--glass-line); --ring: rgb(255 255 255 / .04); --vignette: rgb(0 0 0 / .55); --grain: .05;
   --line: #282723; --line-strong: #3b3934;
-  --text: #efede7; --text-2: #b3afa5; --text-3: #85817a;
+  --text: #f3f1eb; --text-2: #cbc7bd; --text-3: #a39e95;
   --accent: #d8a272; --accent-soft: rgb(216 162 114 / .13); --accent-ink: #ebbd8d;
   --series-1: #d8a272; --series-2: #b5b98c; --series-3: #e8e1c3; --series-4: #8ea3b4;
   --grid: #1c1b19;
