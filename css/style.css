@@ -1347,3 +1347,29 @@ input[type="number"]:focus, input[type="text"]:focus, input[type="password"]:foc
 @media (prefers-reduced-transparency: reduce) {
   input[type="number"], input[type="text"], input[type="password"], input.formula, select, textarea, .seg-tabs button, .btn:not(.primary) { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* ── 승률 행렬·게이지·사이드 패널 여백 다듬기 ─────────────────
+   행렬: 모든 칸을 같은 크기의 둥근 유리 칸으로(대각선·평균 칸의 불투명 면 제거), 칸 사이 간격 확보
+   게이지 숫자: 굵기 700·좁은 자간 대신 600·자연 자간 · 사이드 패널: 섹션·칸 사이 숨 쉴 간격 */
+table.mx-table { border-spacing: 6px; }
+.mx-table th { padding: 6px 8px 8px; }
+.mx-table td, .mx-table td.mx-cell { height: 72px; min-width: 84px; border-radius: 12px; padding: 6px; vertical-align: middle; }
+.mx-table td.mx-cell, .mx-table td.mx-self, .mx-table td.mx-score {
+  border: 1px solid var(--panel-line); background: color-mix(in srgb, var(--surface-2) 40%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-hi) 45%, transparent);
+}
+.mx-table td.mx-self { color: var(--text-3); font-size: 16px; }
+.mx-table td.mx-score { font-size: 15px; font-weight: 600; letter-spacing: 0; color: var(--accent-ink); }
+.mx-table td.mx-cell:hover { outline: 0; border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
+.gauge-num { font-weight: 600; letter-spacing: -0.005em; }
+.gauge.mini .gauge-num { font-weight: 600; letter-spacing: 0; }
+.side-sec + .side-sec { margin-top: 6px; }
+.side-sec > summary { padding: 14px 14px; margin: 6px 6px 0; gap: 10px; }
+.side-body { gap: 14px; padding: 6px 16px 22px; }
+.field { gap: 7px; }
+input[type="number"], input[type="text"], select { padding: 9px 12px; }
+textarea { padding: 10px 12px; }
+.row2, .row3 { gap: 12px; }
+.option { gap: 12px; }
+.desc, .option .desc, .preset-note, .field small { line-height: 1.6; }
+.pair-kpi { padding: 12px 16px; border: 1px solid var(--panel-line); }
